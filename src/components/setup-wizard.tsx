@@ -168,7 +168,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
     city: initialData?.venue?.city || "",
     state: initialData?.venue?.state || "",
     zip: initialData?.venue?.zip || "",
-    country: initialData?.venue?.country || "",
+    country: initialData?.venue?.country || "India",
     contactNumber: initialData?.venue?.contactNumber || "",
     email: initialData?.venue?.email || "",
     tagline: initialData?.venue?.tagline || "",
@@ -203,7 +203,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
   const [vendors, setVendors] = useState<any[]>(
     (initialData?.vendors && initialData.vendors.length > 0)
       ? initialData.vendors
-      : [{ name: "", phone: "", email: "", category: "General" }]
+      : [{ name: "", phone: "", email: "", location: "", category: "General" }]
   );
 
   const handleNext = () => {
@@ -244,7 +244,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
   };
 
   const addVendorCard = () => {
-    setVendors([...vendors, { name: "", phone: "", email: "", category: "General" }]);
+    setVendors([...vendors, { name: "", phone: "", email: "", location: "", category: "General" }]);
   };
 
   const updateVendor = (index: number, field: string, value: any) => {
@@ -257,7 +257,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
     const newVendors = [...vendors];
     if (newVendors.length === 1) {
       // Don't remove the last card, just reset it
-      newVendors[0] = { name: "", phone: "", email: "", category: "General" };
+      newVendors[0] = { name: "", phone: "", email: "", location: "", category: "General" };
     } else {
       newVendors.splice(index, 1);
     }
@@ -712,7 +712,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                       <Trash2 size={16} />
                     </Button>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label className="text-xs font-normal text-muted-foreground">{t('Vendor')} {idx + 1} {t('Name')}</Label>
                       <Input value={v.name} onChange={(e) => updateVendor(idx, 'name', e.target.value)} placeholder="e.g. Local Veggies Co." className="h-10 bg-zinc-900/50 border-zinc-700 text-sm" />
@@ -724,6 +724,10 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                     <div className="space-y-2">
                       <Label className="text-xs font-normal text-muted-foreground">{t('Email (Optional)')}</Label>
                       <Input value={v.email} onChange={(e) => updateVendor(idx, 'email', e.target.value)} placeholder="e.g., vendor@example.com" className="h-10 bg-zinc-900/50 border-zinc-700 text-sm" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-normal text-muted-foreground">{t('Location (Optional)')}</Label>
+                      <Input value={v.location} onChange={(e) => updateVendor(idx, 'location', e.target.value)} placeholder={t('e.g. Market Yard')} className="h-10 bg-zinc-900/50 border-zinc-700 text-sm" />
                     </div>
                   </div>
                 </div>

@@ -2,6 +2,7 @@
 
 import { ThemeProvider } from 'next-themes';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
+import { ThemeColorProvider } from '@/contexts/theme-color-context';
 
 export function ClientProviders({ children }: { children: React.ReactNode }) {
   return (
@@ -11,7 +12,9 @@ export function ClientProviders({ children }: { children: React.ReactNode }) {
       enableSystem
       disableTransitionOnChange
     >
-      <FirebaseClientProvider>{children}</FirebaseClientProvider>
+      <ThemeColorProvider>
+        <FirebaseClientProvider>{children}</FirebaseClientProvider>
+      </ThemeColorProvider>
     </ThemeProvider>
   );
 }

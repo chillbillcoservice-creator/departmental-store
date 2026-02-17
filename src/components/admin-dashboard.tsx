@@ -1,10 +1,47 @@
 
-
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
 import { useLanguage } from '@/contexts/language-context';
-import { BarChart, Book, Download, TrendingUp, Settings, Package, User, ShoppingCart, History, Mail, Receipt, Edit, Trash2, Building, Users, CreditCard, PlusCircle, Eye, Repeat, Printer } from 'lucide-react';
+import {
+  BarChart3,
+  Menu as MenuIcon,
+  Settings,
+  Users,
+  History,
+  TrendingUp,
+  Download,
+  Repeat,
+  Trash2,
+  MapPin,
+  Mail,
+  Package,
+  Database,
+  Briefcase,
+  Plus,
+  Clock,
+  Eye,
+  Printer,
+  RotateCcw,
+  X,
+  FilePlus,
+  PackageCheck,
+  ShoppingCart,
+  User,
+  PlusCircle,
+  Edit,
+  CreditCard,
+  List,
+  AlertTriangle,
+  Building,
+  RefreshCw,
+  Search,
+  Landmark,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
+import { useThemeColor } from '@/contexts/theme-color-context';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -12,12 +49,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import SalesReport from './sales-report';
 import InventoryManagement from './inventory-management';
 import BillHistory from './bill-history';
-import type { Bill, Employee, OrderItem, Expense, Vendor, InventoryItem, KOTPreference, MenuCategory } from '@/lib/types';
+import type { Bill, Employee, OrderItem, Expense, Vendor, InventoryItem, MenuCategory, VenueDetails, PurchaseOrder } from '@/lib/types';
 import { generateAndSendReport } from '@/ai/flows/generate-report';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { format, isSameDay } from 'date-fns';
+import { format, isSameDay, isValid } from 'date-fns';
+
+const safeFormat = (date: any, formatStr: string) => {
+  if (!date) return 'N/A';
+  const d = new Date(date);
+  if (!isValid(d)) return 'N/A';
+  return format(d, formatStr);
+};
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger, AlertDialogDescription } from "@/components/ui/alert-dialog";
 import { useFirestore } from '@/firebase';
 import { Input } from '@/components/ui/input';
@@ -26,6 +70,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import StaffManagement from './staff-management';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
@@ -33,7 +78,7 @@ import { Checkbox } from './ui/checkbox';
 
 
 const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
-const defaultRoles = ["Manager", "Head Chef", "Chef", "Waiter", "Cleaner", "Helper", "Bar Tender"];
+const defaultRoles = ["Store Manager", "Cashier", "Sales Associate", "Stock Clerk", "Security", "Cleaner", "Other"];
 
 interface AdminDashboardProps {
   billHistory: Bill[];
@@ -47,13 +92,19 @@ interface AdminDashboardProps {
   vendorCreditLimit: number;
   setVendorCreditLimit: (limit: number) => void;
   onRerunSetup: () => void;
-  kotPreference: KOTPreference;
-  setKotPreference: (preference: KOTPreference) => void;
+  setExpenses: (expenses: Expense[]) => void;
   menu: MenuCategory[];
+  setMenu: (menu: MenuCategory[]) => void;
   venueName: string;
   setVenueName: (name: string) => void;
   currency: string;
   setCurrency: (currency: string) => void;
+  venueDetails: VenueDetails | null;
+  setVenueDetails: (details: VenueDetails | null) => void;
+  purchaseOrders?: PurchaseOrder[];
+  setPurchaseOrders?: (pos: PurchaseOrder[]) => void;
+  vendors?: Vendor[];
+  setVendors?: (vendors: Vendor[]) => void;
 }
 
 export default function AdminDashboard({
@@ -67,24 +118,101 @@ export default function AdminDashboard({
   setCustomerCreditLimit,
   vendorCreditLimit,
   setVendorCreditLimit,
+  setExpenses,
   onRerunSetup,
-  kotPreference,
-  setKotPreference,
   menu = [],
+  setMenu,
   venueName,
   setVenueName,
   currency = 'Rs.',
   setCurrency,
+  venueDetails,
+  setVenueDetails,
+  purchaseOrders = [],
+  setPurchaseOrders,
+  vendors = [],
+  setVendors,
 }: AdminDashboardProps) {
+  const generateUniqueId = () => {
+    return `${Date.now()}.${Math.random().toString(36).substr(2, 9)}`;
+  };
+  const props = { billHistory, employees, setEmployees, expenses, inventory, setInventory, customerCreditLimit, setCustomerCreditLimit, vendorCreditLimit, setVendorCreditLimit, onRerunSetup, menu, setMenu, venueName, setVenueName, currency, setCurrency, venueDetails, setVenueDetails, purchaseOrders, setPurchaseOrders, vendors, setVendors };
   const { t } = useLanguage();
+  const { themeColor, setThemeColor, availableColors } = useThemeColor();
   const { toast } = useToast();
   const db = useFirestore();
+  const [isExporting, setIsExporting] = useState(false);
+
+  const [selectedPOVendor, setSelectedPOVendor] = useState<string | null>(null);
+  const [poItems, setPoItems] = useState<any[]>([]);
+  const [grnItem, setGrnItem] = useState<InventoryItem | null>(null);
+  const [grnQty, setGrnQty] = useState<number>(0);
+  const [grnVendorId, setGrnVendorId] = useState<string>("");
+  const [grnPayment, setGrnPayment] = useState<string>("0");
+
+  // Receive Order States
+  const [poToReceive, setPoToReceive] = useState<PurchaseOrder | null>(null);
+  const [poPaymentAmount, setPoPaymentAmount] = useState('');
+  const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
+
+  const handleConfirmPoReceive = () => {
+    if (!poToReceive) return;
+
+    const paid = parseFloat(poPaymentAmount) || 0;
+    // Calculate total based on received quantities
+    let totalValue = 0;
+    poToReceive.items.forEach(item => {
+      totalValue += (receivedQuantities[item.inventoryItemId] ?? item.quantity) * item.unitCost;
+    });
+
+    const balance = totalValue - paid;
+
+    // Update Inventory
+    const updatedInventory = [...inventory];
+    poToReceive.items.forEach(poItem => {
+      const qty = receivedQuantities[poItem.inventoryItemId] ?? poItem.quantity;
+      if (qty > 0) {
+        const idx = updatedInventory.findIndex(i => i.id === poItem.inventoryItemId);
+        if (idx > -1) {
+          updatedInventory[idx] = { ...updatedInventory[idx], stock: updatedInventory[idx].stock + qty };
+        }
+      }
+    });
+    setInventory(updatedInventory);
+
+    // Update PO Status
+    if (setPurchaseOrders) {
+      setPurchaseOrders(purchaseOrders.map(p => p.id === poToReceive.id ? { ...p, status: 'Received' } : p));
+    }
+
+    // Update Vendor Balance
+    if (setVendors && poToReceive.vendorId) {
+      const vIdx = vendors.findIndex(v => v.id === poToReceive.vendorId);
+      if (vIdx > -1) {
+        setVendors(vendors.map((v, i) => i === vIdx ? { ...v, balance: (v.balance || 0) + balance } : v));
+      }
+    }
+
+    // Add Expense
+    if (setExpenses && paid > 0) {
+      setExpenses([...expenses, {
+        id: generateUniqueId(),
+        date: new Date(),
+        category: 'Stock Purchase',
+        description: `Payment for PO ${poToReceive.referenceNo}`,
+        amount: paid,
+        vendorId: poToReceive.vendorId
+      }]);
+    }
+
+    toast({ title: t("Order Received"), description: `Stock updated. Balance: ${currency}${balance.toFixed(2)}` });
+    setPoToReceive(null);
+  };
+
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [autoSendDaily, setAutoSendDaily] = useState(false);
   const [autoSendMonthly, setAutoSendMonthly] = useState(false);
   const [reportType, setReportType] = useState<'daily' | 'monthly' | 'yearly'>('daily');
-
-  const [vendors, setVendors] = useState<Vendor[]>([]);
 
   const [isStaffManagerOpen, setIsStaffManagerOpen] = useState(false);
   const [isAddEmployeeDialogOpen, setIsAddEmployeeDialogOpen] = useState(false);
@@ -113,25 +241,26 @@ export default function AdminDashboard({
     // Summary Section
     csvContent += "Summary\n";
     csvContent += "Metric,Value\n";
-    csvContent += `Total Revenue (Today),${currency}${totalRevenue.toFixed(2)}\n`;
+    csvContent += `Total Revenue (Today),${currency}${(totalRevenue || 0).toFixed(2)}\n`;
     csvContent += `Total Orders (Today),${totalOrders}\n`;
-    csvContent += `Average Order Value (Today),${currency}${averageOrderValue.toFixed(2)}\n`;
+    csvContent += `Average Order Value (Today),${currency}${(averageOrderValue || 0).toFixed(2)}\n`;
     csvContent += "\n";
 
     // Expenses
     csvContent += "Expenses\n";
     csvContent += "Date,Category,Description,Amount\n";
     expenses.forEach(expense => {
-      csvContent += `${format(new Date(expense.date), 'yyyy-MM-dd')},${expense.category},"${expense.description || ''}",${expense.amount}\n`;
+      csvContent += `${safeFormat(expense.date, 'yyyy-MM-dd')},${expense.category},"${expense.description || ''}",${expense.amount}\n`;
     });
     csvContent += "\n";
 
     // Bills
     csvContent += "Bill History\n";
-    csvContent += 'id,tableId,total,timestamp,items\n';
+    csvContent += 'id,total,timestamp,items\n';
     billHistory.forEach(bill => {
       const items = bill.orderItems.map(item => `${item.quantity}x ${item.name}`).join('; ');
-      csvContent += `${bill.id},${bill.tableId},${bill.total},"${new Date(bill.timestamp).toISOString()}","${items}"\n`;
+      const timestamp = bill.timestamp ? new Date(bill.timestamp).toISOString() : 'N/A';
+      csvContent += `${bill.id},${(bill.total || 0)},"${timestamp}","${items}"\n`;
     });
 
     const encodedUri = encodeURI(csvContent);
@@ -261,21 +390,7 @@ export default function AdminDashboard({
     setIsEditEmployeeDialogOpen(true);
   }
 
-  const handleKotCategoryChange = (category: string, checked: boolean) => {
-    const currentCategories = kotPreference.categories || [];
-    let newCategories: string[];
 
-    if (checked) {
-      newCategories = [...currentCategories, category];
-    } else {
-      newCategories = currentCategories.filter(c => c !== category);
-    }
-
-    setKotPreference({
-      ...kotPreference,
-      categories: newCategories,
-    });
-  };
 
   const showRevenueDetails = () => {
     setSummaryDetailTitle("Today's Revenue Details");
@@ -293,8 +408,8 @@ export default function AdminDashboard({
             {todaysBills.map(bill => (
               <TableRow key={bill.id}>
                 <TableCell>{bill.id}</TableCell>
-                <TableCell>{format(new Date(bill.timestamp), 'p')}</TableCell>
-                <TableCell className="text-right font-mono">{currency}{bill.total.toFixed(2)}</TableCell>
+                <TableCell>{safeFormat(bill.timestamp, 'p')}</TableCell>
+                <TableCell className="text-right font-mono">{currency}{(bill.total || 0).toFixed(2)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -345,7 +460,7 @@ export default function AdminDashboard({
             <span className="text-green-600 font-bold">{currency}</span>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-green-900 dark:text-green-100">{totalRevenue.toFixed(2)}</div>
+            <div className="text-3xl font-bold text-green-900 dark:text-green-100">{(totalRevenue || 0).toFixed(2)}</div>
           </CardContent>
         </Card>
         <Card className="bg-blue-100 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 cursor-pointer" onClick={showRevenueDetails}>
@@ -363,7 +478,7 @@ export default function AdminDashboard({
             <TrendingUp className="h-4 w-4 text-orange-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-orange-900 dark:text-orange-100">{currency}{averageOrderValue.toFixed(2)}</div>
+            <div className="text-3xl font-bold text-orange-900 dark:text-orange-100">{currency}{(averageOrderValue || 0).toFixed(2)}</div>
           </CardContent>
         </Card>
         <Card className="bg-purple-100 dark:bg-purple-900/30 border-purple-200 dark:border-purple-800 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105 cursor-pointer" onClick={showStaffDetails}>
@@ -393,7 +508,7 @@ export default function AdminDashboard({
             <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2">
+                  <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all">
                     <History className="h-6 w-6" />
                     <span>{t('View Bills')}</span>
                   </Button>
@@ -404,13 +519,13 @@ export default function AdminDashboard({
                     <DialogDescription>{t('A log of all completed transactions.')}</DialogDescription>
                   </DialogHeader>
                   <div className="pt-4">
-                    <BillHistory bills={billHistory} onClearAll={handleClearAllBills} currency={currency} />
+                    <BillHistory bills={billHistory} onClearAll={handleClearAllBills} currency={currency} inventory={inventory} setInventory={setInventory} venueDetails={venueDetails} />
                   </div>
                 </DialogContent>
               </Dialog>
               <Dialog open={isStaffManagerOpen} onOpenChange={setIsStaffManagerOpen}>
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2">
+                  <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all">
                     <Users className="h-6 w-6" />
                     <span>{t('Manage Staff')}</span>
                   </Button>
@@ -488,7 +603,7 @@ export default function AdminDashboard({
               </Dialog>
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2">
+                  <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all">
                     <Package className="h-6 w-6" />
                     <span>{t('Inventory')}</span>
                   </Button>
@@ -497,12 +612,424 @@ export default function AdminDashboard({
                   <DialogHeader>
                     <DialogTitle>{t('Inventory Management')}</DialogTitle>
                   </DialogHeader>
-                  <InventoryManagement inventory={inventory} menu={menu} setMenu={() => { }} setInventory={setInventory} />
+                  <InventoryManagement inventory={inventory} menu={menu} vendors={vendors} setMenu={setMenu} setInventory={setInventory} />
                 </DialogContent>
               </Dialog>
-              <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2" onClick={handleExportCSV}>
+              <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all" onClick={handleExportCSV}>
                 <Download className="h-6 w-6" />
                 <span>{t('Export Data')}</span>
+              </Button>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all">
+                    <TrendingUp className="h-6 w-6" />
+                    <span>Profit Analysis</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl">
+                  <DialogHeader>
+                    <DialogTitle>Profit Margin Analysis</DialogTitle>
+                    <DialogDescription>Overview of your store's financial efficiency based on inventory costs.</DialogDescription>
+                  </DialogHeader>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                    <Card className="bg-primary/5">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-xs uppercase text-muted-foreground font-bold font-mono">Total Inventory Value (MRP)</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-black text-primary">{currency}{(inventory.reduce((s, i) => s + (Number(i.price || 0) * Number(i.stock || 0)), 0)).toLocaleString()}</div>
+                      </CardContent>
+                    </Card>
+                    <Card className="bg-primary/5">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-xs uppercase text-muted-foreground font-bold font-mono">Total Asset Cost</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-black text-primary">{currency}{(inventory.reduce((s, i) => s + (Number(i.costPrice || 0) * Number(i.stock || 0)), 0)).toLocaleString()}</div>
+                      </CardContent>
+                    </Card>
+                    {(() => {
+                      const totalValue = inventory.reduce((s, i) => s + (Number(i.price || 0) * Number(i.stock || 0)), 0);
+                      const totalCost = inventory.reduce((s, i) => s + (Number(i.costPrice || 0) * Number(i.stock || 0)), 0);
+                      const potProfit = totalValue - totalCost;
+                      const isLoss = potProfit < 0;
+                      return (
+                        <Card className={cn(isLoss ? "bg-destructive/10" : "bg-orange-500/10")}>
+                          <CardHeader className="pb-2">
+                            <CardTitle className={cn("text-xs uppercase font-bold font-mono", isLoss ? "text-destructive" : "text-orange-600")}>
+                              {isLoss ? "Potential Gross Loss" : "Potential Gross Profit"}
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className={cn("text-2xl font-black", isLoss ? "text-destructive" : "text-orange-600")}>
+                              {currency}{potProfit.toLocaleString()}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })()}
+                  </div>
+                  <div className="mt-6">
+                    <h4 className="font-bold text-sm mb-3 uppercase tracking-wider text-muted-foreground font-mono">Item-wise Margins</h4>
+                    <div className="max-h-[40vh] overflow-y-auto border rounded-xl">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Item Name</TableHead>
+                            <TableHead>MRP</TableHead>
+                            <TableHead>Cost</TableHead>
+                            <TableHead>Profit / Unit</TableHead>
+                            <TableHead className="text-right">Margin %</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {inventory.map(item => {
+                            const profit = item.price - (item.costPrice || 0);
+                            const margin = item.price > 0 ? (profit / item.price) * 100 : 0;
+                            const isLoss = profit < 0;
+                            return (
+                              <TableRow key={item.id}>
+                                <TableCell className="font-bold">{item.name}</TableCell>
+                                <TableCell>{currency}{(item.price || 0).toFixed(2)}</TableCell>
+                                <TableCell>{currency}{(item.costPrice || 0).toFixed(2)}</TableCell>
+                                <TableCell className={cn("font-bold", isLoss ? "text-destructive" : "text-green-600")}>
+                                  {currency}{(profit || 0).toFixed(2)}
+                                </TableCell>
+                                <TableCell className="text-right font-black">
+                                  <Badge
+                                    variant={isLoss ? "destructive" : (margin > 20 ? "default" : "outline")}
+                                    className={cn(!isLoss && margin > 20 ? "bg-green-500" : "")}
+                                  >
+                                    {(margin || 0).toFixed(1)}%
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2 bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all">
+                    <FilePlus className="h-6 w-6" />
+                    <span>Purchase Orders</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl">
+                  <DialogHeader>
+                    <DialogTitle>Purchase Orders & GRN</DialogTitle>
+                    <DialogDescription>Create orders for suppliers and receive stock into inventory.</DialogDescription>
+                  </DialogHeader>
+                  <Tabs defaultValue="create">
+                    <TabsList className="grid w-full grid-cols-2">
+                      <TabsTrigger value="create">{t('Create Order')}</TabsTrigger>
+                      <TabsTrigger value="receive">{t('Receive Goods')}</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="create" className="space-y-4 pt-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Select Vendor</Label>
+                          <Select onValueChange={(v) => setSelectedPOVendor(v)}>
+                            <SelectTrigger><SelectValue placeholder="Chose Supplier" /></SelectTrigger>
+                            <SelectContent>
+                              {vendors.map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Reference No.</Label>
+                          <Input placeholder="PO-2024-001" id="po-ref-no" />
+                        </div>
+                      </div>
+                      <div className="border rounded-xl p-4 bg-muted/30">
+                        <h4 className="font-bold text-sm mb-2">Add Items to PO</h4>
+                        <div className="flex gap-2">
+                          <Select onValueChange={(id) => {
+                            const item = inventory.find(i => i.id === id);
+                            if (item) setPoItems([...poItems, {
+                              inventoryItemId: item.id,
+                              name: item.name,
+                              quantity: 1,
+                              unitCost: item.costPrice || 0,
+                              unit: item.unit
+                            }]);
+                          }}>
+                            <SelectTrigger className="flex-1"><SelectValue placeholder="Search Inventory..." /></SelectTrigger>
+                            <SelectContent className="max-h-[300px]">
+                              {[...inventory].sort((a, b) => (a.stock || 0) - (b.stock || 0)).map(i => {
+                                const stock = i.stock || 0;
+                                const isLow = stock < 10;
+                                const isOut = stock <= 0;
+                                return (
+                                  <SelectItem key={i.id} value={i.id} className="cursor-pointer border-b last:border-0 border-dashed border-gray-100">
+                                    <div className="flex w-full min-w-[300px] justify-between items-center gap-4">
+                                      <span className="font-medium">{i.name}</span>
+                                      <div className="flex items-center gap-2">
+                                        <span className={cn(
+                                          "text-xs font-bold px-2 py-0.5 rounded-full",
+                                          isOut ? "bg-red-100 text-red-600" : (isLow ? "bg-orange-100 text-orange-600" : "bg-green-100 text-green-600")
+                                        )}>
+                                          {stock} {i.unit}
+                                        </span>
+                                        {isOut && <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider">OUT</span>}
+                                        {!isOut && isLow && <span className="text-[10px] text-orange-500 font-bold uppercase tracking-wider">LOW</span>}
+                                      </div>
+                                    </div>
+                                  </SelectItem>
+                                );
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Item</TableHead>
+                            <TableHead>Order Qty</TableHead>
+                            <TableHead>Unit Cost</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {poItems.map((item, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="font-medium">{item.name}</TableCell>
+                              <TableCell>
+                                <Input type="number" className="w-20" value={item.quantity} onChange={(e) => {
+                                  const newItems = [...poItems];
+                                  newItems[idx].quantity = parseInt(e.target.value) || 0;
+                                  setPoItems(newItems);
+                                }} />
+                              </TableCell>
+                              <TableCell>
+                                <Input type="number" className="w-24" value={item.unitCost} onChange={(e) => {
+                                  const newItems = [...poItems];
+                                  newItems[idx].unitCost = parseFloat(e.target.value) || 0;
+                                  setPoItems(newItems);
+                                }} />
+                              </TableCell>
+                              <TableCell className="text-right font-mono">
+                                {currency}{(item.quantity * item.unitCost).toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setPoItems(poItems.filter((_, i) => i !== idx))}>
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                      <div className="flex justify-end p-4 bg-muted/20 rounded-lg">
+                        <div className="text-right">
+                          <span className="text-sm text-muted-foreground mr-2">Total Amount:</span>
+                          <span className="text-xl font-bold">{currency}{poItems.reduce((s, i) => s + (i.quantity * i.unitCost), 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button className="w-full" onClick={() => {
+                          if (!selectedPOVendor) {
+                            toast({ title: "Error", description: "Please select a vendor.", variant: "destructive" });
+                            return;
+                          }
+                          const refNo = (document.getElementById('po-ref-no') as HTMLInputElement)?.value || `PO-${Date.now()}`;
+                          const totalAmount = poItems.reduce((s, i) => s + (i.quantity * i.unitCost), 0);
+
+                          const newPO: PurchaseOrder = {
+                            id: Date.now().toString(),
+                            vendorId: selectedPOVendor,
+                            vendorName: vendors.find(v => v.id === selectedPOVendor)?.name || '',
+                            date: new Date(),
+                            referenceNo: refNo,
+                            items: poItems.map(i => ({
+                              inventoryItemId: i.inventoryItemId,
+                              name: i.name,
+                              quantity: i.quantity,
+                              unitCost: i.unitCost,
+                              totalCost: i.quantity * i.unitCost
+                            })),
+                            totalAmount,
+                            status: 'Ordered'
+                          };
+
+                          if (props.setPurchaseOrders) {
+                            props.setPurchaseOrders([...(props.purchaseOrders || []), newPO]);
+                            toast({ title: "PO Created", description: "Purchase Order has been generated and saved." });
+                            setPoItems([]);
+                          } else {
+                            toast({ title: "Error", description: "Could not save PO. State function missing.", variant: "destructive" });
+                          }
+                        }} disabled={poItems.length === 0}>Generate Purchase Order</Button>
+                      </DialogFooter>
+                    </TabsContent>
+                    <TabsContent value="receive" className="space-y-4 pt-4">
+                      {/* Robust PO Receiving Section */}
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-bold text-sm uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                            <List className="h-4 w-4" /> {t('Pending Purchase Orders')}
+                          </h4>
+                          <Badge variant="outline">{purchaseOrders.filter(p => p.status === 'Ordered').length} {t('Pending')}</Badge>
+                        </div>
+                        <div className="border rounded-xl overflow-hidden bg-white dark:bg-black/20">
+                          <Table>
+                            <TableHeader className="bg-muted/50">
+                              <TableRow>
+                                <TableHead>{t('Date')}</TableHead>
+                                <TableHead>{t('Vendor')}</TableHead>
+                                <TableHead>{t('Reference')}</TableHead>
+                                <TableHead>{t('Items')}</TableHead>
+                                <TableHead className="text-right">{t('Amount')}</TableHead>
+                                <TableHead className="text-right">{t('Action')}</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {purchaseOrders.filter(p => p.status === 'Ordered').length > 0 ? (
+                                purchaseOrders.filter(p => p.status === 'Ordered').map(po => (
+                                  <TableRow key={po.id} className="hover:bg-muted/20 transition-colors">
+                                    <TableCell className="py-2 text-xs">{po.date ? new Date(po.date).toLocaleDateString() : 'N/A'}</TableCell>
+                                    <TableCell className="py-2 font-medium">{po.vendorName}</TableCell>
+                                    <TableCell className="py-2 text-xs font-mono">{po.referenceNo}</TableCell>
+                                    <TableCell className="py-2">
+                                      <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                        {po.items.map((item, idx) => (
+                                          <Badge key={idx} variant="outline" className="text-[9px] px-1 py-0 h-3.5 bg-primary/5">
+                                            {item.quantity}x {item.name}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </TableCell>
+                                    <TableCell className="py-2 text-right font-bold">{currency}{po.totalAmount.toFixed(2)}</TableCell>
+                                    <TableCell className="py-2 text-right">
+                                      <Button size="sm" className="h-7 text-xs bg-primary/10 hover:bg-primary/20 text-primary border-primary/20" variant="outline" onClick={() => {
+                                        setPoToReceive(po);
+                                        setPoPaymentAmount('0');
+                                        const qtys: Record<string, number> = {};
+                                        po.items.forEach(i => qtys[i.inventoryItemId] = i.quantity);
+                                        setReceivedQuantities(qtys);
+                                      }}>
+                                        {t('Receive')}
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                ))
+                              ) : (
+                                <TableRow>
+                                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground italic">
+                                    {t('No pending orders found.')}
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+
+                      <Separator className="my-6" />
+
+                      <div className="flex flex-col items-center justify-center py-6 text-center">
+                        <PackageCheck className="h-10 w-10 text-blue-500 mb-4" />
+                        <h3 className="text-lg font-bold">{t('Quick GRN & Spot Purchase')}</h3>
+                        <p className="text-sm text-muted-foreground mb-6">{t('Directly receive items without a pre-existing PO.')}</p>
+                        <div className="w-full max-w-sm space-y-4 text-left">
+                          <Select onValueChange={(id) => setGrnItem(inventory.find(i => i.id === id) || null)}>
+                            <SelectTrigger className="h-11 shadow-sm"><SelectValue placeholder={t('Select Item to Receive')} /></SelectTrigger>
+                            <SelectContent>
+                              {inventory.map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+
+                          {grnItem && (
+                            <Card className="p-5 shadow-xl border-primary/20 bg-primary/5 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                              <div className="flex justify-between items-center mb-6">
+                                <span className="font-black text-lg">{grnItem.name}</span>
+                                <Badge variant="secondary" className="font-mono">{t('In Stock')}: {grnItem.stock}</Badge>
+                              </div>
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs uppercase font-bold text-muted-foreground">{t('Qty Received')}</Label>
+                                    <Input type="number" className="h-11 text-lg font-bold" placeholder="0" value={grnQty} onChange={(e) => setGrnQty(parseInt(e.target.value) || 0)} />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label className="text-xs uppercase font-bold text-muted-foreground">{t('Paid Now')}</Label>
+                                    <Input type="number" className="h-11 text-lg font-bold text-green-600" placeholder="0" value={grnPayment} onChange={(e) => setGrnPayment(e.target.value)} />
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <Label className="text-xs uppercase font-bold text-muted-foreground">{t('Select Vendor')}</Label>
+                                  <Select value={grnVendorId} onValueChange={setGrnVendorId}>
+                                    <SelectTrigger className="h-10"><SelectValue placeholder={t('Optionally assign to vendor')} /></SelectTrigger>
+                                    <SelectContent>
+                                      {vendors.map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+
+                                <div className="bg-white/50 dark:bg-black/20 p-3 rounded-lg border border-primary/10 flex justify-between items-center mb-2">
+                                  <span className="text-xs font-bold text-muted-foreground uppercase">{t('Total Cost')}</span>
+                                  <span className="text-lg font-black">{currency}{(grnQty * (grnItem.costPrice || 0)).toFixed(2)}</span>
+                                </div>
+
+                                <Button className="w-full h-12 text-lg font-bold bg-green-600 hover:bg-green-700 shadow-lg shadow-green-600/20 transition-all hover:scale-[1.02] active:scale-95" onClick={() => {
+                                  if (grnQty <= 0) {
+                                    toast({ title: t("Error"), description: t("Quantity must be greater than zero."), variant: "destructive" });
+                                    return;
+                                  }
+
+                                  const totalCost = grnQty * (grnItem.costPrice || 0);
+                                  const paid = parseFloat(grnPayment) || 0;
+                                  const balance = totalCost - paid;
+
+                                  // Update Stock
+                                  const updatedInv = inventory.map(i => i.id === grnItem.id ? { ...i, stock: i.stock + grnQty } : i);
+                                  setInventory(updatedInv);
+
+                                  // Update Vendor Balance if selected
+                                  if (grnVendorId && setVendors) {
+                                    setVendors(vendors.map(v => v.id === grnVendorId ? { ...v, balance: (v.balance || 0) + balance } : v));
+                                  }
+
+                                  // Record Expense
+                                  if (paid > 0 && setExpenses) {
+                                    setExpenses([...expenses, {
+                                      id: generateUniqueId(),
+                                      date: new Date(),
+                                      category: 'Stock Purchase',
+                                      description: `Quick GRN: ${grnQty}x ${grnItem.name}`,
+                                      amount: paid,
+                                      vendorId: grnVendorId || null
+                                    }]);
+                                  }
+
+                                  toast({ title: t("Stock Updated"), description: `${t('Added')} ${grnQty} ${t('units to')} ${grnItem.name}.` });
+                                  setGrnItem(null);
+                                  setGrnQty(0);
+                                  setGrnPayment("0");
+                                  setGrnVendorId("");
+                                }}>
+                                  <PackageCheck className="mr-2 h-5 w-5" /> {t('Confirm Receipt')}
+                                </Button>
+                                <Button variant="ghost" className="w-full text-xs text-muted-foreground" onClick={() => setGrnItem(null)}>{t('Cancel')}</Button>
+                              </div>
+                            </Card>
+                          )}
+                        </div>
+                      </div>
+                    </TabsContent>
+                  </Tabs>
+                </DialogContent>
+              </Dialog>
+              <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2 col-span-full mt-2 bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all" onClick={onRerunSetup}>
+                <Repeat className="h-6 w-6" />
+                <span>{t('Rerun Setup Wizard')}</span>
               </Button>
             </CardContent>
           </Card>
@@ -515,49 +1042,48 @@ export default function AdminDashboard({
               <CardTitle>{t('Settings')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Separator />
+
               <div className="space-y-4 pt-4">
-                <CardTitle className="text-base flex items-center gap-2"><Printer /> {t('KOT Preferences')}</CardTitle>
-                <RadioGroup
-                  value={kotPreference.type}
-                  onValueChange={(type) => setKotPreference({ ...kotPreference, type: type as any, categories: type !== 'category' ? [] : kotPreference.categories })}
-                  className="space-y-2"
-                >
-
-
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="single" id="kot-single" />
-                    <Label htmlFor="kot-single">{t('Single Combined KOT')}</Label>
-                  </div>
-
-
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="separate" id="kot-separate" />
-                    <Label htmlFor="kot-separate">{t('Separate Kitchen & Bar KOTs')}</Label>
-                  </div>
-
-
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="category" id="kot-category" />
-                    <Label htmlFor="kot-category">{t('Separate KOT for Specific Categories')}</Label>
-                  </div>
-                </RadioGroup>
-
-                {kotPreference.type === 'category' && (
-                  <div className="pl-6 pt-2 space-y-2 max-h-48 overflow-y-auto">
-                    <Label className="font-semibold">{t('Select categories for separate KOTs:')}</Label>
-                    {menuCategories.map(category => (
-                      <div key={category} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`cat-${category}`}
-                          checked={(kotPreference.categories || []).includes(category)}
-                          onCheckedChange={(checked) => handleKotCategoryChange(category, !!checked)}
-                        />
-                        <Label htmlFor={`cat-${category}`} className="font-normal cursor-pointer">{category}</Label>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <CardTitle className="text-base flex items-center gap-2"><Settings /> {t('Bill Print Settings')}</CardTitle>
+                <div className="space-y-2">
+                  <Label htmlFor="receipt-header">{t('Receipt Header Message')}</Label>
+                  <Input
+                    id="receipt-header"
+                    value={venueDetails?.receiptHeader || ''}
+                    onChange={(e) => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, receiptHeader: e.target.value });
+                      }
+                    }}
+                    placeholder={t("e.g., GST: 123456789")}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="receipt-footer">{t('Receipt Footer Message')}</Label>
+                  <Input
+                    id="receipt-footer"
+                    value={venueDetails?.receiptFooter || ''}
+                    onChange={(e) => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, receiptFooter: e.target.value });
+                      }
+                    }}
+                    placeholder={t("e.g., Follow us on Instagram!")}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="custom-message">{t('Custom Receipt Message')}</Label>
+                  <Input
+                    id="custom-message"
+                    value={venueDetails?.customMessage || ''}
+                    onChange={(e) => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, customMessage: e.target.value });
+                      }
+                    }}
+                    placeholder={t("e.g., SAVE THIS BILL FOR REPLACEMENTS")}
+                  />
+                </div>
               </div>
               <Separator />
               <div className="space-y-4 pt-4">
@@ -571,14 +1097,10 @@ export default function AdminDashboard({
                   </Button>
                 </div>
                 <div className="space-y-2">
-
-
                   <div className="flex items-center space-x-2">
                     <Switch id="auto-daily" checked={autoSendDaily} onCheckedChange={setAutoSendDaily} />
                     <Label htmlFor="auto-daily">{t('Auto-send Daily Report')}</Label>
                   </div>
-
-
                   <div className="flex items-center space-x-2">
                     <Switch id="auto-monthly" checked={autoSendMonthly} onCheckedChange={setAutoSendMonthly} />
                     <Label htmlFor="auto-monthly">{t('Auto-send Monthly Report')}</Label>
@@ -608,13 +1130,34 @@ export default function AdminDashboard({
                     placeholder="e.g., 50000"
                   />
                 </div>
-              </div>
-              <Separator />
-              <div className="space-y-4 pt-4">
-                <CardTitle className="text-base flex items-center gap-2"><Settings /> {t('System Settings')}</CardTitle>
-                <Button variant="outline" className="w-full" onClick={onRerunSetup}>
-                  <Repeat className="mr-2 h-4 w-4" /> {t('Rerun Setup Wizard')}
-                </Button>
+                <div className="space-y-2">
+                  <Label htmlFor="default-discount">{t('Default Overall Discount')} (%)</Label>
+                  <Input
+                    id="default-discount"
+                    type="number"
+                    value={venueDetails?.defaultDiscount || 0}
+                    onChange={(e) => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, defaultDiscount: Number(e.target.value) });
+                      }
+                    }}
+                    placeholder="e.g., 5"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="vat-percentage">{t('VAT Percentage')} (%)</Label>
+                  <Input
+                    id="vat-percentage"
+                    type="number"
+                    value={venueDetails?.vatPercentage || 0}
+                    onChange={(e) => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, vatPercentage: Number(e.target.value) });
+                      }
+                    }}
+                    placeholder="e.g., 15"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -657,7 +1200,79 @@ export default function AdminDashboard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      <Dialog open={!!poToReceive} onOpenChange={(open) => !open && setPoToReceive(null)}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>{t('Verify Received Goods & Process Payment')}</DialogTitle>
+            <DialogDescription>{t('Update quantities received and record any payment made.')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            <div className="border rounded-lg overflow-hidden bg-muted/20">
+              <Table>
+                <TableHeader className="bg-muted">
+                  <TableRow>
+                    <TableHead className="text-xs h-8 uppercase">{t('Item')}</TableHead>
+                    <TableHead className="text-xs h-8 text-center uppercase">{t('Ordered')}</TableHead>
+                    <TableHead className="text-xs h-8 text-right uppercase w-[120px]">{t('Received')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {poToReceive?.items.map((item, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="py-2 text-sm font-medium">{item.name}</TableCell>
+                      <TableCell className="py-2 text-sm text-center font-mono">{item.quantity}</TableCell>
+                      <TableCell className="py-2 text-right">
+                        <Input
+                          type="number"
+                          className="h-8 text-right font-bold focus-visible:ring-primary"
+                          value={receivedQuantities[item.inventoryItemId] ?? item.quantity}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setReceivedQuantities(prev => ({ ...prev, [item.inventoryItemId]: val }));
+                          }}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6 bg-primary/5 p-4 rounded-xl border border-primary/20">
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground uppercase font-bold tracking-tight">{t('Expected Total')}</p>
+                <p className="text-2xl font-black text-primary">
+                  {currency}{(poToReceive?.items.reduce((s, i) => s + (receivedQuantities[i.inventoryItemId] ?? i.quantity) * i.unitCost, 0) || 0).toFixed(2)}
+                </p>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground uppercase font-bold tracking-tight">{t('Amount Paid')}</Label>
+                <Input
+                  type="number"
+                  className="h-10 text-xl font-black text-green-600 bg-white dark:bg-black/40"
+                  value={poPaymentAmount}
+                  onChange={e => setPoPaymentAmount(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center bg-destructive/10 p-3 rounded-lg border border-destructive/20 text-destructive">
+              <span className="text-xs font-bold uppercase">{t('Remaining Balance (To Credit)')}</span>
+              <span className="text-lg font-black">
+                {currency}{Math.max(0, (poToReceive?.items.reduce((s, i) => s + (receivedQuantities[i.inventoryItemId] ?? i.quantity) * i.unitCost, 0) || 0) - (parseFloat(poPaymentAmount) || 0)).toFixed(2)}
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPoToReceive(null)}>{t('Cancel')}</Button>
+            <Button onClick={handleConfirmPoReceive} className="bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20">
+              <PackageCheck className="mr-2 h-4 w-4" /> {t('Confirm & Update Stock')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div >
   );
 }
 

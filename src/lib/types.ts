@@ -22,6 +22,7 @@ export interface MenuItem {
   category?: string;
   ingredients?: IngredientItem[];
   status?: 'available' | 'low' | 'out';
+  taxRate?: number;
 }
 
 export interface MenuSubCategory {
@@ -43,21 +44,7 @@ export interface OrderItem extends MenuItem {
   instruction?: string;
 }
 
-export type TableStatus = 'Available' | 'Occupied' | 'Reserved' | 'Cleaning';
-
-export interface Table {
-  id: number;
-  status: TableStatus;
-  name?: string;
-  seats?: number;
-  reservationDetails?: {
-    name: string;
-    time: string;
-    mobile?: string;
-  }
-}
-
-export type OrderType = 'Dine-In' | 'Take-Away' | 'Home-Delivery';
+export type OrderType = 'Store-Pickup' | 'Home-Delivery';
 
 export interface CustomerDetails {
   name: string;
@@ -79,38 +66,36 @@ export interface Customer {
   lastSeen: Date;
   totalVisits: number;
   totalSpent: number;
+  loyaltyPoints?: number;
   isDeleted?: boolean;
+  balance?: number;
 }
 
 export interface Order {
   id: string;
   items: OrderItem[];
-  tableId?: number | null;
   status: 'Pending' | 'In Preparation' | 'Completed';
   orderType: OrderType;
   customerDetails?: CustomerDetails | null;
   createdAt: Date;
 }
 
-export interface CustomerOrder {
-  id: string;
-  tableId: string;
-  items: OrderItem[];
-  status: 'pending' | 'handled';
-  createdAt: any;
-}
-
 export interface Bill {
   id: string;
   orderItems: OrderItem[];
-  tableId?: number | null;
+  subtotal: number;
+  discount: number;
+  vatPercentage: number;
+  vatAmount: number;
   total: number;
+  paymentMethod: 'Cash' | 'Online';
   receiptPreview: string;
   timestamp: Date; // This is the completion time
   orderType: OrderType;
   customerDetails?: CustomerDetails | null;
   createdAt: Date; // Start time of the order
   completedAt: Date; // End time of the order
+  tableId?: string;
 }
 
 
@@ -148,6 +133,9 @@ export interface Vendor {
   category: string;
   phone?: string;
   email?: string;
+  location?: string;
+  balance?: number;
+  billingCycleDay?: number; // Day of the month (1-31)
 }
 
 export interface Expense {
@@ -159,6 +147,25 @@ export interface Expense {
   vendorId?: string | null;
 }
 
+export interface PurchaseOrderItem {
+  inventoryItemId: string;
+  name: string;
+  quantity: number;
+  unitCost: number;
+  totalCost: number;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  vendorId: string;
+  vendorName: string;
+  date: Date;
+  referenceNo: string;
+  items: PurchaseOrderItem[];
+  totalAmount: number;
+  status: 'Draft' | 'Ordered' | 'Received' | 'Cancelled';
+}
+
 export interface InventoryItem {
   id: string;
   name: string;
@@ -166,6 +173,31 @@ export interface InventoryItem {
   stock: number;
   capacity: number;
   unit: string;
+  purchaseUnit?: string; // e.g., 'Box'
+  sellUnit?: string; // e.g., 'Piece'
+  conversionFactor?: number; // e.g., 1 Box = 12 Pieces
+  vendorId?: string | null;
+  price: number;
+  costPrice?: number;
+  expiryDate?: string; // ISO date string
+  taxRate?: number; // e.g. 5, 12, 18
+  location?: string; // e.g. 'Aisle 4, Shelf B'
+  discount?: number; // Check for percentage or fixed amount
+}
+
+export interface CartItem extends InventoryItem {
+  quantity: number;
+}
+
+export interface SavedCart {
+  id: string;
+  name: string;
+  items: CartItem[];
+  customer: Customer | null;
+  timestamp: Date;
+  discount: number;
+  redeemPoints: number;
+  paymentMethod: 'Cash' | 'Online';
 }
 
 export interface ActivityLogEntry {
@@ -191,20 +223,7 @@ export interface PendingBill {
   mobile?: string;
 }
 
-export interface KOTPreference {
-  type: 'single' | 'separate' | 'category';
-  categories?: string[];
-}
 
-export interface EventBooking {
-  id: string;
-  eventName: string;
-  bookingName: string;
-  bookingMobile: string;
-  eventDate: Date;
-  guestCount: string;
-  advancePaid: string;
-}
 
 
 // Schemas for AI structured output
@@ -293,7 +312,6 @@ export const GenerateReportInputSchema = z.object({
   pendingBills: z.array(z.any()).describe('A list of all pending bills (both customer and vendor).'),
   attendance: z.array(z.any()).describe('A list of all attendance records.'),
   advances: z.array(z.any()).describe('A list of all salary advances.'),
-  tables: z.array(z.any()).describe('A list of all tables.'),
   inventory: z.array(z.any()).describe('A list of all inventory items.'),
   customerSummary: z.array(z.any()).describe('A summary of customer data including total visits and spending.'),
   recipientEmail: z.string().describe('A comma-separated string of email addresses to send the report to.'),
@@ -319,6 +337,13 @@ export interface VenueDetails {
   contactNumber: string;
   email: string;
   tagline: string;
+  defaultDiscount?: number;
+  vatPercentage?: number;
+  receiptHeader?: string;
+  receiptFooter?: string;
+  customMessage?: string;
+  loyaltyRate?: number; // points per currency unit
+  loyaltyPointValue?: number; // currency value per point
 }
 
 export interface OwnerDetails {

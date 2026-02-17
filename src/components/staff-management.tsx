@@ -15,7 +15,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PlusCircle, Edit, Trash2, Check, X, CircleSlash, Pencil, UserCheck, UserX, UserMinus, Banknote, Eye } from 'lucide-react';
 import type { Employee, Advance, Attendance, AttendanceStatus } from '@/lib/types';
-import { format, isSameDay, startOfDay, isToday, isPast, getMonth, getYear, getDaysInMonth } from 'date-fns';
+import { format, isSameDay, startOfDay, isToday, isPast, getMonth, getYear, getDaysInMonth, isValid } from 'date-fns';
+
+const safeFormat = (date: any, formatStr: string) => {
+  if (!date) return 'N/A';
+  const d = new Date(date);
+  if (!isValid(d)) return 'N/A';
+  return format(d, formatStr);
+};
+
+// Generate unique ID to prevent duplicate keys
+const generateUniqueId = () => {
+  return `${Date.now()}.${Math.random().toString(36).substr(2, 9)}`;
+};
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Textarea } from '@/components/ui/textarea';
@@ -130,7 +142,7 @@ export default function StaffManagement({ employees, setEmployees, advances, set
       newAdvances = advances.map(a => a.id === id ? { ...a, ...advanceData } : a);
       toast({ title: t('Advance Updated') });
     } else {
-      const newAdvance = { ...advanceData, id: new Date().toISOString() };
+      const newAdvance = { ...advanceData, id: generateUniqueId() };
       newAdvances = [...advances, newAdvance];
       toast({ title: t('Advance Saved') });
     }
@@ -149,7 +161,7 @@ export default function StaffManagement({ employees, setEmployees, advances, set
     if (isDateLocked) {
       return;
     }
-    const dateKey = format(selectedDate, 'yyyy-MM-dd');
+    const dateKey = safeFormat(selectedDate, 'yyyy-MM-dd');
     const attendanceId = `${employeeId}_${dateKey}`;
 
     const existingRecord = attendance.find(a => a.id === attendanceId);
@@ -184,7 +196,7 @@ export default function StaffManagement({ employees, setEmployees, advances, set
   }
 
   const openNotesDialog = (employeeId: string) => {
-    const dateKey = format(selectedDate, 'yyyy-MM-dd');
+    const dateKey = safeFormat(selectedDate, 'yyyy-MM-dd');
     const attendanceId = `${employeeId}_${dateKey}`;
     const record = attendance.find(a => a.id === attendanceId);
     if (record) {
@@ -325,8 +337,8 @@ export default function StaffManagement({ employees, setEmployees, advances, set
     <div className="p-4 space-y-4">
       <Tabs defaultValue="attendance" className="w-full">
         <TabsList className="grid w-full grid-cols-2 bg-muted p-1 h-auto rounded-lg">
-          <TabsTrigger value="attendance" className="py-2 data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-md text-base font-bold uppercase">{t('ATTENDANCE & ADVANCE')}</TabsTrigger>
-          <TabsTrigger value="employees" className="py-2 data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=active]:shadow-md text-base font-bold uppercase">{t('EMPLOYEE DETAILS')}</TabsTrigger>
+          <TabsTrigger value="attendance" className="py-2 text-primary data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-base font-bold uppercase transition-all duration-300 border border-primary/40 hover:border-primary">{t('ATTENDANCE & ADVANCE')}</TabsTrigger>
+          <TabsTrigger value="employees" className="py-2 text-primary data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-base font-bold uppercase transition-all duration-300 border border-primary/40 hover:border-primary">{t('EMPLOYEE DETAILS')}</TabsTrigger>
         </TabsList>
         <TabsContent value="attendance">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
@@ -370,7 +382,7 @@ export default function StaffManagement({ employees, setEmployees, advances, set
               <Card>
                 <CardHeader>
                   <CardTitle>{t('Daily Attendance Summary')}</CardTitle>
-                  <CardDescription>{t('For')} {format(selectedDate, 'PPP')}</CardDescription>
+                  <CardDescription>{t('For')} {safeFormat(selectedDate, 'PPP')}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-3 gap-4 text-center">
@@ -393,13 +405,13 @@ export default function StaffManagement({ employees, setEmployees, advances, set
             <div className="space-y-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>{t('Staff Attendance for')} {format(selectedDate, 'PPP')}</CardTitle>
+                  <CardTitle>{t('Staff Attendance for')} {safeFormat(selectedDate, 'PPP')}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {employees.map(employee => {
+                  {employees.map((employee, index) => {
                     const attendanceRecord = attendanceForSelectedDate.find(a => a.employeeId === employee.id);
                     return (
-                      <div key={employee.id} className="flex items-center gap-4 p-2 border rounded-lg bg-card">
+                      <div key={`${employee.id}-${index}`} className="flex items-center gap-4 p-2 border rounded-lg bg-card">
                         <div className="flex-grow flex items-center gap-3">
                           <span className={cn("h-3 w-3 rounded-full", employee.color)} />
                           <div>
@@ -439,12 +451,12 @@ export default function StaffManagement({ employees, setEmployees, advances, set
                   })}
                 </CardContent>
               </Card>
-              <Button size="lg" className="w-full h-14 text-base" onClick={() => openAdvanceDialog(null, undefined)} disabled={isDateLocked}>
-                <Banknote className="mr-4 h-6 w-6" /> {t('Add Salary Advance')}
+              <Button size="lg" className="w-full h-14 text-base bg-primary/5 border-2 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all shadow-md group" onClick={() => openAdvanceDialog(null, undefined)} disabled={isDateLocked}>
+                <Banknote className="mr-4 h-6 w-6 group-hover:scale-110 transition-transform" /> {t('Add Salary Advance')}
               </Button>
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>{t('Advances for')} {format(selectedDate, 'PPP')}</CardTitle>
+                  <CardTitle>{t('Advances for')} {safeFormat(selectedDate, 'PPP')}</CardTitle>
                   {totalAdvanceForDay > 0 && (
                     <div className="px-3 py-1 bg-red-100 dark:bg-red-900/30 rounded-md text-red-700 dark:text-red-200">
                       <span className="font-bold">Total: {currency}{totalAdvanceForDay.toLocaleString()}</span>
@@ -455,10 +467,10 @@ export default function StaffManagement({ employees, setEmployees, advances, set
                   <div className="max-h-48 overflow-y-auto pt-2">
                     {advancesForSelectedDate.filter(a => a.amount > 0).length > 0 ? (
                       <div className="space-y-2">
-                        {advancesForSelectedDate.filter(a => a.amount > 0).map(advance => {
+                        {advancesForSelectedDate.filter(a => a.amount > 0).map((advance, index) => {
                           const employee = employees.find(e => e.id === advance.employeeId);
                           return (
-                            <div key={advance.id} className="flex justify-between items-center p-2 bg-muted/50 rounded-lg group">
+                            <div key={`${advance.id}-${index}`} className="flex justify-between items-center p-2 bg-muted/50 rounded-lg group">
                               <div className='flex items-center gap-2'>
                                 <span className={cn("h-2.5 w-2.5 rounded-full", employee?.color)} />
                                 <div>
@@ -498,7 +510,7 @@ export default function StaffManagement({ employees, setEmployees, advances, set
                   <CardTitle>{t('Employees List')}</CardTitle>
                   <CardDescription>{t('Manage staff information and view monthly salary details.')}</CardDescription>
                 </div>
-                <Button variant="default" className="bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => openEmployeeDialog(null)}>
+                <Button variant="default" className="bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary border shadow-sm transition-all" onClick={() => openEmployeeDialog(null)}>
                   <PlusCircle className="mr-2 h-4 w-4" /> {t('ADD NEW EMPLOYEE')}
                 </Button>
               </div>
@@ -522,7 +534,7 @@ export default function StaffManagement({ employees, setEmployees, advances, set
                     {employees.map((employee, index) => {
                       const summary = employeeSummaries.find(s => s.employeeId === employee.id);
                       return (
-                        <TableRow key={employee.id} className={cn(index % 2 === 0 ? 'bg-muted/50' : 'bg-background')}>
+                        <TableRow key={`${employee.id}-${index}`} className={cn(index % 2 === 0 ? 'bg-muted/50' : 'bg-background')}>
                           <TableCell className="font-mono text-xs">{employee.id}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2 font-medium">
@@ -590,7 +602,7 @@ export default function StaffManagement({ employees, setEmployees, advances, set
       <Dialog open={isAttendanceListDialogOpen} onOpenChange={setIsAttendanceListDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{attendanceList.title} on {format(selectedDate, 'PPP')}</DialogTitle>
+            <DialogTitle>{attendanceList.title} on {safeFormat(selectedDate, 'PPP')}</DialogTitle>
           </DialogHeader>
           <div className="max-h-80 overflow-y-auto py-4">
             {attendanceList.employees.length > 0 ? (
@@ -670,7 +682,7 @@ function AddOrEditAdvanceDialog({
         <DialogHeader>
           <DialogTitle>{existingAdvance?.amount ? t('Edit') : t('Add')} {t('Advance')}</DialogTitle>
           <DialogDescription>
-            {t('Record an advance for an employee on')} {format(selectedDate, 'PPP')}.
+            {t('Record an advance for an employee on')} {safeFormat(selectedDate, 'PPP')}.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -743,7 +755,7 @@ function NotesDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{readOnly ? t('View Note') : t('Add/Edit Note')}</DialogTitle>
-          {attendance && <DialogDescription>{t('For')} {t('attendance')} {t('on')} {format(new Date(attendance.date), 'PPP')}</DialogDescription>}
+          {attendance && <DialogDescription>{t('For')} {t('attendance')} {t('on')} {safeFormat(attendance.date, 'PPP')}</DialogDescription>}
         </DialogHeader>
         <div className="py-4">
           <Textarea
@@ -925,7 +937,7 @@ function EmployeeSummaryDialog({ open, onOpenChange, employee, attendance, advan
         <DialogHeader>
           <DialogTitle>{t('Monthly Summary for')} {employee.name}</DialogTitle>
           <DialogDescription>
-            {format(new Date(), 'MMMM yyyy')}
+            {safeFormat(new Date(), 'MMMM yyyy')}
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
@@ -952,7 +964,7 @@ function EmployeeSummaryDialog({ open, onOpenChange, employee, attendance, advan
                   <h4 className="font-semibold mb-2 text-yellow-700">{t('Half-day Dates')}:</h4>
                   <div className="grid grid-cols-3 gap-1 text-sm">
                     {halfDayDates.map(date => (
-                      <span key={date.toISOString()}>{format(date, 'MMM d')}</span>
+                      <span key={date.toISOString()}>{safeFormat(date, 'MMM d')}</span>
                     ))}
                   </div>
                 </div>
@@ -962,7 +974,7 @@ function EmployeeSummaryDialog({ open, onOpenChange, employee, attendance, advan
                   <h4 className="font-semibold mb-2 text-red-700">{t('Absent Dates')}:</h4>
                   <div className="grid grid-cols-3 gap-1 text-sm">
                     {absentDates.map(date => (
-                      <span key={date.toISOString()}>{format(date, 'MMM d')}</span>
+                      <span key={date.toISOString()}>{safeFormat(date, 'MMM d')}</span>
                     ))}
                   </div>
                 </div>
@@ -995,7 +1007,7 @@ function EmployeeSummaryDialog({ open, onOpenChange, employee, attendance, advan
                   <div className="space-y-1 pr-2">
                     {monthlyAdvances.map((adv, index) => (
                       <div key={index} className="flex justify-between items-center text-sm p-1.5 bg-muted/50 rounded-md">
-                        <span>{format(new Date(adv.date), 'MMM d')}:</span>
+                        <span>{safeFormat(adv.date, 'MMM d')}:</span>
                         <span className="font-mono font-semibold">{currency}{adv.amount.toLocaleString()}</span>
                       </div>
                     ))}

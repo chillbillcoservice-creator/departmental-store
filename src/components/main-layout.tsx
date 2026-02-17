@@ -1,23 +1,22 @@
-
 'use client';
 
 import * as React from 'react';
 import { useLanguage } from '@/contexts/language-context';
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Utensils, LayoutGrid, Soup, Users, Shield, Receipt, Package, PanelTop, PanelLeft, Users2, Menu as MenuIcon, HelpCircle, BellDot, Bookmark } from 'lucide-react';
-import { formatDistanceToNowStrict, isSameDay } from 'date-fns';
+import { Users, Shield, Receipt, Package, Users2, Menu as MenuIcon, HelpCircle, Truck, CreditCard, PanelLeft, PanelTop, AlertTriangle, List, X, Palette } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { isSameDay } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import type { Table, TableStatus, Order, Bill, Employee, OrderItem, Expense, InventoryItem, KOTPreference, OrderType, MenuCategory, CustomerOrder, Vendor, PendingBill, Customer, Attendance, Advance, EventBooking } from '@/lib/types';
+import type { Order, Bill, Employee, Expense, InventoryItem, MenuCategory, Vendor, PendingBill, Customer, Attendance, Advance, CartItem, SavedCart } from '@/lib/types';
 import { Logo } from "./icons";
-import PosSystem from './pos-system';
-import TableManagement from './table-management';
-import KitchenOrders from './kitchen-orders';
 import AdminDashboard from './admin-dashboard';
 import StaffManagement from "./staff-management";
 import ExpensesTracker from './expenses-tracker';
 import InventoryManagement from './inventory-management';
+import VendorManagement from './vendor-management';
 import CustomerManagement from './customer-management';
+import PaymentSection from './payment-section';
 import { Separator } from '@/components/ui/separator';
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
@@ -28,15 +27,11 @@ import SetupWizard from './setup-wizard';
 import { ThemeToggle } from './theme-toggle';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
 import { HelpDialog } from './help-dialog';
-import IncomingOrdersDialog from './incoming-orders-dialog';
 import { useFirestore } from '@/firebase';
-import { collection, onSnapshot, writeBatch, doc, setDoc } from 'firebase/firestore';
-import { groupItemsForKOT } from '@/lib/kot-utils';
-import type { VenueDetails, OwnerDetails } from "@/lib/types";
-
-const PENDING_ORDER_KEY = -1;
-
-type NavPosition = 'top' | 'left';
+import { writeBatch, doc, setDoc } from 'firebase/firestore';
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
+import { useThemeColor } from '@/contexts/theme-color-context';
+import type { VenueDetails, OwnerDetails, PurchaseOrder, PurchaseOrderItem } from "@/lib/types";
 
 interface MainLayoutProps {
   initialMenu: MenuCategory[];
@@ -48,10 +43,8 @@ interface MainLayoutProps {
   initialVendors: Vendor[];
   initialPendingBills: PendingBill[];
   initialVenueName: string;
-  initialKotPreference: KOTPreference;
   initialAttendance: Attendance[];
   initialAdvances: Advance[];
-  initialEventBookings: EventBooking[];
   setMenu: (menu: MenuCategory[]) => void;
   setInventory: React.Dispatch<React.SetStateAction<InventoryItem[]>>;
   setEmployees: React.Dispatch<React.SetStateAction<Employee[]>>;
@@ -63,15 +56,13 @@ interface MainLayoutProps {
   setAttendance: React.Dispatch<React.SetStateAction<Attendance[]>>;
   setAdvances: React.Dispatch<React.SetStateAction<Advance[]>>;
   setVenueName: (name: string) => void;
-  setKotPreference: (preference: KOTPreference) => void;
-
-  setEventBookings: React.Dispatch<React.SetStateAction<EventBooking[]>>;
   initialCurrency: string;
   setCurrency: (currency: string) => void;
   venueDetails?: VenueDetails | null;
   ownerDetails?: OwnerDetails | null;
   initialLanguage: string;
   setLanguage: (lang: string) => void;
+  setVenueDetails: (details: VenueDetails | null) => void;
 }
 
 export default function MainLayout({
@@ -84,10 +75,8 @@ export default function MainLayout({
   initialVendors,
   initialPendingBills,
   initialVenueName,
-  initialKotPreference,
   initialAttendance,
   initialAdvances,
-  initialEventBookings,
   setMenu,
   setInventory,
   setEmployees,
@@ -99,63 +88,328 @@ export default function MainLayout({
   setAttendance,
   setAdvances,
   setVenueName,
-  setKotPreference,
-  setEventBookings,
   initialCurrency,
   setCurrency,
   venueDetails,
+  setVenueDetails,
   ownerDetails,
-  initialLanguage,
-  setLanguage
 }: MainLayoutProps) {
   const { t } = useLanguage();
-  const { toast } = useToast();
-  const db = useFirestore(); // Still needed for QR code orders listener
-  const [currentDateTime, setCurrentDateTime] = useState<Date | null>(null);
-  const [tables, setTables] = useState<Table[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
-
-  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
-  const [currentOrderItems, setCurrentOrderItems] = useState<OrderItem[]>([]);
-  const [activeTab, setActiveTab] = useState('pos');
-  const [initialTableForManagement, setInitialTableForManagement] = useState<number | null>(null);
-  const [navPosition, setNavPosition] = useState<NavPosition>('top');
+  const db = useFirestore();
+  const [activeTab, setActiveTab] = useState('payments');
   const [customerCreditLimit, setCustomerCreditLimit] = useState(10000);
   const [vendorCreditLimit, setVendorCreditLimit] = useState(50000);
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
-
-  const [showTableDetailsOnPOS, setShowTableDetailsOnPOS] = useState(false);
-  const [showReservationTimeOnPOS, setShowReservationTimeOnPOS] = useState(false);
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [customerOrders, setCustomerOrders] = useState<CustomerOrder[]>([]);
-  const [isIncomingOrderDialogOpen, setIsIncomingOrderDialogOpen] = useState(false);
+  const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
+  const mainRef = useRef<HTMLDivElement>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const { toast } = useToast();
+  const notifiedItemsRef = useRef<Set<string>>(new Set());
+  const notifiedVendorsRef = useRef<Set<string>>(new Set());
+  const [layoutMode, setLayoutMode] = useState<'vertical' | 'horizontal'>('vertical');
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [alertingItem, setAlertingItem] = useState<{ item: InventoryItem; threshold: string } | null>(null);
+  const { themeColor, setThemeColor, availableColors } = useThemeColor();
+
+  // Vendor Billing Cycle Notifications
+  useEffect(() => {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
+    initialVendors.forEach(vendor => {
+      if (vendor.billingCycleDay) {
+        // Find the next billing date
+        let nextDate = new Date(today.getFullYear(), today.getMonth(), vendor.billingCycleDay);
+
+        // Handle months with fewer days than the billing cycle day
+        const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        if (vendor.billingCycleDay > lastDayOfMonth) {
+          nextDate = new Date(today.getFullYear(), today.getMonth(), lastDayOfMonth);
+        }
+
+        // If the date has already passed this month, move to next month
+        if (nextDate.getTime() < today.getTime() && today.getDate() !== nextDate.getDate()) {
+          nextDate = new Date(today.getFullYear(), today.getMonth() + 1, vendor.billingCycleDay);
+          const lastDayOfNextMonth = new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0).getDate();
+          if (vendor.billingCycleDay > lastDayOfNextMonth) {
+            nextDate = new Date(nextDate.getFullYear(), nextDate.getMonth(), lastDayOfNextMonth);
+          }
+        }
+
+        const diffTime = nextDate.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const notificationKey = `${vendor.id}-${diffDays}-${todayStr}`;
+
+        if (!notifiedVendorsRef.current.has(notificationKey)) {
+          if (diffDays === 7) {
+            toast({
+              title: t("Vendor Payment Reminder"),
+              description: `${t("Payment for")} ${vendor.name} ${t("is due in 7 days.")}`,
+            });
+            notifiedVendorsRef.current.add(notificationKey);
+          } else if (diffDays === 1) {
+            toast({
+              title: t("Urgent: Vendor Payment"),
+              description: `${t("Payment for")} ${vendor.name} ${t("is due tomorrow!")}`,
+              variant: "destructive",
+            });
+            notifiedVendorsRef.current.add(notificationKey);
+          } else if (diffDays === 0 && today.getDate() === nextDate.getDate()) {
+            toast({
+              title: t("Payment Due Today"),
+              description: `${t("Payment for")} ${vendor.name} ${t("is due today!")}`,
+              variant: "destructive",
+            });
+            notifiedVendorsRef.current.add(notificationKey);
+          }
+        }
+      }
+    });
+  }, [initialVendors, t, toast]);
+
+  // Cart State (Lifted)
+  const [cartSession, setCartSession] = useState<{
+    items: CartItem[];
+    customer: Customer | null;
+    discount: number;
+    redeemPoints: number;
+    paymentMethod: 'Cash' | 'Online';
+  }>({
+    items: [],
+    customer: null,
+    discount: 0,
+    redeemPoints: 0,
+    paymentMethod: 'Online'
+  });
+  const [savedCarts, setSavedCarts] = useState<SavedCart[]>([]);
 
   useEffect(() => {
-    if (!db) return;
-
-    // This listener is for real-time QR code orders from customers.
-    const unsub = onSnapshot(collection(db, "customerOrders"), (snapshot) => {
-      const newOrders: CustomerOrder[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        if (data.status === 'pending') {
-          newOrders.push({ id: doc.id, ...data } as CustomerOrder);
-        }
-      });
-      if (newOrders.length > customerOrders.length) {
-        toast({
-          title: t("New Customer Order!"),
-          description: t("A new order has been placed for table") + ` ${newOrders[newOrders.length - 1].tableId}.`,
-        });
-        setIsIncomingOrderDialogOpen(true);
+    try {
+      const savedPOs = localStorage.getItem('purchaseOrders');
+      if (savedPOs) {
+        setPurchaseOrders(JSON.parse(savedPOs));
       }
-      setCustomerOrders(newOrders);
-    });
+    } catch (e) {
+      console.error("Failed to load purchase orders", e);
+    }
+  }, []);
 
-    return () => unsub();
-  }, [db, customerOrders.length, toast]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('purchaseOrders', JSON.stringify(purchaseOrders));
+    } catch (e) {
+      console.error("Failed to save purchase orders", e);
+    }
+  }, [purchaseOrders]);
+
+  useEffect(() => {
+    const savedLayout = localStorage.getItem('layoutMode');
+    if (savedLayout === 'horizontal') setLayoutMode('horizontal');
+  }, []);
+
+  const toggleLayout = () => {
+    const newMode = layoutMode === 'vertical' ? 'horizontal' : 'vertical';
+    setLayoutMode(newMode);
+    localStorage.setItem('layoutMode', newMode);
+  };
+
+  // Update time every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Monitor inventory levels and show notifications
+  useEffect(() => {
+    if (!initialInventory || initialInventory.length === 0) return;
+
+    initialInventory.forEach(item => {
+      if (!item.capacity || item.capacity <= 0) return;
+      const stock = item.stock || 0;
+      const capacity = item.capacity;
+
+      const halfThreshold = capacity / 2;
+      const quarterThreshold = capacity / 4;
+
+      // Logic: notify if stock drops TO OR BELOW threshold
+      // But we only want to notify once when it crosses.
+      // We'll use the itemKey to track if we notified for a specific item at a specific threshold value.
+
+      const checkThreshold = (val: number, label: string) => {
+        const itemKey = `${item.id}_${label}`;
+        if (stock <= val && !notifiedItemsRef.current.has(itemKey)) {
+          // If it was already below, we might have missed it or just loaded.
+          // But to be safe and avoid annoyance on load, we could check if previous stock was above.
+          // However, simple notifiedRef is usually enough.
+          setAlertingItem({ item, threshold: label });
+          notifiedItemsRef.current.add(itemKey);
+        } else if (stock > val && notifiedItemsRef.current.has(itemKey)) {
+          // Reset if stock goes back above
+          notifiedItemsRef.current.delete(itemKey);
+        }
+      };
+
+      // Check 50%
+      checkThreshold(halfThreshold, '50%');
+      // Check 25%
+      checkThreshold(quarterThreshold, '25%');
+
+      // Keep existing 10 and 5 logic but maybe migrate them to dialog too if requested?
+      // User said "When the stock depletion message currently appears at 10 and 5... ALSO trigger notifications... these notifications should include a popup dialog box"
+      // This suggests 50% and 25% should be dialogs. 10 and 5 might stay toasts or become dialogs.
+      // Given the requirement "include an option to 'Create order...'", maybe they all should be dialogs?
+      // Let's make 10 and 5 also dialogs for consistency if that's what's implied.
+
+      checkThreshold(10, '10u');
+      checkThreshold(5, '5u');
+      checkThreshold(0, '0u');
+    });
+  }, [initialInventory, toast]);
+
+  const handleAddToList = (item: InventoryItem) => {
+    if (!item.vendorId) {
+      toast({ title: t("Vendor not assigned"), description: t("Please assign a vendor to this item first."), variant: "destructive" });
+      return;
+    }
+
+    const vendor = initialVendors.find(v => v.id === item.vendorId);
+    const vendorName = vendor ? vendor.name : t("Unknown Vendor");
+
+    setPurchaseOrders(prev => {
+      // Find a draft PO for this vendor
+      const existingDraftIndex = prev.findIndex(po => po.vendorId === item.vendorId && po.status === 'Draft');
+
+      const newItem: PurchaseOrderItem = {
+        inventoryItemId: item.id,
+        name: item.name,
+        quantity: item.capacity - item.stock, // Default to restocking to full capacity
+        unitCost: item.costPrice || 0,
+        totalCost: (item.capacity - item.stock) * (item.costPrice || 0)
+      };
+
+      if (existingDraftIndex > -1) {
+        const updatedPOs = [...prev];
+        const draft = { ...updatedPOs[existingDraftIndex] };
+        const items = [...draft.items];
+        const existingItemIndex = items.findIndex(i => i.inventoryItemId === item.id);
+
+        if (existingItemIndex > -1) {
+          // Item already in list, maybe update quantity?
+          // items[existingItemIndex].quantity += newItem.quantity;
+          // items[existingItemIndex].totalCost = items[existingItemIndex].quantity * items[existingItemIndex].unitCost;
+          // Actually, just notify it's already there
+          toast({ title: t("Item already in list"), description: `${item.name} ${t("is already in your draft order for")} ${vendorName}.` });
+          return prev;
+        } else {
+          items.push(newItem);
+        }
+
+        draft.items = items;
+        draft.totalAmount = items.reduce((sum, i) => sum + i.totalCost, 0);
+        updatedPOs[existingDraftIndex] = draft;
+        toast({ title: t("Added to list"), description: `${item.name} ${t("added to draft order for")} ${vendorName}.` });
+        return updatedPOs;
+      } else {
+        // Create new draft
+        const newDraft: PurchaseOrder = {
+          id: `${Date.now()}.${Math.random().toString(36).substr(2, 9)}`,
+          vendorId: item.vendorId!,
+          vendorName: vendorName,
+          date: new Date(),
+          referenceNo: `DRAFT-${Date.now().toString().slice(-6)}`,
+          items: [newItem],
+          totalAmount: newItem.totalCost,
+          status: 'Draft'
+        };
+        toast({ title: t("Draft order created"), description: `${t("Created new draft order for")} ${vendorName} ${t("with")} ${item.name}.` });
+        return [...prev, newDraft];
+      }
+    });
+    setAlertingItem(null);
+  };
+
+  const handleCreateImmediateOrder = (item: InventoryItem) => {
+    if (!item.vendorId) {
+      toast({ title: t("Vendor not assigned"), description: t("Please assign a vendor to this item first."), variant: "destructive" });
+      return;
+    }
+
+    const vendor = initialVendors.find(v => v.id === item.vendorId);
+    const vendorName = vendor ? vendor.name : t("Unknown Vendor");
+
+    const newItem: PurchaseOrderItem = {
+      inventoryItemId: item.id,
+      name: item.name,
+      quantity: item.capacity - item.stock,
+      unitCost: item.costPrice || 0,
+      totalCost: (item.capacity - item.stock) * (item.costPrice || 0)
+    };
+
+    const newPO: PurchaseOrder = {
+      id: `${Date.now()}.${Math.random().toString(36).substr(2, 9)}`,
+      vendorId: item.vendorId!,
+      vendorName: vendorName,
+      date: new Date(),
+      referenceNo: `PO-${Date.now().toString().slice(-6)}`,
+      items: [newItem],
+      totalAmount: newItem.totalCost,
+      status: 'Ordered'
+    };
+
+    setPurchaseOrders(prev => [...prev, newPO]);
+    toast({ title: t("Order Placed"), description: `${t("Purchase order")} ${newPO.referenceNo} ${t("placed for")} ${vendorName}.` });
+    setAlertingItem(null);
+  };
+
+  const getTimezone = (currencyCode: string) => {
+    switch (currencyCode) {
+      case 'Rs.': return 'Asia/Kolkata';
+      case 'Rs': return 'Asia/Kolkata'; // In case of variations
+      case '$': return 'America/New_York'; // Default for USD
+      case '€': return 'Europe/Paris'; // Default for Euro
+      case '£': return 'Europe/London';
+      case '¥': return 'Asia/Tokyo'; // Or China, but usually JPY is associated with strict time
+      case 'AUD': return 'Australia/Sydney';
+      case 'CAD': return 'America/Toronto';
+      // Add more mappings as needed
+      default: return undefined; // Use system timezone
+    }
+  };
+
+  const { formattedTime, formattedDate } = useMemo(() => {
+    const timeZone = getTimezone(initialCurrency);
+    try {
+      const timeFormatter = new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        hour12: true,
+        ...(timeZone && { timeZone })
+      });
+
+      const dateFormatter = new Intl.DateTimeFormat('en-US', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        ...(timeZone && { timeZone })
+      });
+
+      return {
+        formattedTime: timeFormatter.format(currentTime),
+        formattedDate: dateFormatter.format(currentTime)
+      };
+    } catch (e) {
+      return {
+        formattedTime: currentTime.toLocaleTimeString(),
+        formattedDate: currentTime.toLocaleDateString()
+      };
+    }
+  }, [currentTime, initialCurrency]);
 
   // Sync settings to Firestore whenever they change locally
   useEffect(() => {
@@ -181,9 +435,9 @@ export default function MainLayout({
 
     const timer = setTimeout(syncSettings, 1000);
     return () => clearTimeout(timer);
-  }, [db, initialVenueName, initialCurrency]);
+  }, [db, initialVenueName, initialCurrency, venueDetails, ownerDetails]);
 
-  // Sync menu to Firestore whenever it changes locally (e.g. status updates)
+  // Sync menu to Firestore whenever it changes locally
   useEffect(() => {
     if (!db || !initialMenu) return;
 
@@ -193,7 +447,6 @@ export default function MainLayout({
         initialMenu.forEach(cat => {
           if (cat.id) {
             const docRef = doc(db, 'menu', cat.id);
-            // Sanitize: ensure subcategories is never undefined
             const safeCat = {
               ...cat,
               subcategories: cat.subcategories || []
@@ -207,9 +460,37 @@ export default function MainLayout({
       }
     };
 
-    const timer = setTimeout(syncMenu, 1500); // 1.5s debounce
+    const timer = setTimeout(syncMenu, 1500);
     return () => clearTimeout(timer);
   }, [db, initialMenu]);
+
+  // Sync pendingBills to Firestore whenever they change locally
+  useEffect(() => {
+    if (!db || !initialPendingBills) return;
+
+    const syncPendingBills = async () => {
+      try {
+        const batch = writeBatch(db);
+        initialPendingBills.forEach(pb => {
+          if (pb.id && typeof pb.id === 'string') {
+            const docRef = doc(db, 'pendingBills', pb.id);
+            batch.set(docRef, pb, { merge: true });
+          } else if (pb.id) {
+            // Fallback for non-string IDs if any exist
+            const stringId = String(pb.id);
+            const docRef = doc(db, 'pendingBills', stringId);
+            batch.set(docRef, pb, { merge: true });
+          }
+        });
+        await batch.commit();
+      } catch (e) {
+        console.error("Error syncing pendingBills:", e);
+      }
+    };
+
+    const timer = setTimeout(syncPendingBills, 2000);
+    return () => clearTimeout(timer);
+  }, [db, initialPendingBills]);
 
   useEffect(() => {
     try {
@@ -252,21 +533,9 @@ export default function MainLayout({
     }
   }, [vendorCreditLimit]);
 
-  const [selectedTableId, setSelectedTableId] = useState<number | null>(1);
-  const [discount, setDiscount] = useState(0);
-  const [showOccupancy, setShowOccupancy] = useState(false);
-  const [pendingOrders, setPendingOrders] = useState<Record<number, OrderItem[]>>({});
-
-  const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
-  const [keyboardMode, setKeyboardMode] = useState<'table' | 'order' | 'confirm'>('table');
-  const mainRef = useRef<HTMLDivElement>(null);
-  const [selectedOrderType, setSelectedOrderType] = useState<OrderType>('Dine-In');
-
-
   useEffect(() => {
     mainRef.current?.focus();
   }, []);
-
 
   useEffect(() => {
     try {
@@ -289,285 +558,26 @@ export default function MainLayout({
     }
   }, [categoryColors]);
 
-  const clearCurrentOrder = useCallback((fullReset = false) => {
-    setCurrentOrderItems([]);
-    setDiscount(0);
-    setActiveOrder(null);
-
-    const tableIdToClear = selectedTableId === null ? PENDING_ORDER_KEY : selectedTableId;
-
-    setPendingOrders(prev => {
-      const newPending = { ...prev };
-      delete newPending[tableIdToClear];
-      return newPending;
-    });
-
-    if (fullReset) {
-      setSelectedTableId(1);
-    }
-  }, [selectedTableId]);
-
-  const handleSelectTable = useCallback((tableId: number | null) => {
-    if (tableId === selectedTableId) return;
-
-    const currentOrderKey = selectedTableId === null ? PENDING_ORDER_KEY : selectedTableId;
-
-    if (currentOrderItems.length > 0) {
-      const itemsToSave = [...currentOrderItems];
-      setPendingOrders(prev => ({
-        ...prev,
-        [currentOrderKey]: itemsToSave,
-      }));
-    } else {
-      setPendingOrders(prev => {
-        const newPending = { ...prev };
-        delete newPending[currentOrderKey];
-        return newPending;
-      });
-    }
-
-    setSelectedTableId(tableId);
-  }, [selectedTableId, currentOrderItems]);
-
-  useEffect(() => {
-    const tableId = selectedTableId;
-    const orderKey = tableId === null ? PENDING_ORDER_KEY : tableId;
-
-    const existingOrder = orders.find(o => o.tableId === tableId && o.status !== 'Completed');
-    const pendingItems = pendingOrders[orderKey] || [];
-
-    if (existingOrder) {
-      setActiveOrder(existingOrder);
-
-      if (pendingItems.length > 0) {
-        setCurrentOrderItems(pendingItems);
-      } else {
-        setCurrentOrderItems(existingOrder.items);
-      }
-    } else {
-      setActiveOrder(null);
-      setCurrentOrderItems(pendingItems);
-    }
-
-    setDiscount(0);
-  }, [selectedTableId, orders, pendingOrders]);
-
-
-  useEffect(() => {
-    const initialTables: Table[] = Array.from({ length: 10 }, (_, i) => ({
-      id: i + 1,
-      status: 'Available',
-    }));
-    setTables(initialTables);
-  }, []);
-
-  useEffect(() => {
-    setCurrentDateTime(new Date());
-    const timer = setInterval(() => {
-      setCurrentDateTime(new Date());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const formattedDate = currentDateTime
-    ? currentDateTime.toLocaleDateString(undefined, {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
-    : '';
-
-  const formattedTime = currentDateTime
-    ? currentDateTime.toLocaleTimeString()
-    : '';
-
-  const updateTableStatus = useCallback((tableIds: number[], status: TableStatus, reservationDetails?: Table['reservationDetails']) => {
-    setTables(tables => tables.map(t => {
-      if (tableIds.includes(t.id)) {
-        return { ...t, status, reservationDetails: status === 'Reserved' ? reservationDetails : undefined };
-      }
-      return t;
-    }));
-  }, []);
-
-  const updateTableDetails = useCallback((tableId: number, details: { name?: string, seats?: number }) => {
-    setTables(prevTables => prevTables.map(t =>
-      t.id === tableId ? { ...t, name: details.name || t.name, seats: details.seats || t.seats } : t
-    ));
-    toast({ title: "Table Updated", description: `Details for Table ${tableId} have been saved.` });
-  }, [toast]);
-
-  const addTable = () => {
-    setTables(prevTables => {
-      const newTableId = prevTables.length > 0 ? Math.max(...prevTables.map(t => t.id)) + 1 : 1;
-      const newTable: Table = { id: newTableId, status: 'Available' };
-      return [...prevTables, newTable];
-    });
-  };
-
-  const removeLastTable = () => {
-    if (tables.length > 0) {
-      setTables(prevTables => {
-        if (prevTables.length === 0) return [];
-        const tableToRemove = prevTables.reduce((last, current) => (current.id > last.id ? current : last));
-        return prevTables.filter(t => t.id !== tableToRemove.id);
-      });
-    }
-  };
-
-  const occupancyCount = useMemo(() => {
-    const counts: Record<number, number> = {};
-    const todaysBills = initialBills.filter(bill => bill.timestamp && isSameDay(new Date(bill.timestamp), new Date()));
-
-    todaysBills.forEach(bill => {
-      if (bill.tableId) {
-        counts[bill.tableId] = (counts[bill.tableId] || 0) + 1;
-      }
-    });
-
-    return counts;
-  }, [initialBills]);
-
   const handleTabChange = (tab: string) => {
-    setInitialTableForManagement(null);
     setActiveTab(tab);
     setIsMobileSheetOpen(false);
-  }
-
-  const onOrderCreated = useCallback((order: Order) => {
-    setOrders(prev => [...prev, order]);
-    setActiveOrder(order);
-    setCurrentOrderItems(order.items);
-    if (order.tableId) {
-      setPendingOrders(prev => {
-        const newPending = { ...prev };
-        delete newPending[order.tableId!];
-        return newPending;
-      })
-    }
-  }, []);
-
-  const handleViewTableDetails = (tableId: number) => {
-    setInitialTableForManagement(tableId);
-    setActiveTab('tables');
-  };
-
-  const handleEditOrderFromShortcut = (tableId: number) => {
-    const order = orders.find(o => o.tableId === tableId && o.status !== 'Completed');
-    if (order) {
-      setSelectedTableId(order.tableId ?? null);
-      setActiveOrder(order);
-      setCurrentOrderItems(order.items);
-      setDiscount(0);
-      setActiveTab('pos');
-    } else {
-      handleSelectTable(tableId);
-      setActiveTab('pos');
-    }
-  };
-
-  const handleCreateOrderFromTables = (tableId: number) => {
-    handleSelectTable(tableId);
-    setActiveTab('pos');
-  };
-
-  const handleAcceptCustomerOrder = useCallback((tableId: number, items: OrderItem[]) => {
-    const existingOrderForTable = orders.find(o => o.tableId === tableId && o.status !== 'Completed');
-
-    // This is the new, correct way to get new items to send to the kitchen.
-    const newItemsForKOT = items;
-
-    let finalOrderState: Order;
-    if (existingOrderForTable) {
-      const combinedItemsMap = new Map(existingOrderForTable.items.map(item => [item.name, { ...item }]));
-      items.forEach(newItem => {
-        if (combinedItemsMap.has(newItem.name)) {
-          combinedItemsMap.get(newItem.name)!.quantity += newItem.quantity;
-        } else {
-          combinedItemsMap.set(newItem.name, { ...newItem });
-        }
-      });
-
-      finalOrderState = { ...existingOrderForTable, items: Array.from(combinedItemsMap.values()) };
-      setOrders(prev => prev.map(o => o.id === existingOrderForTable.id ? finalOrderState : o));
-    } else {
-      const allIds = [
-        ...orders.map(o => parseInt(o.id)).filter(id => !isNaN(id)),
-        ...initialBills.map(b => parseInt(b.id)).filter(id => !isNaN(id)),
-      ];
-      const maxId = Math.max(0, ...allIds);
-      const newId = (maxId + 1).toString();
-
-      finalOrderState = {
-        id: newId,
-        items: items,
-        tableId: tableId,
-        status: 'In Preparation',
-        orderType: 'Dine-In',
-        createdAt: new Date(),
-      };
-      setOrders(prev => [...prev, finalOrderState]);
-    }
-
-    updateTableStatus([tableId], 'Occupied');
-    setActiveTab('pos');
-    setSelectedTableId(tableId);
-
-    // Return the generated KOT groups so the UI can show separate print buttons
-    if (finalOrderState && newItemsForKOT.length > 0) {
-      const kotGroups = groupItemsForKOT(newItemsForKOT, initialKotPreference);
-      toast({ title: `Order for Table ${tableId} accepted.` });
-      return kotGroups;
-    }
-    return [];
-
-  }, [orders, initialBills, setOrders, updateTableStatus, toast, setActiveTab, setSelectedTableId, initialKotPreference]);
-
-  const toggleNavPosition = () => {
-    setNavPosition(pos => pos === 'top' ? 'left' : 'top');
   }
 
   const handleSetupComplete = (data: any) => {
     try {
       localStorage.setItem('setupComplete', 'true');
       setVenueName(data.venue.name);
-      setEmployees(prev => [...(data.employees || [])]); // Append or replace? Setup usually replaces or initializes. Let's merge if needed, but for "Re-run" let's be careful. Actually, SetupWizard returns employees.
-      // Better to check if we should overwrite. For now, let's update state.
-      // But critical: Currency
+      setEmployees(prev => [...(data.employees || [])]);
       if (data.currency) {
         setCurrency(data.currency);
       }
-
       setVendors(data.vendors);
       localStorage.setItem('venueName', data.venue.name);
-
-      // Persist to Firestore immediately
-      if (db) {
-        // data.venue has { name, address, ... }
-        import('firebase/firestore').then(({ doc, setDoc }) => {
-          setDoc(doc(db, "settings", "venue"), {
-            venueName: data.venue.name,
-            currency: data.currency,
-            address: data.venue.address || '',
-            contactNumber: data.venue.contactNumber || '',
-            email: data.venue.email || '',
-            tagline: data.venue.tagline || '',
-            ownerName: data.owner ? data.owner.name : '',
-            ownerContact: data.owner ? data.owner.contactNumber : '',
-            ownerEmail: data.owner ? data.owner.email : '',
-          }, { merge: true }).catch(err => console.error("Immediate Firestore Sync Error (MainLayout):", err));
-        });
-      }
-
     } catch (e) {
       console.error("Could not access localStorage", e);
     }
     setShowSetupWizard(false);
   }
-
-
-
 
   if (isCheckingSetup) {
     return null;
@@ -578,30 +588,30 @@ export default function MainLayout({
   }
 
   const navItems = [
-    { value: 'pos', label: t('Main'), icon: Utensils },
-    { value: 'tables', label: t('Tables'), icon: LayoutGrid },
-    { value: 'kitchen', label: t('Kitchen & Inventory'), icon: Soup },
+    { value: 'payments', label: t('Main'), icon: CreditCard },
+    { value: 'inventory', label: t('Inventory'), icon: Package },
     { value: 'expenses', label: t('Expenses'), icon: Receipt },
-    { value: 'customers', label: t('Customers & Bookings'), icon: Users2 },
+    { value: 'customers', label: t('Customers'), icon: Users2 },
+    { value: 'vendors', label: t('Vendors'), icon: Truck },
     { value: 'staff', label: t('Staff'), icon: Users },
     { value: 'admin', label: t('Admin'), icon: Shield },
   ];
+
   const renderNav = (isSheet = false) => (
     <TabsList className={cn(
-      "m-2 p-0 h-auto bg-transparent",
-      navPosition === 'left' && !isSheet ? "flex-col items-start w-auto" : "",
-      isSheet && "flex-col items-start w-full"
+      "m-2 p-0 h-auto bg-transparent flex",
+      !isSheet ? "flex-row" : "flex-col items-start w-full"
     )}>
       {navItems.map((item, index) => (
         <React.Fragment key={item.value}>
           <TabsTrigger
             value={item.value}
-            className="w-full px-4 py-3 text-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-md flex items-center justify-start gap-3"
+            className="px-4 py-3 text-md data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-2 data-[state=active]:border-primary data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 rounded-xl flex items-center justify-start gap-3 transition-all duration-300 font-bold border-2 border-transparent"
             onClick={() => handleTabChange(item.value)}
           >
-            <item.icon /> <span>{item.label}</span>
+            <item.icon className="h-5 w-5" /> <span>{item.label}</span>
           </TabsTrigger>
-          {index < navItems.length - 1 && <Separator orientation={navPosition === 'top' && !isSheet ? 'vertical' : 'horizontal'} className={cn(navPosition === 'top' && !isSheet ? "h-6 mx-1" : "w-full my-1", isSheet && "my-1")} />}
+          {index < navItems.length - 1 && <Separator orientation={!isSheet ? 'vertical' : 'horizontal'} className={cn(!isSheet ? "h-6 mx-1" : "w-full my-1")} />}
         </React.Fragment>
       ))}
     </TabsList>
@@ -625,31 +635,48 @@ export default function MainLayout({
           <span className="text-lg font-bold truncate max-w-[150px] sm:max-w-xs">{initialVenueName}</span>
         </div>
         <div className="flex items-center gap-2 md:gap-4">
-          {customerOrders.length > 0 && (
-            <Button
-              variant="secondary"
-              className="relative bg-orange-500 hover:bg-orange-600 text-white animate-pulse"
-              onClick={() => setIsIncomingOrderDialogOpen(true)}
-            >
-              <BellDot className="mr-2 h-5 w-5" />
-              {t('Incoming Orders')}
-              <span className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold">
-                {customerOrders.length}
-              </span>
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleLayout}
+            className="hidden md:flex"
+            title={layoutMode === 'vertical' ? "Switch to Side Layout" : "Switch to Top Layout"}
+          >
+            {layoutMode === 'vertical' ? <PanelLeft className="h-5 w-5" /> : <PanelTop className="h-5 w-5" />}
+          </Button>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" title={t('Change Theme Color')}>
+                <Palette className="h-5 w-5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64 p-3" align="end">
+              <div className="space-y-2">
+                <h4 className="font-medium leading-none text-sm">{t('Theme Color')}</h4>
+                <p className="text-xs text-muted-foreground">{t('Select a primary color for the app.')}</p>
+                <div className="flex flex-wrap gap-2 pt-2">
+                  {availableColors.map((color) => (
+                    <button
+                      key={color.name}
+                      onClick={() => setThemeColor(color.value)}
+                      className={cn(
+                        "w-8 h-8 rounded-full border-2 transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary",
+                        color.value === themeColor ? "border-primary scale-110 shadow-md ring-2 ring-primary ring-offset-2 opacity-100" : "border-transparent opacity-80 hover:opacity-100"
+                      )}
+                      style={{ backgroundColor: `hsl(${color.value})` }}
+                      title={color.name}
+                    >
+                      <span className="sr-only">{color.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+
           <ThemeToggle />
           <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={toggleNavPosition} className='hidden md:inline-flex rounded-md data-[state=active]:bg-primary data-[state=active]:text-primary-foreground items-center gap-2'>
-                  {navPosition === 'top' ? <PanelLeft className="h-5 w-5" /> : <PanelTop className="h-5 w-5" />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{t('Change Nav Position')}</p>
-              </TooltipContent>
-            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}>
@@ -661,121 +688,87 @@ export default function MainLayout({
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <div className="text-sm text-foreground text-center font-semibold bg-muted p-2 rounded-lg shadow-inner">
-            <div className="hidden sm:block">{formattedDate}</div>
-            <div>{formattedTime}</div>
+          <div className="text-sm text-foreground text-center font-semibold bg-muted px-3 py-1.5 rounded-lg shadow-inner min-w-[140px] flex flex-col leading-tight">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">{formattedDate}</span>
+            <span className="text-lg font-bold">{formattedTime}</span>
           </div>
         </div>
       </header>
       <DndProvider backend={HTML5Backend}>
-        <Tabs value={activeTab} onValueChange={handleTabChange} orientation={navPosition === 'left' ? 'vertical' : 'horizontal'} className={cn("h-full", navPosition === 'top' ? 'flex flex-col' : 'flex')}>
-          <div className={cn("hidden md:flex justify-center border-b kitchen-tabs", navPosition === 'left' && "flex-col justify-start items-start border-b-0 border-r")}>
-            {renderNav()}
-          </div>
+        <Tabs value={activeTab} onValueChange={handleTabChange} className={cn("h-full flex", layoutMode === 'vertical' ? "flex-col" : "flex-row overflow-hidden")}>
+          {layoutMode === 'vertical' && (
+            <div className="hidden md:flex justify-center border-b shrink-0">
+              {renderNav()}
+            </div>
+          )}
+
+          {layoutMode === 'horizontal' && (
+            <div className="hidden md:flex flex-col border-r w-64 shrink-0 bg-muted/10 overflow-y-auto">
+              <div className="p-2">
+                {renderNav(true)}
+              </div>
+            </div>
+          )}
 
           <main ref={mainRef} className="flex-grow overflow-auto focus:outline-none" tabIndex={-1}>
-            <TabsContent value="pos" className="m-0 p-0 h-full">
-              <PosSystem
-                venueName={initialVenueName}
-                tables={tables}
-                orders={orders}
-                setOrders={setOrders}
-                updateTableStatus={updateTableStatus}
-                occupancyCount={occupancyCount}
-                activeOrder={activeOrder}
-                setActiveOrder={setActiveOrder}
-                orderItems={currentOrderItems}
-                setOrderItems={setCurrentOrderItems}
-                discount={discount}
-                setDiscount={setDiscount}
-                selectedTableId={selectedTableId}
-                setSelectedTableId={handleSelectTable}
-                clearCurrentOrder={clearCurrentOrder}
-                onOrderCreated={onOrderCreated}
-                showOccupancy={showOccupancy}
-                pendingOrders={pendingOrders}
-                setPendingOrders={setPendingOrders}
-                categoryColors={categoryColors}
-                setCategoryColors={setCategoryColors}
-                onViewTableDetails={handleViewTableDetails}
-                onEditOrder={handleEditOrderFromShortcut}
-                keyboardMode={keyboardMode}
-                setKeyboardMode={setKeyboardMode}
-                billHistory={initialBills}
-                setBillHistory={setBills}
-                kotPreference={initialKotPreference}
-                selectedOrderType={selectedOrderType}
-                setSelectedOrderType={setSelectedOrderType}
-                showTableDetailsOnPOS={showTableDetailsOnPOS}
-                showReservationTimeOnPOS={showReservationTimeOnPOS}
+            <TabsContent value="payments" className="m-0 p-0 h-full">
+              <PaymentSection
+                inventory={initialInventory}
+                setInventory={setInventory}
+                bills={initialBills}
+                setBills={setBills}
+                customers={initialCustomers}
+                setCustomers={setCustomers}
+                currency={initialCurrency}
+                venueDetails={venueDetails || null}
+                pendingBills={initialPendingBills}
+                setPendingBills={setPendingBills}
+                cartSession={cartSession}
+                setCartSession={setCartSession}
+                savedCarts={savedCarts}
+                setSavedCarts={setSavedCarts}
+              />
+            </TabsContent>
+            <TabsContent value="inventory" className="m-0 p-0 h-full">
+              <InventoryManagement
                 inventory={initialInventory}
                 setInventory={setInventory}
                 menu={initialMenu}
                 setMenu={setMenu}
-                onNavigate={handleTabChange}
-                customers={initialCustomers}
-                setCustomers={setCustomers}
+                vendors={initialVendors}
+                purchaseOrders={purchaseOrders}
+                setPurchaseOrders={setPurchaseOrders}
                 currency={initialCurrency}
+                expenses={initialExpenses}
+                setExpenses={setExpenses}
+                setVendors={setVendors}
               />
-            </TabsContent>
-            <TabsContent value="tables" className="m-0 p-0 h-full">
-              <TableManagement
-                tables={tables}
-                orders={orders}
-                billHistory={initialBills}
-                updateTableStatus={updateTableStatus}
-                updateTableDetails={updateTableDetails}
-                addTable={addTable}
-                removeLastTable={removeLastTable}
-                occupancyCount={occupancyCount}
-                onEditOrder={(order) => {
-                  setSelectedTableId(order.tableId ?? null);
-                  setActiveOrder(order);
-                  setCurrentOrderItems(order.items);
-                  setDiscount(0);
-                  setActiveTab('pos');
-                }}
-                onCreateOrder={handleCreateOrderFromTables}
-                onAcceptCustomerOrder={handleAcceptCustomerOrder}
-                showOccupancy={showOccupancy}
-                setShowOccupancy={setShowOccupancy}
-                initialSelectedTableId={initialTableForManagement}
-                showTableDetailsOnPOS={showTableDetailsOnPOS}
-                setShowTableDetailsOnPOS={setShowTableDetailsOnPOS}
-                showReservationTimeOnPOS={showReservationTimeOnPOS}
-                setShowReservationTimeOnPOS={setShowReservationTimeOnPOS}
-                customerOrders={customerOrders}
-                onOrderCreated={onOrderCreated}
-                customers={initialCustomers}
-                setCustomers={setCustomers}
-                currency={initialCurrency}
-              />
-            </TabsContent>
-            <TabsContent value="kitchen" className="m-0 p-0 h-full">
-              <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
-                <div className="h-full border-b lg:border-b-0 lg:border-r">
-                  <KitchenOrders orders={orders} setOrders={setOrders} />
-                </div>
-                <div className="h-full">
-                  <InventoryManagement
-                    inventory={initialInventory}
-                    setInventory={setInventory}
-                    menu={initialMenu}
-                    setMenu={setMenu}
-                  />
-                </div>
-              </div>
             </TabsContent>
             <TabsContent value="customers" className="m-0 p-0 h-full">
               <CustomerManagement
                 billHistory={initialBills}
-                tables={tables}
                 customers={initialCustomers}
                 setCustomers={setCustomers}
                 pendingBills={initialPendingBills}
-                eventBookings={initialEventBookings}
-                setEventBookings={setEventBookings}
+                setPendingBills={setPendingBills}
+                customerCreditLimit={customerCreditLimit}
                 currency={initialCurrency}
+              />
+            </TabsContent>
+            <TabsContent value="vendors" className="m-0 p-0 h-full">
+              <VendorManagement
+                vendors={initialVendors}
+                setVendors={setVendors}
+                pendingBills={initialPendingBills}
+                setPendingBills={setPendingBills}
+                vendorCreditLimit={vendorCreditLimit}
+                expenses={initialExpenses}
+                setExpenses={setExpenses}
+                inventory={initialInventory}
+                setInventory={setInventory}
+                currency={initialCurrency}
+                purchaseOrders={purchaseOrders}
+                setPurchaseOrders={setPurchaseOrders}
               />
             </TabsContent>
             <TabsContent value="expenses" className="m-0 p-0 h-full">
@@ -784,14 +777,13 @@ export default function MainLayout({
                 setExpenses={setExpenses}
                 vendors={initialVendors}
                 setVendors={setVendors}
-                pendingBills={initialPendingBills}
-                setPendingBills={setPendingBills}
-                customers={initialCustomers}
-                customerCreditLimit={customerCreditLimit}
-                vendorCreditLimit={vendorCreditLimit}
                 currency={initialCurrency}
+                inventory={initialInventory}
+                purchaseOrders={purchaseOrders}
+                setPurchaseOrders={setPurchaseOrders}
               />
             </TabsContent>
+
             <TabsContent value="staff" className="m-0 p-0 h-full">
               <StaffManagement
                 employees={initialEmployees}
@@ -809,32 +801,78 @@ export default function MainLayout({
                 employees={initialEmployees}
                 setEmployees={setEmployees}
                 expenses={initialExpenses}
+                setExpenses={setExpenses}
                 inventory={initialInventory}
                 setInventory={setInventory}
+                purchaseOrders={purchaseOrders}
+                setPurchaseOrders={setPurchaseOrders}
+                vendors={initialVendors}
+                setVendors={setVendors}
                 customerCreditLimit={customerCreditLimit}
                 setCustomerCreditLimit={setCustomerCreditLimit}
                 vendorCreditLimit={vendorCreditLimit}
                 setVendorCreditLimit={setVendorCreditLimit}
                 onRerunSetup={() => setShowSetupWizard(true)}
-                kotPreference={initialKotPreference}
-                setKotPreference={setKotPreference}
                 menu={initialMenu}
+                setMenu={setMenu}
                 venueName={initialVenueName}
                 setVenueName={setVenueName}
                 currency={initialCurrency}
                 setCurrency={setCurrency}
-              />
-            </TabsContent>
+                venueDetails={venueDetails || null}
+                setVenueDetails={setVenueDetails}
+              />            </TabsContent>
           </main>
         </Tabs>
       </DndProvider>
       <HelpDialog isOpen={isHelpOpen} onOpenChange={setIsHelpOpen} />
-      <IncomingOrdersDialog
-        isOpen={isIncomingOrderDialogOpen}
-        onOpenChange={setIsIncomingOrderDialogOpen}
-        customerOrders={customerOrders}
-        onAccept={handleAcceptCustomerOrder}
-      />
+
+      <AlertDialog open={!!alertingItem} onOpenChange={(open) => !open && setAlertingItem(null)}>
+        <AlertDialogContent className="rounded-[2.5rem] border-none shadow-2xl p-8">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-6 top-6 rounded-full opacity-50 hover:bg-muted/50 hover:opacity-100 transition-all"
+            onClick={() => setAlertingItem(null)}
+          >
+            <X className="h-6 w-6" />
+          </Button>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-3xl font-black tracking-tight flex items-center gap-3">
+              <AlertTriangle className="h-8 w-8 text-orange-500" />
+              {t("Stock Depletion Warning")}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-lg leading-relaxed pt-2">
+              {alertingItem?.threshold === '50%' ? t("Your stock is now half depleted") :
+                alertingItem?.threshold === '25%' ? t("Your stock is now 25% remaining") :
+                  alertingItem?.threshold === '10u' ? `${t("Only")} 10 ${alertingItem?.item.unit} ${t("remaining")}` :
+                    alertingItem?.threshold === '5u' ? `${t("Only")} 5 ${alertingItem?.item.unit} ${t("remaining")}` :
+                      alertingItem?.threshold === '0u' ? t("Out of Stock") :
+                        t("Low Stock Alert")}
+              : <span className="font-black text-foreground underline decoration-primary/30">"{alertingItem?.item.name}"</span>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col sm:flex-row gap-3 mt-6">
+            <AlertDialogCancel className="h-12 px-6 rounded-2xl font-bold text-base border-border/60 hover:bg-muted transition-all order-3 sm:order-1 flex-1">
+              {t("Ignore")}
+            </AlertDialogCancel>
+            <Button
+              onClick={() => alertingItem && handleAddToList(alertingItem.item)}
+              className="h-12 px-6 rounded-2xl font-black text-base bg-secondary hover:bg-secondary/90 text-secondary-foreground shadow-lg transition-all order-2 sm:order-2 flex-1"
+            >
+              <List className="mr-2 h-4 w-4" />
+              {t("Add to list")}
+            </Button>
+            <AlertDialogAction
+              onClick={() => alertingItem && handleCreateImmediateOrder(alertingItem.item)}
+              className="h-12 px-4 rounded-2xl font-black text-sm bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 transition-all order-1 sm:order-3 flex-[1.2] whitespace-nowrap"
+            >
+              <Truck className="mr-2 h-4 w-4" />
+              {t("Send order to vendor")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

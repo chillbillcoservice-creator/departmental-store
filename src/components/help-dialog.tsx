@@ -10,7 +10,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Utensils, LayoutGrid, Soup, Users, Shield, Receipt, Users2, HelpCircle, Zap, MousePointerClick, Keyboard, FileInput, Languages, Camera } from 'lucide-react';
+import { Utensils, LayoutGrid, Soup, Users, Shield, Receipt, Users2, HelpCircle, Zap, MousePointerClick, Keyboard, FileInput, Languages, Camera, Search, CreditCard, Package, Truck } from 'lucide-react';
 import { ScrollArea } from './ui/scroll-area';
 import { Separator } from './ui/separator';
 
@@ -21,67 +21,57 @@ interface HelpDialogProps {
 
 const quickTips = [
   {
-    icon: Keyboard,
-    title: 'Keyboard Shortcuts',
-    description: 'Use Enter and Escape to navigate between table selection, order entry, and confirmation modes in the POS for faster checkout.',
+    icon: Search, // Was Keyboard, changing to Search which is imported
+    title: 'Smart Search',
+    description: 'Type an item name, code, or scan a barcode to find it instantly in the POS.',
   },
   {
     icon: MousePointerClick,
-    title: 'Easy Mode',
-    description: 'Toggle on "Easy Mode" in the POS to add items to an order with a single click. You can also drag & drop items onto tables.',
+    title: 'Quick Edit',
+    description: 'In the cart, you can click directly on the quantity number to type 5, 10, or any amount.',
   },
   {
-    icon: FileInput,
-    title: 'Item Codes',
-    description: 'Type an item\'s short code directly into the search bar and press Enter to instantly add it to the current order.',
+    icon: Languages,
+    title: 'Language',
+    description: 'You can switch the entire app language (like English or Hindi) from the settings anytime.',
   }
 ];
 
 const features = [
   {
-    icon: Utensils,
-    title: 'Main POS (Point of Sale)',
-    description: 'This is where you take orders. You can see the menu, add items to an order, apply discounts, and process payments. 🍽️',
+    icon: CreditCard, // Using CreditCard instead of Utensils for POS
+    title: 'Main / Billing',
+    description: 'Create bills quickly. Select items, add quantity, apply discounts, and accept payments (Cash/Online).',
   },
   {
-    icon: LayoutGrid,
-    title: 'Tables & QR Codes',
-    description: 'Manage your restaurant layout and see which tables are available. You can also generate special QR codes for each table. When customers scan these codes with their phones, they can see your menu and place orders directly! 📱',
-  },
-  {
-    icon: Soup,
-    title: 'Kitchen & Inventory',
-    description: 'The kitchen screen shows active orders for the chefs. You can configure how orders (KOTs) are printed—either as a single combined ticket, or as separate tickets for different sections like the kitchen and bar. The inventory section helps you track stock levels. 📦',
-  },
-  {
-    icon: Languages,
-    title: 'Language Support',
-    description: 'The app works in many languages, including English and Hindi. You can easily switch your preferred language from the settings to make it easier for you and your staff to use. 🌐',
-  },
-  {
-    icon: Camera,
-    title: 'AI Menu Scanner',
-    description: 'Adding your items is easy! Instead of typing everything, you can just take a photo of your printed menu, and our AI will automatically read the names and prices to set up your digital menu in seconds. 📸',
-  },
-  {
-    icon: Users2,
-    title: 'Customers & CRM',
-    description: 'Keep a list of your customers. See how often they visit and what they like to order, so you can provide them with a better experience next time. 👤',
+    icon: Package, // Package for Inventory
+    title: 'Inventory',
+    description: 'Manage your stock. Add new items, set prices, and see what is running low or out of stock.',
   },
   {
     icon: Receipt,
-    title: 'Expenses & Business',
-    description: 'Track all your business costs, like rent and electricity. You can also manage payments you owe to suppliers or money you need to collect from customers. 💰',
+    title: 'Expenses',
+    description: 'Track daily shop expenses. Note down costs like tea, electricity, or maintenance to know your real profit.',
+  },
+  {
+    icon: Users2,
+    title: 'Customers',
+    description: 'Save customer details. Track their purchase history and manage any pending payments (Udhaar).',
+  },
+  {
+    icon: Truck,
+    title: 'Vendors',
+    description: 'Manage your suppliers. Keep track of what you bought and how much you owe them.',
   },
   {
     icon: Users,
-    title: 'Staff Management',
-    description: 'Keep track of your team, their roles (like Chef or Manager), their attendance, and any salary advances they take. 🧑‍🍳',
+    title: 'Staff',
+    description: 'Manage your team. valid Mark daily attendance, track working days, and manage salary advances.',
   },
   {
     icon: Shield,
-    title: 'Admin Control',
-    description: 'The "Admin" section is your main dashboard. View daily sales reports, check top-performing items, and change how your shop works. ⚙️',
+    title: 'Admin Reports',
+    description: 'The Owner\'s simplified dashboard. View total sales, profit, and business performance at a glance.',
   },
 ];
 

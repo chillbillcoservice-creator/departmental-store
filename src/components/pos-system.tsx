@@ -186,6 +186,70 @@ const TableDropTarget = ({ table, occupancyCount, handleSelectTable, children, o
   );
 }
 
+// Quantity Input Component with local state for proper typing
+function QuantityInput({
+  itemName,
+  quantity,
+  updateQuantity
+}: {
+  itemName: string;
+  quantity: number;
+  updateQuantity: (name: string, qty: number) => void;
+}) {
+  const [localValue, setLocalValue] = useState(quantity.toString());
+
+  useEffect(() => {
+    setLocalValue(quantity.toString());
+  }, [quantity]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalValue(e.target.value);
+  };
+
+  const handleBlur = () => {
+    const newQty = parseInt(localValue) || 1;
+    if (newQty !== quantity) {
+      updateQuantity(itemName, newQty);
+    }
+    setLocalValue(newQty.toString());
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const newQty = parseInt(localValue) || 1;
+      updateQuantity(itemName, newQty);
+      setLocalValue(newQty.toString());
+      e.currentTarget.blur();
+    }
+  };
+
+  const handleFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    // Use setTimeout to ensure selection happens after focus
+    setTimeout(() => {
+      e.target.select();
+    }, 0);
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLInputElement>) => {
+    e.currentTarget.select();
+  };
+
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      value={localValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onFocus={handleFocus}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
+      className="w-14 h-7 text-center font-bold p-0"
+    />
+  );
+}
+
 function OrderPanel({
   orderItems,
   handleDropOnOrder,
@@ -337,7 +401,7 @@ function OrderPanel({
               <Edit className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.name, item.quantity - 1)}><Minus className="h-4 w-4" /></Button>
-            <span className="w-8 text-center font-bold">{item.quantity}</span>
+            <QuantityInput itemName={item.name} quantity={item.quantity} updateQuantity={updateQuantity} />
             <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(item.name, item.quantity + 1)}><Plus className="h-4 w-4" /></Button>
             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeFromOrder(item.name)}><X className="h-4 w-4" /></Button>
           </div>
@@ -1002,6 +1066,36 @@ export default function PosSystem({
     const itemWithCategory = allMenuItems.find(i => i.name === item.name);
     if (!itemWithCategory) return;
 
+    // Check if item exists in inventory and has sufficient stock
+    const inventoryItem = inventory.find(inv => inv.name === item.name);
+    if (inventoryItem) {
+      const currentStock = inventoryItem.stock || 0;
+
+      // Calculate how much is already in the cart
+      const existingCartItem = orderItems.find(orderItem => orderItem.name === item.name);
+      const alreadyInCart = existingCartItem ? existingCartItem.quantity : 0;
+      const totalNeeded = alreadyInCart + quantity;
+
+      // Check if we have enough stock
+      if (currentStock < totalNeeded) {
+        toast({
+          title: "⚠️ Insufficient Stock",
+          description: `Only ${currentStock} units of ${item.name} available in stock. ${alreadyInCart > 0 ? `(${alreadyInCart} already in cart)` : ''}`,
+          variant: "destructive",
+          duration: 4000,
+        });
+        return;
+      }
+
+      // Deduct from inventory
+      const updatedInventory = inventory.map((inv: InventoryItem) =>
+        inv.name === item.name
+          ? { ...inv, stock: inv.stock - quantity }
+          : inv
+      );
+      setInventory(updatedInventory);
+    }
+
     setOrderItems((prevItems: OrderItem[]) => {
       const existingItem = prevItems.find(orderItem => orderItem.name === item.name);
       if (existingItem) {
@@ -1014,7 +1108,7 @@ export default function PosSystem({
         return [...prevItems, { ...itemWithCategory, quantity } as OrderItem];
       }
     });
-  }, [setOrderItems, allMenuItems]);
+  }, [setOrderItems, allMenuItems, inventory, setInventory, orderItems, toast]);
 
   const handleItemClick = (item: MenuItem) => {
     if (easyMode) {

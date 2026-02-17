@@ -1,12 +1,12 @@
 
 'use client';
 
-import type { MenuCategory, InventoryItem, Employee, Bill, Expense, Customer, Vendor, PendingBill, KOTPreference, Attendance, Advance, EventBooking, VenueDetails, OwnerDetails, SetupData } from "@/lib/types";
+import type { MenuCategory, InventoryItem, Employee, Bill, Expense, Customer, Vendor, PendingBill, Attendance, Advance, VenueDetails, OwnerDetails, SetupData } from "@/lib/types";
 import MainLayout from "./main-layout";
 import SetupWizard from "./setup-wizard";
 import { useState, useEffect } from "react";
 import { useFirestore } from '@/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { LanguageProvider } from "@/contexts/language-context";
 
 interface AppEntryProps {
@@ -19,7 +19,6 @@ interface AppEntryProps {
   initialVendors: Vendor[];
   initialPendingBills: PendingBill[];
   initialVenueName: string;
-  initialKotPreference: KOTPreference;
   initialAttendance: Attendance[];
   initialAdvances: Advance[];
 }
@@ -72,7 +71,6 @@ export default function AppEntry({
   initialVendors,
   initialPendingBills,
   initialVenueName,
-  initialKotPreference,
   initialAttendance,
   initialAdvances
 }: AppEntryProps) {
@@ -87,10 +85,8 @@ export default function AppEntry({
   const [vendors, setVendors] = useLocalStorageState<Vendor[]>('vendors', initialVendors);
   const [pendingBills, setPendingBills] = useLocalStorageState<PendingBill[]>('pendingBills', initialPendingBills);
   const [venueName, setVenueName] = useLocalStorageState<string>('venueName', initialVenueName);
-  const [kotPreference, setKotPreference] = useLocalStorageState<KOTPreference>('kotPreference', initialKotPreference);
   const [attendance, setAttendance] = useLocalStorageState<Attendance[]>('attendance', initialAttendance);
   const [advances, setAdvances] = useLocalStorageState<Advance[]>('advances', initialAdvances);
-  const [eventBookings, setEventBookings] = useLocalStorageState<EventBooking[]>('eventBookings', []);
 
   // New state for currency and setup status
   const [currency, setCurrency] = useLocalStorageState<string>('currency', 'Rs.');
@@ -120,7 +116,22 @@ export default function AppEntry({
         console.error("Error fetching settings from Firestore:", e);
       }
     };
+    const fetchPendingBills = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "pendingBills"));
+        const fetchedPendingBills: PendingBill[] = [];
+        querySnapshot.forEach((doc) => {
+          fetchedPendingBills.push(doc.data() as PendingBill);
+        });
+        if (fetchedPendingBills.length > 0) {
+          setPendingBills(fetchedPendingBills);
+        }
+      } catch (e) {
+        console.error("Error fetching pendingBills from Firestore:", e);
+      }
+    };
     fetchSettings();
+    fetchPendingBills();
   }, [db]);
 
   // Check if it's the very first run (no venue name stored vs initial prop)
@@ -207,10 +218,8 @@ export default function AppEntry({
         initialVendors={vendors}
         initialPendingBills={pendingBills}
         initialVenueName={venueName}
-        initialKotPreference={kotPreference}
         initialAttendance={attendance}
         initialAdvances={advances}
-        initialEventBookings={eventBookings}
         initialCurrency={currency || 'Rs.'}
         setMenu={setMenu}
         setInventory={setInventory}
@@ -223,12 +232,11 @@ export default function AppEntry({
         setAttendance={setAttendance}
         setAdvances={setAdvances}
         setVenueName={setVenueName}
-        setKotPreference={setKotPreference}
-        setEventBookings={setEventBookings}
         setCurrency={setCurrency} // Pass setter
         setLanguage={setLanguage}
         initialLanguage={language}
         venueDetails={venueDetails}
+        setVenueDetails={setVenueDetails}
         ownerDetails={ownerDetails}
       />
     </LanguageProvider>
