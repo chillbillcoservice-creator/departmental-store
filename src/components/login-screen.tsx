@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { Employee } from "@/lib/types";
@@ -386,7 +386,7 @@ export default function LoginScreen({
                                             style={{ background: "rgba(255,107,107,0.08)", border: `1px solid rgba(${T.coralRgb},0.2)` }}>
                                             <User size={24} className="mx-auto mb-3" style={{ color: T.coral }} />
                                             <div className="text-sm font-black" style={{ color: T.text }}>Staff Login</div>
-                                            <div className="text-[10px] mt-1" style={{ color: T.textMute }}>PIN access</div>
+                                            <div className="text-[10px] mt-1" style={{ color: T.textMute }}>PIN access (0000)</div>
                                         </button>
                                         <button onClick={handleGoogleAuth}
                                             className="p-6 rounded-xl text-center transition-all hover:scale-[1.02] cursor-pointer"
@@ -396,6 +396,17 @@ export default function LoginScreen({
                                             <div className="text-[10px] mt-1" style={{ color: T.textMute }}>Google SSO</div>
                                         </button>
                                     </div>
+                                    <button
+                                        onClick={() => {
+                                            const ownerEmp = employees.find(e => e.role === 'Owner') || employees[0];
+                                            if (ownerEmp) onLogin(ownerEmp);
+                                        }}
+                                        className="w-full py-3.5 px-4 rounded-xl text-center font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all hover:opacity-90 shadow-md text-white"
+                                        style={{ background: T.grad }}
+                                    >
+                                        <Zap size={15} className="text-yellow-300" />
+                                        ⚡ 1-Click Instant Login (Store Owner)
+                                    </button>
                                 </div>
                             )}
 
@@ -522,6 +533,17 @@ export default function LoginScreen({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => {
+                                const ownerEmp = employees.find(e => e.role === 'Owner') || employees[0];
+                                if (ownerEmp) onLogin(ownerEmp);
+                            }}
+                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-white transition-all shadow hover:opacity-90 cursor-pointer"
+                            style={{ background: "linear-gradient(135deg, #10b981, #059669)" }}
+                        >
+                            <Zap size={13} className="text-yellow-300" />
+                            <span>⚡ Quick Login</span>
+                        </button>
                         <ThemeToggle />
                         <button onClick={() => openAuthModal("landing")}
                             className="px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-200"

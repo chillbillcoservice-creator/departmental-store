@@ -78,9 +78,49 @@ export default function AppEntry({
 }: AppEntryProps) {
   const db = useFirestore();
 
+  const DEFAULT_STAFF: Employee[] = [
+    {
+      id: 'owner-1',
+      name: 'Store Owner',
+      role: 'Owner',
+      salary: 0,
+      color: '#f97316',
+      loginCode: '0000',
+      username: 'owner@store',
+      password: 'password',
+      allowedTabs: ['all'],
+    },
+    {
+      id: 'emp-1',
+      name: 'Manager',
+      role: 'Manager',
+      salary: 25000,
+      color: '#3b82f6',
+      loginCode: '1234',
+      username: 'manager@store',
+      allowedTabs: ['all'],
+    },
+    {
+      id: 'emp-2',
+      name: 'Cashier Staff',
+      role: 'Staff',
+      salary: 15000,
+      color: '#10b981',
+      loginCode: '1111',
+      username: 'cashier@store',
+      allowedTabs: ['payments', 'inventory', 'customers'],
+    },
+  ];
+
   const [menu, setMenu] = useLocalStorageState<MenuCategory[]>('menu', initialMenu);
   const [inventory, setInventory] = useLocalStorageState<InventoryItem[]>('inventory', initialInventory);
-  const [employees, setEmployees] = useLocalStorageState<Employee[]>('employees', initialEmployees);
+  const [employees, setEmployees] = useLocalStorageState<Employee[]>('employees', initialEmployees.length > 0 ? initialEmployees : DEFAULT_STAFF);
+
+  useEffect(() => {
+    if (employees.length === 0) {
+      setEmployees(DEFAULT_STAFF);
+    }
+  }, [employees]);
   const [bills, setBills] = useLocalStorageState<Bill[]>('bills', initialBills);
   const [expenses, setExpenses] = useLocalStorageState<Expense[]>('expenses', initialExpenses);
   const [customers, setCustomers] = useLocalStorageState<Customer[]>('customers', initialCustomers);
