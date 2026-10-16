@@ -31,6 +31,7 @@ import { useFirestore } from '@/firebase';
 import { writeBatch, doc, setDoc } from 'firebase/firestore';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { useThemeColor } from '@/contexts/theme-color-context';
+import StaffLogin from './staff-login';
 import type { VenueDetails, OwnerDetails, PurchaseOrder, PurchaseOrderItem } from "@/lib/types";
 
 interface MainLayoutProps {
@@ -38,6 +39,7 @@ interface MainLayoutProps {
   initialInventory: InventoryItem[];
   initialEmployees: Employee[];
   initialBills: Bill[];
+  initialUser?: Employee | null;
   initialExpenses: Expense[];
   initialCustomers: Customer[];
   initialVendors: Vendor[];
@@ -93,9 +95,12 @@ export default function MainLayout({
   venueDetails,
   setVenueDetails,
   ownerDetails,
+  initialUser,
 }: MainLayoutProps) {
   const { t } = useLanguage();
   const db = useFirestore();
+  const [currentUser, setCurrentUser] = useState<Employee | null>(initialUser ?? (initialEmployees[0] || null));
+  const [isStaffLoginOpen, setIsStaffLoginOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('payments');
   const [customerCreditLimit, setCustomerCreditLimit] = useState(10000);
   const [vendorCreditLimit, setVendorCreditLimit] = useState(50000);
@@ -692,6 +697,27 @@ export default function MainLayout({
             <span className="text-xs text-muted-foreground uppercase tracking-wider">{formattedDate}</span>
             <span className="text-lg font-bold">{formattedTime}</span>
           </div>
+
+          {currentUser && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsStaffLoginOpen(true)}
+              className="flex items-center gap-2 border-primary/30 hover:border-primary shadow-sm rounded-xl px-3 py-1.5 h-auto"
+              title={t('Switch Profile')}
+            >
+              <div 
+                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow"
+                style={{ backgroundColor: currentUser.color || '#3b82f6' }}
+              >
+                {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+              </div>
+              <div className="flex flex-col text-left leading-tight hidden sm:flex">
+                <span className="font-bold text-xs">{currentUser.name}</span>
+                <span className="text-[10px] text-muted-foreground">{currentUser.role}</span>
+              </div>
+            </Button>
+          )}
         </div>
       </header>
       <DndProvider backend={HTML5Backend}>
@@ -873,6 +899,12 @@ export default function MainLayout({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <StaffLogin
+        isOpen={isStaffLoginOpen}
+        onOpenChange={setIsStaffLoginOpen}
+        employees={initialEmployees}
+        onLogin={(emp) => setCurrentUser(emp)}
+      />
     </div>
   );
 }

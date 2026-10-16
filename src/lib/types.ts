@@ -108,6 +108,10 @@ export interface Employee {
   mobile?: string;
   govtId?: string;
   email?: string;
+  allowedTabs?: string[];
+  password?: string;
+  username?: string;
+  loginCode?: string;
 }
 
 export interface Advance {
@@ -352,6 +356,8 @@ export interface OwnerDetails {
   email: string;
   address?: string; // Added to support setup wizard inputs
   language?: string;
+  loginCode?: string;
+  password?: string;
 }
 
 export interface SetupData {
