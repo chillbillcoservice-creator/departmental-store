@@ -39,6 +39,8 @@ import {
   Landmark,
   ChevronDown,
   ChevronUp,
+  Monitor,
+  Smartphone,
 } from 'lucide-react';
 import { useThemeColor } from '@/contexts/theme-color-context';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -49,6 +51,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import SalesReport from './sales-report';
 import InventoryManagement from './inventory-management';
 import BillHistory from './bill-history';
+import { Gstr1ReportDialog } from './gstr1-report-dialog';
 import type { Bill, Employee, OrderItem, Expense, Vendor, InventoryItem, MenuCategory, VenueDetails, PurchaseOrder } from '@/lib/types';
 import { generateAndSendReport } from '@/ai/flows/generate-report';
 import { useToast } from '@/hooks/use-toast';
@@ -142,6 +145,82 @@ export default function AdminDashboard({
   const { toast } = useToast();
   const db = useFirestore();
   const [isExporting, setIsExporting] = useState(false);
+  const [isGstr1Open, setIsGstr1Open] = useState(false);
+  const [isInstallDialogOpen, setIsInstallDialogOpen] = useState(false);
+  const [canInstallNative, setCanInstallNative] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
+
+  // App is exclusively tailored for Indian stores - enforce currency lock to 'Rs.'
+  useEffect(() => {
+    if (currency !== 'Rs.' && currency !== '₹') {
+      setCurrency('Rs.');
+      try {
+        localStorage.setItem('currency', 'Rs.');
+      } catch (e) {}
+    }
+  }, [currency, setCurrency]);
+
+  // Track PWA install status & native prompt
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const checkStandalone = () => {
+        const standalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone === true;
+        setIsStandalone(standalone);
+      };
+      checkStandalone();
+
+      if ((window as any).deferredPrompt) {
+        setCanInstallNative(true);
+      }
+
+      const onCanInstall = () => setCanInstallNative(true);
+      const onInstalled = () => {
+        setCanInstallNative(false);
+        setIsStandalone(true);
+      };
+
+      window.addEventListener('chillbill:caninstall', onCanInstall);
+      window.addEventListener('chillbill:installed', onInstalled);
+
+      return () => {
+        window.removeEventListener('chillbill:caninstall', onCanInstall);
+        window.removeEventListener('chillbill:installed', onInstalled);
+      };
+    }
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (typeof window === 'undefined') return;
+
+    if (isStandalone) {
+      toast({
+        title: t("Already Installed"),
+        description: t("ChillBill POS is already running as an installed standalone app."),
+      });
+      return;
+    }
+
+    const promptEvent = (window as any).deferredPrompt;
+    if (promptEvent) {
+      try {
+        await promptEvent.prompt();
+        const choice = await promptEvent.userChoice;
+        if (choice?.outcome === 'accepted') {
+          toast({
+            title: t("Installing App"),
+            description: t("ChillBill POS is being installed to your device / desktop."),
+          });
+        }
+        (window as any).deferredPrompt = null;
+        setCanInstallNative(false);
+        return;
+      } catch (err) {
+        console.error("Install prompt error:", err);
+      }
+    }
+
+    setIsInstallDialogOpen(true);
+  };
 
   const [selectedPOVendor, setSelectedPOVendor] = useState<string | null>(null);
   const [poItems, setPoItems] = useState<any[]>([]);
@@ -281,7 +360,7 @@ export default function AdminDashboard({
 
     const input = {
       reportType,
-      recipientEmail: 'upandabove.bir@gmail.com',
+      recipientEmail: venueDetails?.email || 'store@example.com',
       currency: currency,
     };
 
@@ -1027,6 +1106,24 @@ export default function AdminDashboard({
                   </Tabs>
                 </DialogContent>
               </Dialog>
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-20 text-base flex-col gap-2 bg-emerald-500/5 border-emerald-500/20 hover:bg-emerald-500/10 hover:border-emerald-500 text-emerald-700 dark:text-emerald-300 transition-all shadow-sm"
+                onClick={() => setIsGstr1Open(true)}
+              >
+                <Landmark className="h-6 w-6 text-emerald-600" />
+                <span className="font-bold">GSTR-1 Tax Report</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-20 text-base flex-col gap-2 bg-gradient-to-br from-indigo-500/10 to-blue-500/10 border-indigo-500/30 hover:border-indigo-500 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all shadow-sm font-semibold"
+                onClick={handleInstallApp}
+              >
+                <Download className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
+                <span className="font-bold">{t('Install App')}</span>
+              </Button>
               <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2 col-span-full mt-2 bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all" onClick={onRerunSetup}>
                 <Repeat className="h-6 w-6" />
                 <span>{t('Rerun Setup Wizard')}</span>
@@ -1042,6 +1139,34 @@ export default function AdminDashboard({
               <CardTitle>{t('Settings')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+
+              {/* Install App Banner in Settings */}
+              <div className="p-4 rounded-xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/10 via-primary/5 to-transparent space-y-3 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Download className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                      <h4 className="text-sm font-bold">{t('Install ChillBill POS App')}</h4>
+                      {isStandalone && (
+                        <span className="text-[10px] bg-green-500/20 text-green-700 dark:text-green-300 font-bold px-2 py-0.5 rounded-full">
+                          Installed
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Install as standalone desktop or mobile application for 1-click launch and instant access.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleInstallApp}
+                    size="sm"
+                    className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-sm"
+                  >
+                    <Download className="h-4 w-4 mr-1.5" />
+                    {isStandalone ? t('App Info') : t('Install App')}
+                  </Button>
+                </div>
+              </div>
 
               <div className="space-y-4 pt-4">
                 <CardTitle className="text-base flex items-center gap-2"><Settings /> {t('Bill Print Settings')}</CardTitle>
@@ -1110,6 +1235,160 @@ export default function AdminDashboard({
               <Separator />
               <div className="space-y-4 pt-4">
                 <CardTitle className="text-base flex items-center gap-2"><CreditCard /> {t('Financial Settings')}</CardTitle>
+                <div className="space-y-2">
+                  <Label htmlFor="store-gstin">Store GSTIN (15-Digit GST Number)</Label>
+                  <Input
+                    id="store-gstin"
+                    value={venueDetails?.gstin || ''}
+                    onChange={(e) => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, gstin: e.target.value.toUpperCase() });
+                      }
+                    }}
+                    placeholder="e.g., 07AAAAA0000A1Z5"
+                    className="font-mono uppercase text-sm"
+                    maxLength={15}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="store-state">Store State & State Code</Label>
+                  <Input
+                    id="store-state"
+                    value={venueDetails?.state || ''}
+                    onChange={(e) => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, state: e.target.value });
+                      }
+                    }}
+                    placeholder="e.g., 07 - Delhi"
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="store-fssai">FSSAI License No. (Supermarket/Grocery)</Label>
+                  <Input
+                    id="store-fssai"
+                    value={venueDetails?.fssaiNumber || ''}
+                    onChange={(e) => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, fssaiNumber: e.target.value });
+                      }
+                    }}
+                    placeholder="e.g., 10020011000123"
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-black uppercase tracking-wider text-muted-foreground">UPI Payment Verification Mode</Label>
+                  <RadioGroup
+                    value={venueDetails?.upiMode || 'standee'}
+                    onValueChange={(val: 'standee' | 'screen') => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, upiMode: val });
+                      }
+                    }}
+                    className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                  >
+                    <label
+                      htmlFor="admin-mode-standee"
+                      className={cn(
+                        "flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all",
+                        (venueDetails?.upiMode || 'standee') === 'standee' ? "border-primary bg-primary/5" : "border-border/60"
+                      )}
+                    >
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-xs block">Counter QR Standee (Default)</span>
+                        <span className="text-[10px] text-muted-foreground block">Customer scans your paper standee & types amount</span>
+                      </div>
+                      <RadioGroupItem value="standee" id="admin-mode-standee" />
+                    </label>
+
+                    <label
+                      htmlFor="admin-mode-screen"
+                      className={cn(
+                        "flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all",
+                        venueDetails?.upiMode === 'screen' ? "border-primary bg-primary/5" : "border-border/60"
+                      )}
+                    >
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-xs block">Dynamic On-Screen QR</span>
+                        <span className="text-[10px] text-muted-foreground block">Pops up dynamic QR on screen with amount locked</span>
+                      </div>
+                      <RadioGroupItem value="screen" id="admin-mode-screen" />
+                    </label>
+                  </RadioGroup>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="store-upi-id">Store UPI ID / VPA (For Dynamic QR & Auto-Detection)</Label>
+                  <Input
+                    id="store-upi-id"
+                    value={venueDetails?.upiId || ''}
+                    onChange={(e) => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, upiId: e.target.value.trim() });
+                      }
+                    }}
+                    placeholder="e.g., storename@icici or 9876543210@paytm"
+                    className="font-mono text-sm"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Accept payments via GPay, PhonePe, Paytm, BHIM. All customer payments route directly to this UPI address.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="store-upi-merchant">Merchant Business Name (Displayed in UPI Apps)</Label>
+                  <Input
+                    id="store-upi-merchant"
+                    value={venueDetails?.upiMerchantName || ''}
+                    onChange={(e) => {
+                      if (venueDetails) {
+                        setVenueDetails({ ...venueDetails, upiMerchantName: e.target.value });
+                      }
+                    }}
+                    placeholder={venueName || "e.g., Apna Departmental Store"}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-3 p-3 bg-muted/40 rounded-xl border border-border/60">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label htmlFor="soundbox-toggle" className="text-xs font-bold uppercase tracking-wider">In-Software Soundbox (Audio & Voice)</Label>
+                      <p className="text-[11px] text-muted-foreground">
+                        Plays a cash chime and speaks the received amount aloud through store speakers without extra hardware.
+                      </p>
+                    </div>
+                    <Switch
+                      id="soundbox-toggle"
+                      checked={venueDetails?.upiSoundboxEnabled ?? true}
+                      onCheckedChange={(checked) => {
+                        if (venueDetails) {
+                          setVenueDetails({ ...venueDetails, upiSoundboxEnabled: checked });
+                        }
+                      }}
+                    />
+                  </div>
+                  {(venueDetails?.upiSoundboxEnabled ?? true) && (
+                    <div className="space-y-1.5 pt-1 border-t border-border/40">
+                      <Label htmlFor="soundbox-voice" className="text-xs font-semibold">Soundbox Voice Language</Label>
+                      <Select
+                        value={venueDetails?.upiSoundboxVoice || 'en'}
+                        onValueChange={(val: 'en' | 'hi') => {
+                          if (venueDetails) {
+                            setVenueDetails({ ...venueDetails, upiSoundboxVoice: val });
+                          }
+                        }}
+                      >
+                        <SelectTrigger id="soundbox-voice" className="h-9 text-xs">
+                          <SelectValue placeholder="Select Voice Language" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="en">English ("Payment of Rs. amount received successfully via UPI")</SelectItem>
+                          <SelectItem value="hi">Hindi ("UPI par amount rupaye prapt hue")</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="customer-limit">{t('Customer Credit Limit')} ({currency})</Label>
                   <Input
@@ -1272,6 +1551,79 @@ export default function AdminDashboard({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={isInstallDialogOpen} onOpenChange={setIsInstallDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+              <Download className="h-5 w-5 text-indigo-600" />
+              {t('Install ChillBill POS App')}
+            </DialogTitle>
+            <DialogDescription>
+              {t('Run ChillBill POS directly on your Windows PC, Mac, Android, or iPhone/iPad just like a native app.')}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {canInstallNative && (
+              <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-xl flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-bold text-indigo-900 dark:text-indigo-200">{t('1-Click Direct Install Ready')}</p>
+                  <p className="text-xs text-indigo-700 dark:text-indigo-300">{t('Click below to trigger instant browser installation.')}</p>
+                </div>
+                <Button onClick={handleInstallApp} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm">
+                  <Download className="h-4 w-4 mr-1.5" />
+                  {t('Install Now')}
+                </Button>
+              </div>
+            )}
+
+            <div className="space-y-3 text-sm">
+              <div className="p-3.5 rounded-xl border bg-muted/40 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-foreground">
+                  <Monitor className="h-4 w-4 text-blue-600" />
+                  <span>Windows PC & Mac (Chrome / Edge / Brave)</span>
+                </div>
+                <p className="text-xs text-muted-foreground pl-6">
+                  Look at the right side of your browser URL bar. Click the <strong>Install (⊕ or Computer)</strong> icon, or click the <strong>3 dots (⋮) → "Install ChillBill POS"</strong>.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl border bg-muted/40 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-foreground">
+                  <Smartphone className="h-4 w-4 text-green-600" />
+                  <span>Android (Chrome)</span>
+                </div>
+                <p className="text-xs text-muted-foreground pl-6">
+                  Tap the <strong>3 dots (⋮)</strong> in the top-right corner, then tap <strong>"Install app"</strong> or <strong>"Add to Home screen"</strong>.
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-xl border bg-muted/40 space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-foreground">
+                  <Smartphone className="h-4 w-4 text-primary" />
+                  <span>iPhone / iPad (Safari)</span>
+                </div>
+                <p className="text-xs text-muted-foreground pl-6">
+                  Tap the <strong>Share button (square with arrow ⎋)</strong> at the bottom of Safari, scroll down and tap <strong>"Add to Home Screen"</strong>.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsInstallDialogOpen(false)}>
+              {t('Close')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Gstr1ReportDialog
+        isOpen={isGstr1Open}
+        onOpenChange={setIsGstr1Open}
+        bills={billHistory}
+        currency={currency}
+        venueDetails={venueDetails}
+      />
     </div >
   );
 }
