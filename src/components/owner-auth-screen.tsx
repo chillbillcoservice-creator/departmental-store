@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef } from "react";
 import {
@@ -63,8 +63,20 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
         onAuthSuccess(user, user.uid, !venueSnap.exists());
       }
     } catch (err: any) {
-      setError("Sign-in failed. Please try again.");
       console.error("Google Sign-In error:", err);
+      let userMsg = "Sign-in failed. Please try again.";
+      if (err?.code === 'auth/operation-not-allowed') {
+        userMsg = "Google Sign-In is not enabled in Firebase Console. Please enable Google under Authentication -> Sign-in method.";
+      } else if (err?.code === 'auth/unauthorized-domain') {
+        userMsg = "This domain is not in Firebase's authorized domains list. Please add it in Firebase Console -> Authentication -> Settings.";
+      } else if (err?.code === 'auth/popup-closed-by-user') {
+        userMsg = "Google sign-in popup was closed before completing.";
+      } else if (err?.message?.includes('database (default) does not exist')) {
+        userMsg = "Cloud Firestore Database has not been created yet in Firebase Console. Please create it under Firestore Database.";
+      } else if (err?.message) {
+        userMsg = err.message;
+      }
+      setError(userMsg);
       setIsLoading(false);
     }
   };
@@ -115,7 +127,7 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
             </div>
             <div className="nav-badge">
               <SparkleIcon />
-              <span>Restaurant OS</span>
+              <span>Retail & Store POS</span>
             </div>
           </div>
 
@@ -123,24 +135,24 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
           <div className="hero-copy">
             <div className="eyebrow-label">
               <span className="eyebrow-dot" />
-              Built for serious kitchens
+              Built for modern retail
             </div>
 
             <h1 className="hero-headline">
-              <span className="headline-line">Every order.</span>
-              <span className="headline-line accent-line">Perfectly</span>
-              <span className="headline-line">timed.</span>
+              <span className="headline-line">Fast billing.</span>
+              <span className="headline-line accent-line">Flawless</span>
+              <span className="headline-line">inventory.</span>
             </h1>
 
             <p className="hero-subtext">
-              The command centre your restaurant deserves.
-              Real-time orders, live analytics, and staff management —
+              The command centre your store deserves.
+              Lightning-fast barcode billing, live stock tracking, customer khata, and staff management —
               all from one elegant interface.
             </p>
 
             {/* Feature pills */}
             <div className="feature-pills">
-              {["Live KOT", "Smart Analytics", "Multi-Venue", "Staff Control"].map((feat) => (
+              {["Fast Barcode Scan", "Stock & Reorder Alerts", "Customer Khata", "Staff PIN Control"].map((feat) => (
                 <span key={feat} className="pill">{feat}</span>
               ))}
             </div>
@@ -171,7 +183,7 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
               <p className="card-eyebrow">Welcome back</p>
               <h2 className="card-title">Get started</h2>
               <p className="card-subtitle">
-                Sign in to your venue dashboard or create a new restaurant account.
+                Sign in to your store dashboard or create a new store account.
               </p>
             </div>
 
@@ -185,7 +197,7 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
                 disabled={isLoading}
                 onMouseEnter={() => setIsHoveringSignUp(true)}
                 onMouseLeave={() => setIsHoveringSignUp(false)}
-                aria-label="Create new restaurant account"
+                aria-label="Create new store account"
               >
                 <span className="cta-bg-flash" />
                 <span className="cta-inner">
@@ -203,7 +215,7 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
                       </span>
                       <span className="cta-text-wrap">
                         <span className="cta-label">New Business</span>
-                        <span className="cta-desc">Create your restaurant account</span>
+                        <span className="cta-desc">Create your store account</span>
                       </span>
                       <svg className="cta-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <path d="M5 12h14M12 5l7 7-7 7" />
@@ -220,7 +232,7 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
                 disabled={isLoading}
                 onMouseEnter={() => setIsHoveringSignIn(true)}
                 onMouseLeave={() => setIsHoveringSignIn(false)}
-                aria-label="Sign in to existing restaurant"
+                aria-label="Sign in to existing store"
               >
                 <span className="cta-inner">
                   {isLoading ? (

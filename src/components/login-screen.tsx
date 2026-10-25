@@ -5,7 +5,7 @@ import { Employee } from "@/lib/types";
 import { buildUsername } from "@/lib/generate-username";
 import { cn } from "@/lib/utils";
 import {
-    Eye, EyeOff, LogIn, User, Shield, ChefHat, Utensils, Zap,
+    Eye, EyeOff, LogIn, User, Shield, CreditCard, Package, ShoppingCart, Zap,
     Sparkles, ArrowRight, TrendingUp, Building2, ShieldCheck, X
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -18,6 +18,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { initializeFirebase } from "@/firebase";
 import { useTheme } from "next-themes";
 import { ThemeToggle } from "./theme-toggle";
+import { verifyStoreLicense, LicenseCheckResult } from "@/lib/licensing";
 
 /* ═══════════════════════════════════════════════════
    CORAL BLAZE DESIGN TOKENS
@@ -64,16 +65,16 @@ const T_LIGHT = {
    ═══════════════════════════════════════════════════ */
 const FEATURES = {
     kot: {
-        title: "Lightning Smart KOTs",
-        tag: "Operations",
-        desc: "Route orders to any station in real time. Every table, every ticket — perfectly synced.",
+        title: "Fast Barcode Billing",
+        tag: "Billing",
+        desc: "Rapid barcode scanning, instant cart totals, and thermal receipt printing for ultra-fast checkout.",
         bullets: [
-            "Instant ticket routing to kitchen, bar, or any print station",
-            "Real-time table sync across all devices",
-            "Automatic order grouping for efficiency",
-            "Custom station assignment per menu item"
+            "Seamless USB & Bluetooth barcode scanner integration",
+            "1-click hold and retrieve bill queue for busy counters",
+            "Automatic item discount & tax calculation",
+            "Thermal receipt printing & digital billing"
         ],
-        stat: "<1s", statLabel: "Sync Speed"
+        stat: "<0.5s", statLabel: "Scan Speed"
     },
     uptime: {
         title: "99.9% Uptime SLA",
@@ -117,7 +118,7 @@ const FEATURES = {
         desc: "Every staff action is authenticated. PIN-based login keeps your operations locked down.",
         bullets: [
             "4-digit PIN for each employee",
-            "Role-based permissions (Admin, Manager, Chef, Waiter)",
+            "Role-based permissions (Owner, Manager, Cashier, Inventory Clerk)",
             "Activity logs per employee",
             "Admin-only actions with elevated access"
         ],
@@ -168,6 +169,7 @@ interface LoginScreenProps {
     isPosMode?: boolean;
     onLogin: (employee: Employee) => void;
     onAccessDenied?: (email: string) => void;
+    onLicenseExpired?: (result: LicenseCheckResult) => void;
     onOwnerLogin?: (uid: string) => void;
     onOwnerSignup?: (uid: string) => void;
 }
@@ -177,11 +179,13 @@ interface LoginScreenProps {
    ═══════════════════════════════════════════════════ */
 function getRoleIcon(role: string) {
     switch (role) {
+        case "Owner":
         case "Admin": return <Shield className="h-5 w-5" />;
+        case "Store Manager":
         case "Manager": return <Zap className="h-5 w-5" />;
-        case "Head Chef":
-        case "Chef": return <ChefHat className="h-5 w-5" />;
-        case "Waiter": return <Utensils className="h-5 w-5" />;
+        case "Cashier":
+        case "Billing Clerk": return <CreditCard className="h-5 w-5" />;
+        case "Inventory Clerk": return <Package className="h-5 w-5" />;
         default: return <User className="h-5 w-5" />;
     }
 }
@@ -191,7 +195,7 @@ function getRoleIcon(role: string) {
    ═══════════════════════════════════════════════════ */
 export default function LoginScreen({
     employees, venueName, venueId, isPosMode, onLogin,
-    onAccessDenied, onOwnerLogin, onOwnerSignup
+    onAccessDenied, onLicenseExpired, onOwnerLogin, onOwnerSignup
 }: LoginScreenProps) {
 
     /* ── Auth modal state ── */
@@ -216,13 +220,13 @@ export default function LoginScreen({
 
     /* ── Live POS preview cycling ── */
     const LIVE_ORDERS = useMemo(() => [
-        { table: "T-04", items: ["Flat White × 2", "Grilled Panini"], time: "2m", badge: "coral" },
-        { table: "T-11", items: ["Chicken Burger", "Fries × 2", "Coke"], time: "5m", badge: "green" },
-        { table: "T-07", items: ["Pasta Arrabbiata", "Bruschetta"], time: "8m", badge: "peach" },
-        { table: "T-02", items: ["Masala Chai × 3", "Veg Puff"], time: "11m", badge: "coral" },
-        { table: "T-09", items: ["Shawarma Wrap", "Fries", "Sprite"], time: "14m", badge: "green" },
-        { table: "T-15", items: ["Cold Coffee × 2", "Brownie"], time: "18m", badge: "peach" },
-        { table: "T-03", items: ["Pizza Margherita", "Garlic Bread × 2"], time: "22m", badge: "coral" },
+        { table: "C-01", items: ["Aashirvaad Atta 5kg", "Fortune Oil 1L", "Tata Salt 1kg"], time: "Just now", badge: "coral" },
+        { table: "C-02", items: ["Amul Butter 100g × 2", "Amul Gold Milk 500ml", "Good Day"], time: "2m", badge: "green" },
+        { table: "C-01", items: ["Surf Excel 1kg", "Vim Gel 500ml", "Lizol 500ml"], time: "4m", badge: "peach" },
+        { table: "C-03", items: ["Tata Tea Gold 500g", "Madhur Sugar 1kg", "Maggi 4-Pack"], time: "6m", badge: "coral" },
+        { table: "C-02", items: ["Dettol Soap 125g × 3", "Colgate Total 150g"], time: "8m", badge: "green" },
+        { table: "C-01", items: ["India Gate Basmati 1kg", "Tata Toor Dal 1kg"], time: "11m", badge: "peach" },
+        { table: "C-03", items: ["Coca-Cola 750ml × 2", "Lay's Chips × 3"], time: "14m", badge: "coral" },
     ], []);
     const [liveIdx, setLiveIdx] = useState(0);
     useEffect(() => {
@@ -244,25 +248,44 @@ export default function LoginScreen({
             if (result?.user) {
                 const uid = result.user.uid;
                 const email = (result.user.email ?? "").toLowerCase();
+
+                // Anti-piracy & commercial subscription validation
+                const licResult = await verifyStoreLicense(email, db);
+                if (!licResult.isValid) {
+                    if (licResult.status === 'not_whitelisted') {
+                        onAccessDenied?.(email || "unknown");
+                    } else {
+                        onLicenseExpired?.(licResult);
+                    }
+                    return;
+                }
+
                 const venueSnap = await getDoc(doc(db, "venues", uid));
                 if (venueSnap.exists()) {
                     onOwnerLogin?.(uid);
                 } else {
-                    const whiteSnap = await getDoc(doc(db, "whitelist", email));
-                    if (whiteSnap.exists()) {
-                        onOwnerSignup?.(uid);
-                    } else {
-                        onAccessDenied?.(email || "unknown");
-                    }
+                    onOwnerSignup?.(uid);
                 }
             }
-        } catch (err) {
-            setError("Failed to connect to Google. Try again.");
-            console.error(err);
+        } catch (err: any) {
+            console.error("Google Auth error:", err);
+            let userMsg = "Failed to connect to Google. Try again.";
+            if (err?.code === 'auth/operation-not-allowed') {
+                userMsg = "Google Sign-In is not enabled in Firebase Console. Please enable Google under Authentication -> Sign-in method.";
+            } else if (err?.code === 'auth/unauthorized-domain') {
+                userMsg = "This domain is not in Firebase's authorized domains list. Please add it in Firebase Console -> Authentication -> Settings.";
+            } else if (err?.code === 'auth/popup-closed-by-user') {
+                userMsg = "Google sign-in popup was closed before completing.";
+            } else if (err?.message?.includes('database (default) does not exist') || err?.code === 'unavailable') {
+                userMsg = "Cloud Firestore Database has not been created yet in Firebase Console. Please create it under Firestore Database.";
+            } else if (err?.message) {
+                userMsg = err.message;
+            }
+            setError(userMsg);
         } finally {
             setIsLoading(false);
         }
-    }, [onOwnerLogin, onOwnerSignup, onAccessDenied]);
+    }, [onOwnerLogin, onOwnerSignup, onAccessDenied, onLicenseExpired]);
 
     const handlePinLogin = useCallback(() => {
         if (!selectedEmp) return;
@@ -318,6 +341,11 @@ export default function LoginScreen({
                         <div className="mt-8 p-6 rounded-2xl" style={{ background: T.surface, border: `1px solid ${T.border}` }}>
                             <p className="text-center text-sm font-bold mb-4" style={{ color: T.textSub }}>
                                 Enter PIN for <span style={{ color: T.coral }}>{selectedEmp.name}</span>
+                                {selectedEmp.username && (
+                                    <span className="block mt-1 font-mono text-xs text-orange-400">
+                                        @{selectedEmp.username}
+                                    </span>
+                                )}
                             </p>
                             <input ref={pinRef} type="password" maxLength={4} value={pin}
                                 onChange={e => { setPin(e.target.value.replace(/\D/g, "")); setError(""); }}
@@ -396,17 +424,19 @@ export default function LoginScreen({
                                             <div className="text-[10px] mt-1" style={{ color: T.textMute }}>Google SSO</div>
                                         </button>
                                     </div>
-                                    <button
-                                        onClick={() => {
-                                            const ownerEmp = employees.find(e => e.role === 'Owner') || employees[0];
-                                            if (ownerEmp) onLogin(ownerEmp);
-                                        }}
-                                        className="w-full py-3.5 px-4 rounded-xl text-center font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all hover:opacity-90 shadow-md text-white"
-                                        style={{ background: T.grad }}
-                                    >
-                                        <Zap size={15} className="text-yellow-300" />
-                                        ⚡ 1-Click Instant Login (Store Owner)
-                                    </button>
+                                    {process.env.NODE_ENV !== 'production' && (
+                                        <button
+                                            onClick={() => {
+                                                const ownerEmp = employees.find(e => e.role === 'Owner') || employees[0];
+                                                if (ownerEmp) onLogin(ownerEmp);
+                                            }}
+                                            className="w-full py-3.5 px-4 rounded-xl text-center font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all hover:opacity-90 shadow-md text-white"
+                                            style={{ background: T.grad }}
+                                        >
+                                            <Zap size={15} className="text-yellow-300" />
+                                            ⚡ 1-Click Instant Login (Store Owner — Dev Demo)
+                                        </button>
+                                    )}
                                 </div>
                             )}
 
@@ -454,6 +484,13 @@ export default function LoginScreen({
                                             </div>
                                             {selectedEmp && (
                                                 <div className="space-y-3">
+                                                    {selectedEmp.username && (
+                                                        <div className="text-center">
+                                                            <span className="text-[11px] font-mono text-orange-400 bg-orange-500/10 border border-orange-500/20 px-2 py-0.5 rounded-full">
+                                                                @{selectedEmp.username}
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                     <input ref={pinRef} type="password" maxLength={4} value={pin}
                                                         onChange={e => { setPin(e.target.value.replace(/\D/g, "")); setError(""); }}
                                                         onKeyDown={e => e.key === "Enter" && handlePinLogin()}
@@ -606,7 +643,7 @@ export default function LoginScreen({
 
                             <motion.p initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.6 }}
                                 className="mt-6 text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: T.textMute }}>
-                                The restaurant POS built for the rush — one platform for every order, every staff member, every venue.
+                                The modern Departmental Store & Supermarket POS — one platform for billing, inventory, vendor management, and customer khata.
                             </motion.p>
 
                             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.38 }}
@@ -781,8 +818,8 @@ export default function LoginScreen({
                                             <div className="w-5 h-5 rounded flex items-center justify-center" style={{ background: T.coral }}><Zap size={11} className="text-white" /></div>
                                             <span className="font-mono text-xs uppercase tracking-[0.25em] font-bold" style={{ color: T.coral }}>Operations</span>
                                         </div>
-                                        <h3 className="text-3xl md:text-4xl font-black tracking-[-0.03em] leading-none" style={{ color: T.text }}>Lightning<br />Smart KOTs.</h3>
-                                        <p className="text-sm font-medium leading-relaxed max-w-xs" style={{ color: T.textMute }}>Instant ticket routing to multiple stations. Zero-latency table sync so your FOH is always aligned.</p>
+                                        <h3 className="text-3xl md:text-4xl font-black tracking-[-0.03em] leading-none" style={{ color: T.text }}>Fast<br />Barcode Billing.</h3>
+                                        <p className="text-sm font-medium leading-relaxed max-w-xs" style={{ color: T.textMute }}>Instant barcode scanner integration. Real-time stock sync and fast hold/retrieve queues for busy counters.</p>
                                     </div>
                                     <div className="flex gap-4 text-right shrink-0">
                                         <div className="space-y-1">
@@ -904,9 +941,9 @@ export default function LoginScreen({
                         </motion.div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                             {[
-                                { stat: "2,400+", label: "Orders per day", Icon: Utensils, delay: 0 },
+                                { stat: "2,400+", label: "Bills per day", Icon: ShoppingCart, delay: 0 },
                                 { stat: "99.9%", label: "System uptime", Icon: ShieldCheck, delay: 0.1 },
-                                { stat: "< 1s", label: "KOT sync speed", Icon: Zap, delay: 0.2 },
+                                { stat: "< 0.5s", label: "Barcode scan speed", Icon: Zap, delay: 0.2 },
                                 { stat: "₹48L+", label: "Monthly GMV tracked", Icon: TrendingUp, delay: 0.3 },
                             ].map(({ stat, label, Icon, delay }) => (
                                 <motion.div key={label}
@@ -943,7 +980,7 @@ export default function LoginScreen({
                     ══════════════════════════════════════════════════ */}
                 <section className="w-full py-20 overflow-hidden relative" style={{ background: T.bgDeep }}>
                     <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-12 px-6">
-                        <p className="font-mono text-xs uppercase tracking-[0.3em] font-bold mb-3" style={{ color: T.coral }}>Real Restaurants. Real Results.</p>
+                        <p className="font-mono text-xs uppercase tracking-[0.3em] font-bold mb-3" style={{ color: T.coral }}>Real Stores. Real Results.</p>
                         <h2 className="text-4xl md:text-5xl font-black tracking-[-0.04em]" style={{ color: T.text }}>Owners Love It.</h2>
                     </motion.div>
                     <div className="relative">
@@ -959,11 +996,11 @@ export default function LoginScreen({
                                 animate={{ x: ["-50%", "0%"] }}
                                 transition={{ repeat: Infinity, duration: 32, ease: "linear" }}>
                                 {[...Array(2)].flatMap(() => [
-                                    { name: "Rohan Mehta", venue: "The Chai Stop, Pune", quote: "ChillBill cut our order confusion by 80%. KOTs print instantly, tables are synced. It just works.", rating: 5 },
-                                    { name: "Priya Kapoor", venue: "Bella Cucina, Mumbai", quote: "Our revenue dashboard is insane. I know exactly which dishes are killing it every single day.", rating: 5 },
-                                    { name: "Arjun Shetty", venue: "Sips & Bites, Bangalore", quote: "Setup was 20 minutes. Staff got it on day one. We went from chaos to calm in a week.", rating: 5 },
-                                    { name: "Meera Shah", venue: "The Garden Café, Ahmedabad", quote: "The PIN login is a game changer for our staff. No more shared passwords or confusion.", rating: 5 },
-                                    { name: "Kiran Reddy", venue: "Urban Bites, Hyderabad", quote: "We manage 3 branches with one dashboard. ChillBill made that possible.", rating: 5 },
+                                    { name: "Rajesh Gupta", venue: "Gupta Supermarket, Delhi", quote: "ChillBill cut our counter billing rush in half. Barcode scanning is instantaneous and inventory tracking is flawless.", rating: 5 },
+                                    { name: "Priya Sharma", venue: "Daily Fresh Departmental Store, Jaipur", quote: "Our profit margin calculations and low-stock reorder alerts save us hours every week. We always know what to reorder.", rating: 5 },
+                                    { name: "Vikram Patel", venue: "Patel Provision Store, Ahmedabad", quote: "Customer Khata management with credit tracking has made Udhaar settlement completely hassle-free.", rating: 5 },
+                                    { name: "Meera Nair", venue: "Green Mart, Kochi", quote: "The 4-digit PIN login is fantastic for our cashiers. Clean, fast, and completely secure.", rating: 5 },
+                                    { name: "Kiran Reddy", venue: "HyperCity Supermarket, Hyderabad", quote: "We manage multiple billing counters and inventory with ease. ChillBill made that possible.", rating: 5 },
                                 ]).map(({ name, venue, quote, rating }, i) => (
                                     <div key={`${name}-${i}`}
                                         className="shrink-0 w-80 p-6 rounded-2xl flex flex-col gap-4"
@@ -996,11 +1033,11 @@ export default function LoginScreen({
                         </motion.div>
                         <div className="space-y-3">
                             {[
-                                { q: "Is ChillBill free to try?", a: "Yes! You can set up your venue and start taking orders immediately — no credit card required." },
-                                { q: "Do I need special hardware?", a: "Nope. ChillBill runs entirely on any device with a browser — tablets, phones, or laptops. Your kitchen display is just a browser tab." },
-                                { q: "Can multiple staff use it at once?", a: "Absolutely. ChillBill is built for teams. Each staff member gets a unique PIN, and all orders sync in real-time across all stations." },
-                                { q: "Is my data secure?", a: "Yes. We use Firebase with enterprise-grade Firestore security rules, PIN-based staff auth, and role-level access control for every venue." },
-                                { q: "How fast is the setup?", a: "Most restaurants are fully live within 20 minutes. Our setup wizard walks you through everything step by step." },
+                                { q: "Is ChillBill free to try?", a: "Yes! You can set up your store and start billing immediately — no credit card required." },
+                                { q: "Do I need special hardware?", a: "Nope. ChillBill runs on any device with a browser — PC, laptop, or tablet. It works seamlessly with standard USB/Bluetooth barcode scanners and thermal receipt printers." },
+                                { q: "Can multiple cashiers use it at once?", a: "Absolutely. ChillBill is built for retail teams. Each cashier gets a unique 4-digit PIN, and all inventory & sales sync in real-time." },
+                                { q: "Is my data secure?", a: "Yes. We use Firebase with enterprise-grade Firestore security rules, PIN-based staff auth, and role-level access control for every store." },
+                                { q: "How fast is the setup?", a: "Most departmental stores are fully live within 15 minutes. Our setup wizard walks you through store details, taxes, staff, and inventory." },
                             ].map(({ q, a }, i) => (
                                 <FaqItem key={i} q={q} a={a} T={T} delay={i * 0.05} />
                             ))}
@@ -1020,11 +1057,11 @@ export default function LoginScreen({
                             Ready to Chill?<br />
                             <span style={{ color: T.coral }}>Start billing smarter.</span>
                         </h2>
-                        <p className="text-base font-medium mb-10" style={{ color: T.textMute }}>Join hundreds of restaurants already running on ChillBill.</p>
+                        <p className="text-base font-medium mb-10" style={{ color: T.textMute }}>Join hundreds of departmental stores and supermarkets running on ChillBill.</p>
                         <button onClick={() => openAuthModal("signup")}
                             className="inline-flex items-center gap-3 px-8 py-4 rounded-full text-sm font-black uppercase tracking-widest transition-all duration-300 hover:scale-105 hover:shadow-2xl"
                             style={{ background: T.grad, color: "#fff", boxShadow: `0 8px 32px rgba(${T.coralRgb},0.35)` }}>
-                            Set Up Your Venue <ArrowRight size={16} />
+                            Set Up Your Store <ArrowRight size={16} />
                         </button>
                     </motion.div>
                 </section>
@@ -1039,7 +1076,7 @@ export default function LoginScreen({
                                 <span style={{ color: T.text }}>Chill<span style={{ color: T.coral }}>Bill</span></span>
                             </div>
                             <p className="text-sm font-medium leading-relaxed" style={{ color: T.textMute }}>
-                                The unified operating system for ambitious cafes and hospitality businesses around the world.
+                                The unified operating system for ambitious departmental stores, supermarkets, and modern retail businesses.
                             </p>
                         </div>
                         <div className="flex gap-16">
