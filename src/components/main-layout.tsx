@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useLanguage } from '@/contexts/language-context';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Shield, Receipt, Package, Users2, Menu as MenuIcon, HelpCircle, Truck, CreditCard, PanelLeft, PanelTop, AlertTriangle, List, X, Palette } from 'lucide-react';
+import { Users, Shield, Receipt, Package, Users2, Menu as MenuIcon, HelpCircle, Truck, CreditCard, PanelLeft, PanelTop, AlertTriangle, List, X, Palette, Settings, Headphones, LogOut, Clock } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { isSameDay } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -24,6 +24,7 @@ import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { cn } from '@/lib/utils';
 import SetupWizard from './setup-wizard';
+import NetworkStatusBadge from './network-status-badge';
 import { ThemeToggle } from './theme-toggle';
 import { Sheet, SheetContent, SheetTrigger } from './ui/sheet';
 import { HelpDialog } from './help-dialog';
@@ -32,6 +33,13 @@ import { writeBatch, doc, setDoc } from 'firebase/firestore';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover';
 import { useThemeColor } from '@/contexts/theme-color-context';
 import StaffLogin from './staff-login';
+import { PosSettingsDialog } from './pos-settings-dialog';
+import { SmartAudioTour } from './smart-audio-tour';
+import { ShiftHandoverDialog } from './shift-handover-dialog';
+import { SafeErrorBoundary } from './ui/error-boundary';
+import { getOrStartActiveShift, formatDuration, getActiveShift } from '@/lib/shift-manager';
+import type { TutorialLanguage, TutorialVoicePersona } from '@/lib/tutorial-voice';
+import { getSavedVoicePersona, setSavedVoicePersona, getSavedTutorialLanguage, setSavedTutorialLanguage } from '@/lib/tutorial-voice';
 import type { VenueDetails, OwnerDetails, PurchaseOrder, PurchaseOrderItem } from "@/lib/types";
 
 interface MainLayoutProps {
@@ -99,6 +107,7 @@ export default function MainLayout({
 }: MainLayoutProps) {
   const { t } = useLanguage();
   const db = useFirestore();
+  const effectiveCurrency = (!initialCurrency || initialCurrency === '$') ? 'Rs.' : initialCurrency;
   const [currentUser, setCurrentUser] = useState<Employee | null>(initialUser ?? (initialEmployees[0] || null));
   const [isStaffLoginOpen, setIsStaffLoginOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('payments');
@@ -108,16 +117,52 @@ export default function MainLayout({
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
   const [isMobileSheetOpen, setIsMobileSheetOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [categoryColors, setCategoryColors] = useState<Record<string, string>>({});
   const mainRef = useRef<HTMLDivElement>(null);
   const [currentTime, setCurrentTime] = useState(new Date());
   const { toast } = useToast();
   const notifiedItemsRef = useRef<Set<string>>(new Set());
   const notifiedVendorsRef = useRef<Set<string>>(new Set());
-  const [layoutMode, setLayoutMode] = useState<'vertical' | 'horizontal'>('vertical');
+  const [layoutMode, setLayoutMode] = useState<'side' | 'top'>('side');
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [alertingItem, setAlertingItem] = useState<{ item: InventoryItem; threshold: string } | null>(null);
   const { themeColor, setThemeColor, availableColors } = useThemeColor();
+
+  // Shift Handover state
+  const [isShiftHandoverOpen, setIsShiftHandoverOpen] = useState(false);
+  const [liveShiftMinutes, setLiveShiftMinutes] = useState<number>(0);
+
+  // Initialize or resume active shift session on login
+  useEffect(() => {
+    if (currentUser) {
+      const shift = getOrStartActiveShift(currentUser);
+      const updateTimer = () => {
+        const diff = Math.max(1, Math.round((Date.now() - new Date(shift.openedAt).getTime()) / (1000 * 60)));
+        setLiveShiftMinutes(diff);
+      };
+      updateTimer();
+      const interval = setInterval(updateTimer, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [currentUser]);
+
+  // Audio Guide & Tutorial Mode state
+  const [tutorialModeEnabled, setTutorialModeEnabled] = useState(false);
+  const [tutorialLanguage, setTutorialLanguage] = useState<TutorialLanguage>('hi');
+  const [tutorialVoicePersona, setTutorialVoicePersona] = useState<TutorialVoicePersona>('puck');
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'upi' | 'appearance' | 'tutorial'>('upi');
+
+  useEffect(() => {
+    try {
+      const savedMode = localStorage.getItem('chillbill_tutorial_mode');
+      if (savedMode === 'true') {
+        setTutorialModeEnabled(true);
+      }
+      setTutorialLanguage(getSavedTutorialLanguage());
+      setTutorialVoicePersona(getSavedVoicePersona());
+    } catch {}
+  }, []);
 
   // Vendor Billing Cycle Notifications
   useEffect(() => {
@@ -181,7 +226,8 @@ export default function MainLayout({
     customer: Customer | null;
     discount: number;
     redeemPoints: number;
-    paymentMethod: 'Cash' | 'Online';
+    paymentMethod: 'Cash' | 'Online' | 'Split';
+    splitPayments?: { method: 'Cash' | 'Online'; amount: number }[];
   }>({
     items: [],
     customer: null,
@@ -211,14 +257,24 @@ export default function MainLayout({
   }, [purchaseOrders]);
 
   useEffect(() => {
-    const savedLayout = localStorage.getItem('layoutMode');
-    if (savedLayout === 'horizontal') setLayoutMode('horizontal');
+    try {
+      const savedLayout = localStorage.getItem('chillbill_layout_mode');
+      if (savedLayout === 'top') {
+        setLayoutMode('top');
+      } else {
+        // By default, always use 'side' (vertical sidebar on left: Main, Inventory, Expenses, etc.)
+        setLayoutMode('side');
+      }
+    } catch {}
   }, []);
 
   const toggleLayout = () => {
-    const newMode = layoutMode === 'vertical' ? 'horizontal' : 'vertical';
+    const newMode = layoutMode === 'side' ? 'top' : 'side';
     setLayoutMode(newMode);
-    localStorage.setItem('layoutMode', newMode);
+    try {
+      localStorage.setItem('chillbill_layout_mode', newMode);
+      localStorage.setItem('layoutMode', newMode);
+    } catch {}
   };
 
   // Update time every second
@@ -424,7 +480,7 @@ export default function MainLayout({
       try {
         await setDoc(doc(db, "settings", "venue"), {
           venueName: initialVenueName,
-          currency: initialCurrency,
+          currency: effectiveCurrency,
           address: venueDetails?.address || '',
           contactNumber: venueDetails?.contactNumber || '',
           email: venueDetails?.email || '',
@@ -604,19 +660,27 @@ export default function MainLayout({
 
   const renderNav = (isSheet = false) => (
     <TabsList className={cn(
-      "m-2 p-0 h-auto bg-transparent flex",
-      !isSheet ? "flex-row" : "flex-col items-start w-full"
+      "p-0 h-auto bg-transparent flex",
+      !isSheet ? "flex-row m-2" : "flex-col items-stretch w-full gap-1.5"
     )}>
       {navItems.map((item, index) => (
         <React.Fragment key={item.value}>
           <TabsTrigger
             value={item.value}
-            className="px-4 py-3 text-md data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-2 data-[state=active]:border-primary data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 rounded-xl flex items-center justify-start gap-3 transition-all duration-300 font-bold border-2 border-transparent"
+            className={cn(
+              "px-3.5 py-2.5 text-sm data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-2 data-[state=active]:border-primary data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 rounded-xl flex items-center justify-start gap-3 transition-all duration-300 font-bold border-2 border-transparent",
+              isSheet && "w-full"
+            )}
             onClick={() => handleTabChange(item.value)}
           >
-            <item.icon className="h-5 w-5" /> <span>{item.label}</span>
+            <item.icon className="h-5 w-5 shrink-0" /> <span className="truncate">{item.label}</span>
           </TabsTrigger>
-          {index < navItems.length - 1 && <Separator orientation={!isSheet ? 'vertical' : 'horizontal'} className={cn(!isSheet ? "h-6 mx-1" : "w-full my-1")} />}
+          {index < navItems.length - 1 && (
+            <Separator
+              orientation={!isSheet ? 'vertical' : 'horizontal'}
+              className={cn(!isSheet ? "h-6 mx-1" : "w-full my-0.5 opacity-20")}
+            />
+          )}
         </React.Fragment>
       ))}
     </TabsList>
@@ -624,112 +688,202 @@ export default function MainLayout({
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="flex items-center justify-between h-16 px-4 md:px-6 border-b shrink-0">
-        <div className="flex items-center gap-2 font-semibold">
+      <header className="flex items-center justify-between h-16 px-3 sm:px-5 border-b shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-30">
+        {/* Left: Brand & Store Identity */}
+        <div className="flex items-center gap-2.5 font-semibold shrink-0">
           <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden mr-2">
-                <MenuIcon className="h-6 w-6" />
+              <Button variant="ghost" size="icon" className="md:hidden h-9 w-9 rounded-xl mr-1">
+                <MenuIcon className="h-5 w-5" />
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="p-2">
               {renderNav(true)}
             </SheetContent>
           </Sheet>
-          <Logo className="h-6 w-6" />
-          <span className="text-lg font-bold truncate max-w-[150px] sm:max-w-xs">{initialVenueName}</span>
-        </div>
-        <div className="flex items-center gap-2 md:gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleLayout}
-            className="hidden md:flex"
-            title={layoutMode === 'vertical' ? "Switch to Side Layout" : "Switch to Top Layout"}
-          >
-            {layoutMode === 'vertical' ? <PanelLeft className="h-5 w-5" /> : <PanelTop className="h-5 w-5" />}
-          </Button>
 
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" title={t('Change Theme Color')}>
-                <Palette className="h-5 w-5" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-64 p-3" align="end">
-              <div className="space-y-2">
-                <h4 className="font-medium leading-none text-sm">{t('Theme Color')}</h4>
-                <p className="text-xs text-muted-foreground">{t('Select a primary color for the app.')}</p>
-                <div className="flex flex-wrap gap-2 pt-2">
-                  {availableColors.map((color) => (
-                    <button
-                      key={color.name}
-                      onClick={() => setThemeColor(color.value)}
-                      className={cn(
-                        "w-8 h-8 rounded-full border-2 transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary",
-                        color.value === themeColor ? "border-primary scale-110 shadow-md ring-2 ring-primary ring-offset-2 opacity-100" : "border-transparent opacity-80 hover:opacity-100"
-                      )}
-                      style={{ backgroundColor: `hsl(${color.value})` }}
-                      title={color.name}
-                    >
-                      <span className="sr-only">{color.name}</span>
-                    </button>
-                  ))}
-                </div>
+          <div className="flex items-center gap-2.5">
+            <div className="h-9 w-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm shrink-0">
+              <Logo className="h-5 w-5" />
+            </div>
+            <div className="flex flex-col leading-tight">
+              <div className="flex items-center gap-2">
+                <span className="text-base font-black tracking-tight text-foreground truncate max-w-[120px] sm:max-w-xs">
+                  {initialVenueName}
+                </span>
+                <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-muted text-muted-foreground border border-border/50">
+                  POS 01
+                </span>
               </div>
-            </PopoverContent>
-          </Popover>
+              <span className="text-[10px] font-bold text-muted-foreground/70 hidden sm:inline">
+                {currentUser?.role === 'Owner' ? t('Store Admin Active') : t('Cash Counter Active')}
+              </span>
+            </div>
+          </div>
+        </div>
 
-          <ThemeToggle />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}>
-                  <HelpCircle />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{t('Help')}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <div className="text-sm text-foreground text-center font-semibold bg-muted px-3 py-1.5 rounded-lg shadow-inner min-w-[140px] flex flex-col leading-tight">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">{formattedDate}</span>
-            <span className="text-lg font-bold">{formattedTime}</span>
+        {/* Center: Active View Anchor */}
+        <div className="hidden xl:flex items-center gap-2 px-3 py-1 bg-muted/40 border border-border/40 rounded-xl text-xs text-muted-foreground font-medium shadow-inner">
+          <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
+          <span className="font-bold text-foreground text-xs uppercase tracking-wider">
+            {navItems.find(i => i.value === activeTab)?.label || 'POS'}
+          </span>
+          <span className="text-border">|</span>
+          <span className="text-[11px] font-medium text-muted-foreground truncate max-w-[200px]">
+            {initialVenueName}
+          </span>
+        </div>
+
+        {/* Right: Unified Height (h-9) Standardized Capsules */}
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+          {/* Capsule 1: Unified Utility Dock */}
+          <div className="flex items-center bg-muted/40 border border-border/50 rounded-xl p-1 h-9 gap-0.5 sm:gap-1 shadow-sm">
+            {/* Layout Toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleLayout}
+              className="h-7 w-7 rounded-lg hover:bg-background text-muted-foreground hover:text-foreground hidden md:flex transition-colors"
+              title={layoutMode === 'side' ? "Switch to Top Bar Layout" : "Switch to Left Sidebar"}
+            >
+              {layoutMode === 'side' ? <PanelTop className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
+            </Button>
+
+            {/* Network Status Badge */}
+            <NetworkStatusBadge className="h-7 px-2 text-[11px] rounded-lg shadow-none" />
+
+            <div className="h-4 w-px bg-border/60 mx-0.5 hidden sm:block" />
+
+            {/* Settings */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setSettingsInitialTab('upi');
+                      setIsSettingsOpen(true);
+                    }}
+                    title={t('Settings')}
+                    className="h-7 w-7 rounded-lg hover:bg-background text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('Store & POS Settings')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Audio Guide & Tutorial */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={tutorialModeEnabled ? "default" : "ghost"}
+                    size="icon"
+                    onClick={() => {
+                      setSettingsInitialTab('tutorial');
+                      setIsSettingsOpen(true);
+                    }}
+                    title={t('Audio Guide & Tutorial')}
+                    className={cn(
+                      "h-7 w-7 rounded-lg transition-all",
+                      tutorialModeEnabled
+                        ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+                        : "hover:bg-background text-primary"
+                    )}
+                  >
+                    <Headphones className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('Audio Guide & Tutorial Mode')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            {/* Help */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setIsHelpOpen(true)}
+                    className="h-7 w-7 rounded-lg hover:bg-background text-muted-foreground hover:text-foreground transition-colors"
+                    title={t('Help')}
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{t('Help')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
 
+          {/* Capsule 2: Modern Single-line Clock Capsule */}
+          <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border border-border/50 bg-muted/30 shadow-sm font-mono text-xs">
+            <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="font-black text-foreground tracking-tight text-xs sm:text-sm">{formattedTime}</span>
+            <span className="text-border">|</span>
+            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{formattedDate}</span>
+          </div>
+
+          {/* Capsule 3: Staff Profile & Standalone Refined End Shift */}
           {currentUser && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsStaffLoginOpen(true)}
-              className="flex items-center gap-2 border-primary/30 hover:border-primary shadow-sm rounded-xl px-3 py-1.5 h-auto"
-              title={t('Switch Profile')}
-            >
-              <div 
-                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow"
-                style={{ backgroundColor: currentUser.color || '#3b82f6' }}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsStaffLoginOpen(true)}
+                className="flex items-center gap-2 h-9 px-2.5 rounded-xl border-border/60 hover:border-primary/50 bg-background/60 hover:bg-muted/50 shadow-sm transition-all"
+                title={t('Switch Profile / Quick Lock')}
               >
-                {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
-              </div>
-              <div className="flex flex-col text-left leading-tight hidden sm:flex">
-                <span className="font-bold text-xs">{currentUser.name}</span>
-                <span className="text-[10px] text-muted-foreground">{currentUser.role}</span>
-              </div>
-            </Button>
+                <div 
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm shrink-0"
+                  style={{ backgroundColor: currentUser.color || '#3b82f6' }}
+                >
+                  {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+                </div>
+                <div className="flex items-center gap-1.5 leading-none">
+                  <span className="font-bold text-xs truncate max-w-[80px] sm:max-w-[100px]">{currentUser.name}</span>
+                  {liveShiftMinutes > 0 && (
+                    <span className="text-[9px] font-black text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-md">
+                      {formatDuration(liveShiftMinutes)}
+                    </span>
+                  )}
+                </div>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsShiftHandoverOpen(true)}
+                className="h-9 px-2.5 sm:px-3 text-xs font-bold rounded-xl gap-1.5 shadow-sm bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/25 hover:bg-rose-600 hover:text-white transition-all cursor-pointer"
+                title={t('End Shift, View Summary Report & Log Out')}
+              >
+                <LogOut className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden md:inline">{t('End Shift')}</span>
+              </Button>
+            </div>
           )}
         </div>
       </header>
       <DndProvider backend={HTML5Backend}>
-        <Tabs value={activeTab} onValueChange={handleTabChange} className={cn("h-full flex", layoutMode === 'vertical' ? "flex-col" : "flex-row overflow-hidden")}>
-          {layoutMode === 'vertical' && (
+        <Tabs value={activeTab} onValueChange={handleTabChange} className={cn("flex-1 min-h-0 flex", layoutMode === 'top' ? "flex-col" : "flex-row overflow-hidden")}>
+          {layoutMode === 'top' && (
             <div className="hidden md:flex justify-center border-b shrink-0">
-              {renderNav()}
+              {renderNav(false)}
             </div>
           )}
 
-          {layoutMode === 'horizontal' && (
-            <div className="hidden md:flex flex-col border-r w-64 shrink-0 bg-muted/10 overflow-y-auto">
+          {layoutMode === 'side' && (
+            <div className="hidden md:flex flex-col border-r w-52 shrink-0 bg-muted/10 overflow-y-auto">
               <div className="p-2">
                 {renderNav(true)}
               </div>
@@ -745,7 +899,7 @@ export default function MainLayout({
                 setBills={setBills}
                 customers={initialCustomers}
                 setCustomers={setCustomers}
-                currency={initialCurrency}
+                currency={effectiveCurrency}
                 venueDetails={venueDetails || null}
                 pendingBills={initialPendingBills}
                 setPendingBills={setPendingBills}
@@ -753,6 +907,8 @@ export default function MainLayout({
                 setCartSession={setCartSession}
                 savedCarts={savedCarts}
                 setSavedCarts={setSavedCarts}
+                expenses={initialExpenses}
+                currentUser={currentUser}
               />
             </TabsContent>
             <TabsContent value="inventory" className="m-0 p-0 h-full">
@@ -764,7 +920,7 @@ export default function MainLayout({
                 vendors={initialVendors}
                 purchaseOrders={purchaseOrders}
                 setPurchaseOrders={setPurchaseOrders}
-                currency={initialCurrency}
+                currency={effectiveCurrency}
                 expenses={initialExpenses}
                 setExpenses={setExpenses}
                 setVendors={setVendors}
@@ -778,7 +934,7 @@ export default function MainLayout({
                 pendingBills={initialPendingBills}
                 setPendingBills={setPendingBills}
                 customerCreditLimit={customerCreditLimit}
-                currency={initialCurrency}
+                currency={effectiveCurrency}
               />
             </TabsContent>
             <TabsContent value="vendors" className="m-0 p-0 h-full">
@@ -792,9 +948,10 @@ export default function MainLayout({
                 setExpenses={setExpenses}
                 inventory={initialInventory}
                 setInventory={setInventory}
-                currency={initialCurrency}
+                currency={effectiveCurrency}
                 purchaseOrders={purchaseOrders}
                 setPurchaseOrders={setPurchaseOrders}
+                currentUser={currentUser}
               />
             </TabsContent>
             <TabsContent value="expenses" className="m-0 p-0 h-full">
@@ -803,7 +960,7 @@ export default function MainLayout({
                 setExpenses={setExpenses}
                 vendors={initialVendors}
                 setVendors={setVendors}
-                currency={initialCurrency}
+                currency={effectiveCurrency}
                 inventory={initialInventory}
                 purchaseOrders={purchaseOrders}
                 setPurchaseOrders={setPurchaseOrders}
@@ -818,7 +975,7 @@ export default function MainLayout({
                 setAdvances={setAdvances}
                 attendance={initialAttendance}
                 setAttendance={setAttendance}
-                currency={initialCurrency}
+                currency={effectiveCurrency}
               />
             </TabsContent>
             <TabsContent value="admin" className="m-0 p-0 h-full">
@@ -843,7 +1000,7 @@ export default function MainLayout({
                 setMenu={setMenu}
                 venueName={initialVenueName}
                 setVenueName={setVenueName}
-                currency={initialCurrency}
+                currency={effectiveCurrency}
                 setCurrency={setCurrency}
                 venueDetails={venueDetails || null}
                 setVenueDetails={setVenueDetails}
@@ -852,6 +1009,60 @@ export default function MainLayout({
         </Tabs>
       </DndProvider>
       <HelpDialog isOpen={isHelpOpen} onOpenChange={setIsHelpOpen} />
+      <SafeErrorBoundary name="PosSettingsDialog">
+        <PosSettingsDialog
+          isOpen={isSettingsOpen}
+          onOpenChange={setIsSettingsOpen}
+          venueDetails={venueDetails || null}
+          setVenueDetails={setVenueDetails}
+          tutorialModeEnabled={tutorialModeEnabled}
+          setTutorialModeEnabled={setTutorialModeEnabled}
+          tutorialLanguage={tutorialLanguage}
+          setTutorialLanguage={(lang) => {
+            setTutorialLanguage(lang);
+            setSavedTutorialLanguage(lang);
+          }}
+          tutorialVoicePersona={tutorialVoicePersona}
+          setTutorialVoicePersona={(persona) => {
+            setTutorialVoicePersona(persona);
+            setSavedVoicePersona(persona);
+          }}
+          onNavigateToTab={(tab) => {
+            handleTabChange(tab);
+          }}
+          initialTab={settingsInitialTab}
+        />
+      </SafeErrorBoundary>
+
+      {/* Smart Ambient Audio Tour Assistant */}
+      <SafeErrorBoundary name="SmartAudioTour">
+        <SmartAudioTour
+          isEnabled={tutorialModeEnabled}
+          onDisable={() => {
+            setTutorialModeEnabled(false);
+            try { localStorage.setItem('chillbill_tutorial_mode', 'false'); } catch {}
+            toast({
+              title: t("Tutorial Mode Disabled"),
+              description: t("You can re-enable the ambient audio guide from Settings anytime."),
+            });
+          }}
+          activeTab={activeTab}
+          language={tutorialLanguage}
+          onLanguageChange={(lang) => {
+            setTutorialLanguage(lang);
+            setSavedTutorialLanguage(lang);
+          }}
+          voicePersona={tutorialVoicePersona}
+          onVoicePersonaChange={(persona) => {
+            setTutorialVoicePersona(persona);
+            setSavedVoicePersona(persona);
+          }}
+          onOpenFullTutorial={() => {
+            setSettingsInitialTab('tutorial');
+            setIsSettingsOpen(true);
+          }}
+        />
+      </SafeErrorBoundary>
 
       <AlertDialog open={!!alertingItem} onOpenChange={(open) => !open && setAlertingItem(null)}>
         <AlertDialogContent className="rounded-[2.5rem] border-none shadow-2xl p-8">
@@ -899,6 +1110,22 @@ export default function MainLayout({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <SafeErrorBoundary name="ShiftHandoverDialog">
+        <ShiftHandoverDialog
+          isOpen={isShiftHandoverOpen}
+          onOpenChange={setIsShiftHandoverOpen}
+          currentUser={currentUser}
+          bills={initialBills}
+          expenses={initialExpenses}
+          purchaseOrders={purchaseOrders}
+          currency={effectiveCurrency}
+          venueDetails={venueDetails}
+          onLogoutConfirm={() => {
+            setCurrentUser(null);
+            setIsStaffLoginOpen(true);
+          }}
+        />
+      </SafeErrorBoundary>
       <StaffLogin
         isOpen={isStaffLoginOpen}
         onOpenChange={setIsStaffLoginOpen}
