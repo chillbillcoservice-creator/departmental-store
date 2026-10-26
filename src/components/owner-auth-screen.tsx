@@ -94,11 +94,12 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
 
   const handleEmailAuth = async () => {
     if (!email.trim()) {
-      setError("Please enter your email address.");
+      setError("Please enter your registered store email.");
       return;
     }
-    if (!password || password.length < 6) {
-      setError("Password or License Key must be at least 6 characters.");
+    const cleanKey = password.trim().toUpperCase();
+    if (!cleanKey || cleanKey.length < 6) {
+      setError("Please enter your valid License Key (e.g. CBILL-2026-XXXX).");
       return;
     }
 
@@ -110,7 +111,7 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
     try {
       const { auth, firestore } = initializeFirebase();
 
-      // Check Whitelist
+      // 1. Check Whitelist
       const whitelistSnap = await getDoc(doc(firestore, "whitelist", cleanEmail));
       if (!whitelistSnap.exists()) {
         onAccessDenied(cleanEmail);
@@ -118,19 +119,42 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
         return;
       }
 
-      let userCred;
-      if (isSignUp) {
-        try {
-          userCred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-        } catch (createErr: any) {
-          if (createErr?.code === 'auth/email-already-in-use') {
-            userCred = await signInWithEmailAndPassword(auth, cleanEmail, password);
-          } else {
-            throw createErr;
-          }
+      // 2. Validate registered License Key
+      const whiteData = whitelistSnap.data();
+      const registeredKey = (whiteData?.licenseKey || "").trim().toUpperCase();
+      if (registeredKey && cleanKey !== registeredKey) {
+        setError("Incorrect License Key for this email. Please check the key sent to you on WhatsApp.");
+        setIsLoading(false);
+        return;
+      }
+
+      // 3. Subscription status
+      const licResult = await verifyStoreLicense(cleanEmail, firestore);
+      if (!licResult.isValid) {
+        if (licResult.status === 'not_whitelisted') {
+          onAccessDenied(cleanEmail);
         }
-      } else {
-        userCred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+        setIsLoading(false);
+        return;
+      }
+
+      let userCred;
+      try {
+        userCred = await signInWithEmailAndPassword(auth, cleanEmail, cleanKey);
+      } catch (authErr: any) {
+        if (authErr?.code === 'auth/user-not-found' || authErr?.code === 'auth/invalid-credential') {
+          try {
+            userCred = await createUserWithEmailAndPassword(auth, cleanEmail, cleanKey);
+          } catch (createErr: any) {
+            if (createErr?.code === 'auth/email-already-in-use') {
+              userCred = await signInWithEmailAndPassword(auth, cleanEmail, cleanKey);
+            } else {
+              throw createErr;
+            }
+          }
+        } else {
+          throw authErr;
+        }
       }
 
       if (userCred?.user) {
@@ -139,16 +163,12 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
         onAuthSuccess(user, user.uid, !venueSnap.exists());
       }
     } catch (err: any) {
-      console.error("Email Auth error:", err);
-      let userMsg = "Authentication failed. Please try again.";
+      console.error("License Key Auth error:", err);
+      let userMsg = "Activation failed. Please check your details.";
       if (err?.code === 'auth/operation-not-allowed') {
-        userMsg = "Email/Password sign-in is not enabled in Firebase Console. Please enable Email/Password under Authentication -> Sign-in method.";
-      } else if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found') {
-        userMsg = isSignUp
-          ? "Account exists with this email. Password entered does not match."
-          : "Incorrect email or password. If you haven't created your password yet, switch to 'New Business'.";
-      } else if (err?.code === 'auth/weak-password') {
-        userMsg = "Password must be at least 6 characters.";
+        userMsg = "Email/Password sign-in is not enabled in Firebase Console.";
+      } else if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password') {
+        userMsg = "Incorrect License Key for this email. Please check the key sent to you on WhatsApp.";
       } else if (err?.code === 'auth/invalid-email') {
         userMsg = "Please enter a valid email address.";
       } else if (err?.message) {
@@ -357,7 +377,7 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
             {/* Divider */}
             <div className="card-divider">
               <span className="divider-line" />
-              <span className="divider-text">or with any email</span>
+              <span className="divider-text">or activate with license key</span>
               <span className="divider-line" />
             </div>
 
@@ -367,20 +387,20 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
                 className="staff-btn"
                 onClick={() => setShowEmailForm(true)}
               >
-                Sign In / Register with Email (Yahoo, Outlook, etc.)
+                Sign In / Activate with License Key
               </button>
             ) : (
               <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '12px', fontWeight: 600, color: '#f97316' }}>
-                    {isSignUp ? 'New Store Account' : 'Owner Sign In'}
+                    {isSignUp ? 'Activate Store License' : 'Store Owner Login'}
                   </span>
                   <button
                     type="button"
                     onClick={() => { setIsSignUp(!isSignUp); setError(""); setSuccessMsg(""); }}
                     style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
                   >
-                    {isSignUp ? 'Already registered? Sign In' : 'New? Register'}
+                    {isSignUp ? 'Already activated? Sign In' : 'New? Activate License'}
                   </button>
                 </div>
 
@@ -388,7 +408,7 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
                   type="email"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setError(""); setSuccessMsg(""); }}
-                  placeholder="name@yahoo.com or any email"
+                  placeholder="Registered store email (e.g. name@yahoo.com)"
                   style={{
                     width: '100%',
                     padding: '10px 14px',
@@ -401,44 +421,30 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
                   }}
                 />
 
-                <div style={{ position: 'relative' }}>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={(e) => { setPassword(e.target.value); setError(""); setSuccessMsg(""); }}
-                    placeholder="Password or License Key (min 6 chars)"
-                    style={{
-                      width: '100%',
-                      padding: '10px 48px 10px 14px',
-                      borderRadius: '8px',
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(255,255,255,0.12)',
-                      color: '#fff',
-                      fontSize: '13px',
-                      outline: 'none',
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleEmailAuth(); }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '11px' }}
-                  >
-                    {showPassword ? 'Hide' : 'Show'}
-                  </button>
-                </div>
+                <input
+                  type="text"
+                  value={password}
+                  onChange={(e) => { setPassword(e.target.value.toUpperCase()); setError(""); setSuccessMsg(""); }}
+                  placeholder="License Key (e.g. CBILL-2026-XXXX)"
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    color: '#fff',
+                    fontSize: '13px',
+                    fontFamily: 'monospace',
+                    letterSpacing: '1px',
+                    textTransform: 'uppercase',
+                    outline: 'none',
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleEmailAuth(); }}
+                />
 
-                {!isSignUp && (
-                  <div style={{ textAlign: 'right' }}>
-                    <button
-                      type="button"
-                      onClick={handleForgotPassword}
-                      style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '11px', cursor: 'pointer' }}
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-                )}
+                <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0 0' }}>
+                  Enter the License Key sent to you via WhatsApp / ChillBill Admin.
+                </p>
 
                 <button
                   type="button"
@@ -457,7 +463,7 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
                     boxShadow: '0 4px 12px rgba(249,115,22,0.3)',
                   }}
                 >
-                  {isLoading ? 'Processing...' : (isSignUp ? 'Create Store Account' : 'Sign In as Owner')}
+                  {isLoading ? 'Activating...' : (isSignUp ? 'Activate Store License' : 'Sign In with License Key')}
                 </button>
               </div>
             )}

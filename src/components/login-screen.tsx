@@ -307,14 +307,15 @@ export default function LoginScreen({
         }
     }, [onOwnerLogin, onOwnerSignup, onAccessDenied, onLicenseExpired]);
 
-    /* ── Email & Password Auth (Supports Yahoo, Outlook, and Any Provider) ── */
+    /* ── License Key Authentication (Commercial POS Activation) ── */
     const handleEmailAuth = useCallback(async (isSignUp: boolean) => {
         if (!emailInput.trim()) {
-            setError("Please enter your email address.");
+            setError("Please enter your registered store email.");
             return;
         }
-        if (!passwordInput || passwordInput.length < 6) {
-            setError("Password or License Key must be at least 6 characters.");
+        const cleanKey = passwordInput.trim().toUpperCase();
+        if (!cleanKey || cleanKey.length < 6) {
+            setError("Please enter your valid License Key (e.g. CBILL-2026-XXXX).");
             return;
         }
 
@@ -326,7 +327,22 @@ export default function LoginScreen({
         try {
             const { auth, firestore: db } = initializeFirebase();
 
-            // 1. Anti-piracy & commercial subscription whitelist check
+            // 1. Whitelist verification
+            const whiteSnap = await getDoc(doc(db, "whitelist", cleanEmail));
+            if (!whiteSnap.exists()) {
+                onAccessDenied?.(cleanEmail);
+                return;
+            }
+
+            // 2. Validate entered License Key against the registered key for this email in whitelist
+            const whiteData = whiteSnap.data();
+            const registeredKey = (whiteData?.licenseKey || "").trim().toUpperCase();
+            if (registeredKey && cleanKey !== registeredKey) {
+                setError("Incorrect License Key for this email. Please check the key sent to you on WhatsApp.");
+                return;
+            }
+
+            // 3. Subscription & commercial status validation
             const licResult = await verifyStoreLicense(cleanEmail, db);
             if (!licResult.isValid) {
                 if (licResult.status === 'not_whitelisted') {
@@ -337,20 +353,25 @@ export default function LoginScreen({
                 return;
             }
 
+            // 4. Authenticate user into Firebase Auth using their License Key as the secure credential
             let userCredential;
-            if (isSignUp) {
-                try {
-                    userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, passwordInput);
-                } catch (createErr: any) {
-                    if (createErr?.code === 'auth/email-already-in-use') {
-                        // Account already exists in Firebase Auth, attempt signing in
-                        userCredential = await signInWithEmailAndPassword(auth, cleanEmail, passwordInput);
-                    } else {
-                        throw createErr;
+            try {
+                userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanKey);
+            } catch (authErr: any) {
+                if (authErr?.code === 'auth/user-not-found' || authErr?.code === 'auth/invalid-credential') {
+                    // First time activation: create user account with their License Key
+                    try {
+                        userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanKey);
+                    } catch (createErr: any) {
+                        if (createErr?.code === 'auth/email-already-in-use') {
+                            userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanKey);
+                        } else {
+                            throw createErr;
+                        }
                     }
+                } else {
+                    throw authErr;
                 }
-            } else {
-                userCredential = await signInWithEmailAndPassword(auth, cleanEmail, passwordInput);
             }
 
             if (userCredential?.user) {
@@ -363,16 +384,12 @@ export default function LoginScreen({
                 }
             }
         } catch (err: any) {
-            console.error("Email auth error:", err);
-            let userMsg = "Authentication failed. Please check your credentials.";
+            console.error("License auth error:", err);
+            let userMsg = "Activation failed. Please check your details.";
             if (err?.code === 'auth/operation-not-allowed') {
                 userMsg = "Email/Password sign-in is not enabled in Firebase Console. Please enable Email/Password under Authentication -> Sign-in method.";
-            } else if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found') {
-                userMsg = isSignUp
-                    ? "An account with this email already exists, but the password was incorrect."
-                    : "Incorrect email or password. If you haven't created an account yet, click 'Setup Your Business'.";
-            } else if (err?.code === 'auth/weak-password') {
-                userMsg = "Password must be at least 6 characters long.";
+            } else if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password') {
+                userMsg = "Incorrect License Key for this email. Please verify the key sent to you on WhatsApp.";
             } else if (err?.code === 'auth/invalid-email') {
                 userMsg = "Please enter a valid email address.";
             } else if (err?.message?.includes('database (default) does not exist') || err?.code === 'unavailable') {
@@ -574,7 +591,7 @@ export default function LoginScreen({
                                 </div>
                             )}
 
-                            {/* Owner Login — Google or Email */}
+                            {/* Owner Login — Google or License Key */}
                             {authView === "owner-login" && (
                                 <div className="space-y-5">
                                     <div className="flex items-center gap-2">
@@ -583,7 +600,7 @@ export default function LoginScreen({
                                         </button>
                                         <div>
                                             <h2 className="text-lg font-black" style={{ color: T.text }}>Store Owner Login</h2>
-                                            <p className="text-xs" style={{ color: T.textMute }}>Sign in with Google, Yahoo, or registered email</p>
+                                            <p className="text-xs" style={{ color: T.textMute }}>Sign in with Google or your License Key</p>
                                         </div>
                                     </div>
 
@@ -597,7 +614,7 @@ export default function LoginScreen({
                                     <div className="relative flex items-center justify-center my-1">
                                         <div className="border-t w-full" style={{ borderColor: T.borderLt }} />
                                         <span className="px-3 text-[10px] font-bold uppercase tracking-widest shrink-0" style={{ color: T.textMute }}>
-                                            or sign in with email
+                                            or sign in with license key
                                         </span>
                                         <div className="border-t w-full" style={{ borderColor: T.borderLt }} />
                                     </div>
@@ -611,43 +628,24 @@ export default function LoginScreen({
                                                 type="email"
                                                 value={emailInput}
                                                 onChange={e => { setEmailInput(e.target.value); setError(""); setSuccessMsg(""); }}
-                                                placeholder="storeowner@yahoo.com or any email"
+                                                placeholder="Registered email (e.g. name@yahoo.com)"
                                                 className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm transition-all focus:outline-none"
                                                 style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
                                             />
                                         </div>
                                         <div className="relative">
                                             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none" style={{ color: T.textMute }}>
-                                                <Lock size={16} />
+                                                <KeyRound size={16} />
                                             </div>
                                             <input
-                                                type={showPassword ? "text" : "password"}
+                                                type="text"
                                                 value={passwordInput}
-                                                onChange={e => { setPasswordInput(e.target.value); setError(""); setSuccessMsg(""); }}
-                                                placeholder="Password or License Key"
-                                                className="w-full h-11 pl-10 pr-10 rounded-xl border text-sm transition-all focus:outline-none"
+                                                onChange={e => { setPasswordInput(e.target.value.toUpperCase()); setError(""); setSuccessMsg(""); }}
+                                                placeholder="License Key (e.g. CBILL-2026-XXXX)"
+                                                className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm font-mono tracking-wider transition-all focus:outline-none uppercase"
                                                 style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
                                                 onKeyDown={e => { if (e.key === "Enter") handleEmailAuth(false); }}
                                             />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowPassword(p => !p)}
-                                                className="absolute inset-y-0 right-0 pr-3.5 flex items-center"
-                                                style={{ color: T.textMute }}
-                                            >
-                                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                            </button>
-                                        </div>
-
-                                        <div className="flex justify-end">
-                                            <button
-                                                type="button"
-                                                onClick={handleForgotPassword}
-                                                className="text-xs hover:underline"
-                                                style={{ color: T.coral }}
-                                            >
-                                                Forgot password?
-                                            </button>
                                         </div>
 
                                         <button
@@ -656,7 +654,7 @@ export default function LoginScreen({
                                             className="w-full h-11 rounded-xl font-bold text-sm flex items-center justify-center gap-2 text-white transition-all hover:opacity-90 cursor-pointer shadow-md"
                                             style={{ background: T.grad }}
                                         >
-                                            {isLoading ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>Sign In as Owner <ArrowRight size={16} /></>}
+                                            {isLoading ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>Sign In with License Key <ArrowRight size={16} /></>}
                                         </button>
                                     </div>
 
@@ -664,20 +662,20 @@ export default function LoginScreen({
                                     {successMsg && <p className="text-xs text-emerald-400 text-center flex items-center justify-center gap-1"><CheckCircle2 size={14} />{successMsg}</p>}
 
                                     <p className="text-center text-xs" style={{ color: T.textMute }}>
-                                        New business? <button onClick={() => setAuthView("signup")} className="font-bold underline" style={{ color: T.coral }}>Setup Your Business</button>
+                                        New store activation? <button onClick={() => setAuthView("signup")} className="font-bold underline" style={{ color: T.coral }}>Activate Store License</button>
                                     </p>
                                 </div>
                             )}
 
-                            {/* Signup — Universal (Google + Any Email) */}
+                            {/* Signup — Activate with License Key */}
                             {authView === "signup" && (
                                 <div className="space-y-5">
                                     <div className="text-center">
                                         <div className="w-12 h-12 mx-auto mb-3 rounded-xl flex items-center justify-center" style={{ background: T.grad }}>
-                                            <Sparkles size={20} className="text-white" />
+                                            <KeyRound size={22} className="text-white" />
                                         </div>
-                                        <h2 className="text-xl font-black" style={{ color: T.text }}>Setup Your Business</h2>
-                                        <p className="text-xs mt-1" style={{ color: T.textMute }}>Create your ChillBill store account</p>
+                                        <h2 className="text-xl font-black" style={{ color: T.text }}>Activate Your Store</h2>
+                                        <p className="text-xs mt-1" style={{ color: T.textMute }}>Enter your registered email & License Key</p>
                                     </div>
 
                                     {/* Google Option */}
@@ -688,11 +686,11 @@ export default function LoginScreen({
                                         <span>Continue with Google</span>
                                     </button>
 
-                                    {/* Universal Email Option */}
+                                    {/* License Key Option */}
                                     <div className="relative flex items-center justify-center my-1">
                                         <div className="border-t w-full" style={{ borderColor: T.borderLt }} />
                                         <span className="px-3 text-[10px] font-bold uppercase tracking-widest shrink-0" style={{ color: T.textMute }}>
-                                            or register with any email
+                                            or activate with license key
                                         </span>
                                         <div className="border-t w-full" style={{ borderColor: T.borderLt }} />
                                     </div>
@@ -706,36 +704,28 @@ export default function LoginScreen({
                                                 type="email"
                                                 value={emailInput}
                                                 onChange={e => { setEmailInput(e.target.value); setError(""); setSuccessMsg(""); }}
-                                                placeholder="name@yahoo.com, outlook, etc."
+                                                placeholder="Registered email (e.g. name@yahoo.com)"
                                                 className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm transition-all focus:outline-none"
                                                 style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
                                             />
                                         </div>
                                         <div className="relative">
                                             <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none" style={{ color: T.textMute }}>
-                                                <Lock size={16} />
+                                                <KeyRound size={16} />
                                             </div>
                                             <input
-                                                type={showPassword ? "text" : "password"}
+                                                type="text"
                                                 value={passwordInput}
-                                                onChange={e => { setPasswordInput(e.target.value); setError(""); setSuccessMsg(""); }}
-                                                placeholder="Create password or paste License Key"
-                                                className="w-full h-11 pl-10 pr-10 rounded-xl border text-sm transition-all focus:outline-none"
+                                                onChange={e => { setPasswordInput(e.target.value.toUpperCase()); setError(""); setSuccessMsg(""); }}
+                                                placeholder="License Key (e.g. CBILL-2026-XXXX)"
+                                                className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm font-mono tracking-wider transition-all focus:outline-none uppercase"
                                                 style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
                                                 onKeyDown={e => { if (e.key === "Enter") handleEmailAuth(true); }}
                                             />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowPassword(p => !p)}
-                                                className="absolute inset-y-0 right-0 pr-3.5 flex items-center"
-                                                style={{ color: T.textMute }}
-                                            >
-                                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                            </button>
                                         </div>
 
                                         <p className="text-[11px]" style={{ color: T.textMute }}>
-                                            Works with Yahoo, Outlook, Gmail, and any business email.
+                                            Enter the License Key sent to you via WhatsApp / ChillBill Admin.
                                         </p>
 
                                         <button
@@ -744,7 +734,7 @@ export default function LoginScreen({
                                             className="w-full h-11 rounded-xl font-bold text-sm flex items-center justify-center gap-2 text-white transition-all hover:opacity-90 cursor-pointer shadow-md"
                                             style={{ background: T.grad }}
                                         >
-                                            {isLoading ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>Create Store Account <ArrowRight size={16} /></>}
+                                            {isLoading ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>Activate Store License <ArrowRight size={16} /></>}
                                         </button>
                                     </div>
 
@@ -752,7 +742,7 @@ export default function LoginScreen({
                                     {successMsg && <p className="text-xs text-emerald-400 text-center flex items-center justify-center gap-1"><CheckCircle2 size={14} />{successMsg}</p>}
 
                                     <p className="text-center text-xs" style={{ color: T.textMute }}>
-                                        Already have an account? <button onClick={() => setAuthView("owner-login")} className="font-bold underline" style={{ color: T.coral }}>Log In</button>
+                                        Already activated? <button onClick={() => setAuthView("owner-login")} className="font-bold underline" style={{ color: T.coral }}>Log In</button>
                                     </p>
                                 </div>
                             )}
