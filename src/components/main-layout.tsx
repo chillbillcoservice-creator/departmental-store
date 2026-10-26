@@ -688,186 +688,136 @@ export default function MainLayout({
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      <header className="flex items-center justify-between h-16 px-3 sm:px-5 border-b shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-30">
-        {/* Left: Brand & Store Identity */}
-        <div className="flex items-center gap-2.5 font-semibold shrink-0">
+      <header className="flex items-center justify-between h-16 px-4 md:px-6 border-b shrink-0">
+        <div className="flex items-center gap-2 font-semibold">
           <Sheet open={isMobileSheetOpen} onOpenChange={setIsMobileSheetOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden h-9 w-9 rounded-xl mr-1">
-                <MenuIcon className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="md:hidden mr-2">
+                <MenuIcon className="h-6 w-6" />
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="p-2">
               {renderNav(true)}
             </SheetContent>
           </Sheet>
-
-          <div className="flex items-center gap-2.5">
-            <div className="h-9 w-9 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shadow-sm shrink-0">
-              <Logo className="h-5 w-5" />
-            </div>
-            <div className="flex flex-col leading-tight">
-              <div className="flex items-center gap-2">
-                <span className="text-base font-black tracking-tight text-foreground truncate max-w-[120px] sm:max-w-xs">
-                  {initialVenueName}
-                </span>
-                <span className="hidden sm:inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-muted text-muted-foreground border border-border/50">
-                  POS 01
-                </span>
-              </div>
-              <span className="text-[10px] font-bold text-muted-foreground/70 hidden sm:inline">
-                {currentUser?.role === 'Owner' ? t('Store Admin Active') : t('Cash Counter Active')}
-              </span>
-            </div>
-          </div>
+          <Logo className="h-6 w-6" />
+          <span className="text-lg font-bold truncate max-w-[150px] sm:max-w-xs">{initialVenueName}</span>
         </div>
+        <div className="flex items-center gap-2 md:gap-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleLayout}
+            className="hidden md:flex"
+            title={layoutMode === 'side' ? "Switch to Top Bar Layout" : "Switch to Left Sidebar"}
+          >
+            {layoutMode === 'side' ? <PanelTop className="h-5 w-5" /> : <PanelLeft className="h-5 w-5" />}
+          </Button>
 
-        {/* Center: Active View Anchor */}
-        <div className="hidden xl:flex items-center gap-2 px-3 py-1 bg-muted/40 border border-border/40 rounded-xl text-xs text-muted-foreground font-medium shadow-inner">
-          <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-          <span className="font-bold text-foreground text-xs uppercase tracking-wider">
-            {navItems.find(i => i.value === activeTab)?.label || 'POS'}
-          </span>
-          <span className="text-border">|</span>
-          <span className="text-[11px] font-medium text-muted-foreground truncate max-w-[200px]">
-            {initialVenueName}
-          </span>
-        </div>
+          <NetworkStatusBadge />
 
-        {/* Right: Unified Height (h-9) Standardized Capsules */}
-        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-          {/* Capsule 1: Unified Utility Dock */}
-          <div className="flex items-center bg-muted/40 border border-border/50 rounded-xl p-1 h-9 gap-0.5 sm:gap-1 shadow-sm">
-            {/* Layout Toggle */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleLayout}
-              className="h-7 w-7 rounded-lg hover:bg-background text-muted-foreground hover:text-foreground hidden md:flex transition-colors"
-              title={layoutMode === 'side' ? "Switch to Top Bar Layout" : "Switch to Left Sidebar"}
-            >
-              {layoutMode === 'side' ? <PanelTop className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
-            </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setSettingsInitialTab('upi');
+                    setIsSettingsOpen(true);
+                  }}
+                  title={t('Settings')}
+                  className="rounded-xl hover:bg-muted"
+                >
+                  <Settings className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t('Store & POS Settings')}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
-            {/* Network Status Badge */}
-            <NetworkStatusBadge className="h-7 px-2 text-[11px] rounded-lg shadow-none" />
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={tutorialModeEnabled ? "default" : "ghost"}
+                  size="icon"
+                  onClick={() => {
+                    setSettingsInitialTab('tutorial');
+                    setIsSettingsOpen(true);
+                  }}
+                  title={t('Audio Guide & Tutorial')}
+                  className={cn(
+                    "rounded-xl transition-all",
+                    tutorialModeEnabled
+                      ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+                      : "hover:bg-muted text-primary"
+                  )}
+                >
+                  <Headphones className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t('Audio Guide & Tutorial Mode')}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
-            <div className="h-4 w-px bg-border/60 mx-0.5 hidden sm:block" />
-
-            {/* Settings */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      setSettingsInitialTab('upi');
-                      setIsSettingsOpen(true);
-                    }}
-                    title={t('Settings')}
-                    className="h-7 w-7 rounded-lg hover:bg-background text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t('Store & POS Settings')}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Audio Guide & Tutorial */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={tutorialModeEnabled ? "default" : "ghost"}
-                    size="icon"
-                    onClick={() => {
-                      setSettingsInitialTab('tutorial');
-                      setIsSettingsOpen(true);
-                    }}
-                    title={t('Audio Guide & Tutorial')}
-                    className={cn(
-                      "h-7 w-7 rounded-lg transition-all",
-                      tutorialModeEnabled
-                        ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
-                        : "hover:bg-background text-primary"
-                    )}
-                  >
-                    <Headphones className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t('Audio Guide & Tutorial Mode')}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-
-            {/* Help */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setIsHelpOpen(true)}
-                    className="h-7 w-7 rounded-lg hover:bg-background text-muted-foreground hover:text-foreground transition-colors"
-                    title={t('Help')}
-                  >
-                    <HelpCircle className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t('Help')}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => setIsHelpOpen(true)}>
+                  <HelpCircle />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t('Help')}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <div className="text-sm text-foreground text-center font-semibold bg-muted px-3 py-1.5 rounded-lg shadow-inner min-w-[140px] flex flex-col leading-tight">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">{formattedDate}</span>
+            <span className="text-lg font-bold">{formattedTime}</span>
           </div>
 
-          {/* Capsule 2: Modern Single-line Clock Capsule */}
-          <div className="hidden lg:flex items-center gap-2 h-9 px-3 rounded-xl border border-border/50 bg-muted/30 shadow-sm font-mono text-xs">
-            <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <span className="font-black text-foreground tracking-tight text-xs sm:text-sm">{formattedTime}</span>
-            <span className="text-border">|</span>
-            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{formattedDate}</span>
-          </div>
-
-          {/* Capsule 3: Staff Profile & Standalone Refined End Shift */}
           {currentUser && (
-            <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="flex items-center gap-1.5">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setIsStaffLoginOpen(true)}
-                className="flex items-center gap-2 h-9 px-2.5 rounded-xl border-border/60 hover:border-primary/50 bg-background/60 hover:bg-muted/50 shadow-sm transition-all"
+                className="flex items-center gap-2 border-primary/30 hover:border-primary shadow-sm rounded-xl px-2.5 py-1.5 h-auto"
                 title={t('Switch Profile / Quick Lock')}
               >
                 <div 
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white shadow-sm shrink-0"
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shadow"
                   style={{ backgroundColor: currentUser.color || '#3b82f6' }}
                 >
                   {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
                 </div>
-                <div className="flex items-center gap-1.5 leading-none">
-                  <span className="font-bold text-xs truncate max-w-[80px] sm:max-w-[100px]">{currentUser.name}</span>
-                  {liveShiftMinutes > 0 && (
-                    <span className="text-[9px] font-black text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-md">
-                      {formatDuration(liveShiftMinutes)}
-                    </span>
-                  )}
+                <div className="flex flex-col text-left leading-tight hidden sm:flex">
+                  <span className="font-bold text-xs">{currentUser.name}</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-muted-foreground">{currentUser.role}</span>
+                    {liveShiftMinutes > 0 && (
+                      <span className="text-[9px] font-bold text-primary bg-primary/10 px-1 py-0 rounded">
+                        {formatDuration(liveShiftMinutes)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </Button>
 
               <Button
-                variant="outline"
+                variant="destructive"
                 size="sm"
                 onClick={() => setIsShiftHandoverOpen(true)}
-                className="h-9 px-2.5 sm:px-3 text-xs font-bold rounded-xl gap-1.5 shadow-sm bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/25 hover:bg-rose-600 hover:text-white transition-all cursor-pointer"
+                className="h-9 px-2.5 text-xs font-bold rounded-xl gap-1.5 shadow-sm"
                 title={t('End Shift, View Summary Report & Log Out')}
               >
-                <LogOut className="h-3.5 w-3.5 shrink-0" />
+                <LogOut className="h-3.5 w-3.5" />
                 <span className="hidden md:inline">{t('End Shift')}</span>
               </Button>
             </div>
