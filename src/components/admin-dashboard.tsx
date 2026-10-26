@@ -78,13 +78,17 @@ import { Separator } from './ui/separator';
 import StaffManagement from './staff-management';
 import { RadioGroup, RadioGroupItem } from './ui/radio-group';
 import { Checkbox } from './ui/checkbox';
-
+import { DEPARTMENTAL_STORE_CATALOG } from '@/lib/departmental-catalog';
+import { seedData } from '@/lib/seed-data';
+import { Sparkles, KeyRound, ShieldAlert } from 'lucide-react';
 
 const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
 const defaultRoles = ["Store Manager", "Cashier", "Sales Associate", "Stock Clerk", "Security", "Cleaner", "Other"];
 
 interface AdminDashboardProps {
   billHistory: Bill[];
+  setBills?: (bills: Bill[]) => void;
+  currentUser?: Employee | null;
   employees: Employee[];
   setEmployees: (employees: Employee[]) => void;
   expenses: Expense[];
@@ -112,6 +116,8 @@ interface AdminDashboardProps {
 
 export default function AdminDashboard({
   billHistory = [],
+  setBills,
+  currentUser,
   employees = [],
   setEmployees,
   expenses = [],
@@ -301,6 +307,93 @@ export default function AdminDashboard({
   const [isSummaryDetailOpen, setIsSummaryDetailOpen] = useState(false);
   const [summaryDetailTitle, setSummaryDetailTitle] = useState('');
   const [summaryDetailContent, setSummaryDetailContent] = useState<React.ReactNode>(null);
+
+  // Data Reset & Fresh Slate State
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resetType, setResetType] = useState<'bills' | 'inventory' | 'catalog' | 'factory' | null>(null);
+  const [ownerPinAttempt, setOwnerPinAttempt] = useState('');
+  const [resetError, setResetError] = useState('');
+
+  const handleOpenResetDialog = (type: 'bills' | 'inventory' | 'catalog' | 'factory') => {
+    setResetType(type);
+    setOwnerPinAttempt('');
+    setResetError('');
+    setResetModalOpen(true);
+  };
+
+  const handleExecuteReset = () => {
+    if (resetType !== 'catalog') {
+      const ownerEmp = employees.find(e => e.role === 'Owner') || employees[0];
+      const validPin = currentUser?.loginCode || ownerEmp?.loginCode || '0000';
+      if (ownerPinAttempt !== validPin) {
+        setResetError('Incorrect Owner PIN. Please enter your 4-digit PIN.');
+        return;
+      }
+    }
+
+    if (resetType === 'bills') {
+      if (setBills) setBills([]);
+      try {
+        localStorage.setItem('bills', '[]');
+        localStorage.setItem('pendingBills', '[]');
+        localStorage.removeItem('chillbill_active_shift');
+      } catch (e) {}
+      toast({
+        title: t("Sales & Test Bills Cleared!"),
+        description: t("All test transactions wiped. Today's sales reset to 0.00 for your fresh store opening."),
+      });
+    } else if (resetType === 'inventory') {
+      setInventory([]);
+      setMenu([]);
+      try {
+        localStorage.setItem('inventory', '[]');
+        localStorage.setItem('menu', '[]');
+        localStorage.setItem('chillbill_catalog_initialized', 'true');
+      } catch (e) {}
+      toast({
+        title: t("Fresh Slate Activated!"),
+        description: t("All products and categories cleared. Your store now has a 100% blank catalog."),
+      });
+    } else if (resetType === 'catalog') {
+      setInventory(DEPARTMENTAL_STORE_CATALOG);
+      setMenu(seedData());
+      try {
+        localStorage.setItem('inventory', JSON.stringify(DEPARTMENTAL_STORE_CATALOG));
+        localStorage.setItem('menu', JSON.stringify(seedData()));
+        localStorage.setItem('chillbill_catalog_initialized', 'true');
+      } catch (e) {}
+      toast({
+        title: t("Starter Catalog Reloaded!"),
+        description: t("Loaded 28 standard Indian grocery items with barcodes, HSN, and stock."),
+      });
+    } else if (resetType === 'factory') {
+      if (setBills) setBills([]);
+      setInventory([]);
+      setMenu([]);
+      setExpenses([]);
+      if (setVendors) setVendors([]);
+      if (setPurchaseOrders) setPurchaseOrders([]);
+      try {
+        localStorage.setItem('bills', '[]');
+        localStorage.setItem('pendingBills', '[]');
+        localStorage.setItem('inventory', '[]');
+        localStorage.setItem('menu', '[]');
+        localStorage.setItem('expenses', '[]');
+        localStorage.setItem('customers', '[]');
+        localStorage.setItem('vendors', '[]');
+        localStorage.setItem('attendance', '[]');
+        localStorage.setItem('advances', '[]');
+        localStorage.setItem('chillbill_catalog_initialized', 'true');
+        localStorage.removeItem('chillbill_active_shift');
+      } catch (e) {}
+      toast({
+        title: t("Factory Reset Completed!"),
+        description: t("All store test data has been wiped clean. Pristine fresh slate ready."),
+      });
+    }
+
+    setResetModalOpen(false);
+  };
 
   const menuCategories = useMemo(() => menu.map(cat => cat.name), [menu]);
 
@@ -1441,7 +1534,174 @@ export default function AdminDashboard({
             </CardContent>
           </Card>
         </div>
+
+        {/* Full-Width Store Data Management & Reset Section */}
+        <div className="col-span-full mt-6">
+          <Card className="border-border/60 shadow-md overflow-hidden">
+            <CardHeader className="bg-muted/30 border-b border-border/40 py-4 px-6 flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2 font-black">
+                  <Database className="h-5 w-5 text-primary" /> {t('Data Management, Store Reset & Fresh Slate')}
+                </CardTitle>
+                <CardDescription className="text-xs mt-0.5">
+                  {t('Clear test data before grand opening, start with a 100% clean slate, or reload standard FMCG catalogs.')}
+                </CardDescription>
+              </div>
+              <Badge variant="outline" className="text-xs font-mono font-bold bg-background text-muted-foreground">
+                Store Admin Only
+              </Badge>
+            </CardHeader>
+            <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Option 1: Clear Test Bills */}
+              <div className="p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 flex flex-col justify-between space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-bold text-sm">
+                    <Trash2 className="h-4 w-4 shrink-0" />
+                    <span>Wipe Test Bills</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Clear demo & test bills. Resets Day 1 sales revenue to Rs. 0.00. Keeps products & staff intact.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenResetDialog('bills')}
+                  className="w-full border-amber-500/30 text-amber-600 hover:bg-amber-500 hover:text-white font-bold text-xs rounded-xl"
+                >
+                  Clear Test Sales (0.00)
+                </Button>
+              </div>
+
+              {/* Option 2: Clear All Inventory */}
+              <div className="p-4 rounded-2xl border border-rose-500/20 bg-rose-500/5 flex flex-col justify-between space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-bold text-sm">
+                    <Package className="h-4 w-4 shrink-0" />
+                    <span>100% Blank Slate</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Wipes all 28 demo items & categories to 0 items. Ready for your own custom products.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenResetDialog('inventory')}
+                  className="w-full border-rose-500/30 text-rose-600 hover:bg-rose-500 hover:text-white font-bold text-xs rounded-xl"
+                >
+                  Wipe Products to 0
+                </Button>
+              </div>
+
+              {/* Option 3: Reload FMCG Starter Catalog */}
+              <div className="p-4 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 flex flex-col justify-between space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-sm">
+                    <Sparkles className="h-4 w-4 shrink-0" />
+                    <span>Starter Grocery Catalog</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Reload 28 standard Indian grocery items (Atta, Oil, Maggi, Amul) with barcodes & HSN.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenResetDialog('catalog')}
+                  className="w-full border-emerald-500/30 text-emerald-600 hover:bg-emerald-500 hover:text-white font-bold text-xs rounded-xl"
+                >
+                  Load 28 FMCG Products
+                </Button>
+              </div>
+
+              {/* Option 4: Full Factory Reset */}
+              <div className="p-4 rounded-2xl border border-destructive/30 bg-destructive/5 flex flex-col justify-between space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-destructive font-bold text-sm">
+                    <ShieldAlert className="h-4 w-4 shrink-0" />
+                    <span>Full Factory Reset</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Wipes all test bills, products, customers & expenses. Restores software to pristine initial state.
+                  </p>
+                </div>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => handleOpenResetDialog('factory')}
+                  className="w-full font-bold text-xs rounded-xl shadow-sm"
+                >
+                  Factory Reset Store
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
+
+      {/* PIN Confirmation Dialog for Reset Operations */}
+      <Dialog open={resetModalOpen} onOpenChange={setResetModalOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-foreground">
+              {resetType === 'catalog' ? (
+                <>
+                  <Sparkles className="h-5 w-5 text-emerald-500" />
+                  Load Starter Grocery Catalog?
+                </>
+              ) : (
+                <>
+                  <ShieldAlert className="h-5 w-5 text-destructive" />
+                  Confirm {resetType === 'bills' ? 'Wiping Test Bills' : resetType === 'inventory' ? 'Blank Slate Inventory' : 'Full Factory Reset'}
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription className="text-xs pt-1">
+              {resetType === 'catalog' && "This will populate your catalog with 28 Indian grocery items with pre-filled barcodes, HSN, and stock."}
+              {resetType === 'bills' && "All bills, shift counters, and revenue reports will be wiped to Rs. 0.00. This action cannot be undone."}
+              {resetType === 'inventory' && "All products and menu categories will be wiped to 0. You can re-enter products or upload via CSV anytime."}
+              {resetType === 'factory' && "WARNING: All bills, inventory, customers, vendors, and expenses will be permanently wiped. Owner credentials will remain."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {resetType !== 'catalog' && (
+            <div className="space-y-3 py-2">
+              <Label className="text-xs font-bold text-foreground">
+                Enter 4-Digit Owner PIN to Authorize:
+              </Label>
+              <Input
+                type="password"
+                maxLength={4}
+                value={ownerPinAttempt}
+                onChange={(e) => {
+                  setOwnerPinAttempt(e.target.value.replace(/\D/g, ''));
+                  setResetError('');
+                }}
+                placeholder="Owner PIN (e.g. 0000)"
+                className="font-mono text-center tracking-widest text-lg h-12 rounded-xl"
+                autoFocus
+              />
+              {resetError && (
+                <p className="text-xs text-destructive font-bold text-center">{resetError}</p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button variant="outline" onClick={() => setResetModalOpen(false)} className="rounded-xl">
+              Cancel
+            </Button>
+            <Button
+              variant={resetType === 'catalog' ? 'default' : 'destructive'}
+              onClick={handleExecuteReset}
+              className="rounded-xl font-bold"
+            >
+              {resetType === 'catalog' ? 'Confirm & Load Catalog' : 'Confirm & Wipe'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <EmployeeDialog
         key={editingEmployee?.id ?? 'add'}

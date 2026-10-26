@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import AppEntry from '@/components/app-entry';
 import { seedData } from '@/lib/seed-data';
+import { DEPARTMENTAL_STORE_CATALOG, isLegacyInventory } from '@/lib/departmental-catalog';
 import type { MenuCategory, InventoryItem, Employee, Bill, Expense, Customer, Vendor, PendingBill, Attendance, Advance } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -45,20 +46,29 @@ export default function Home() {
     // This effect runs only on the client
     const seededMenu = seedData();
 
+    // Check if stored inventory or menu is legacy dummy data
+    const rawInv = loadFromLocalStorage<InventoryItem[]>('inventory', []);
+    const invIsLegacy = isLegacyInventory(rawInv);
+    const resolvedInventory = invIsLegacy ? DEPARTMENTAL_STORE_CATALOG : rawInv;
+    if (invIsLegacy) {
+      try {
+        localStorage.setItem('inventory', JSON.stringify(DEPARTMENTAL_STORE_CATALOG));
+      } catch (e) {}
+    }
+
+    const rawMenu = loadFromLocalStorage<any[]>('menu', []);
+    const isExplicitlyInitialized = typeof window !== 'undefined' && localStorage.getItem('chillbill_catalog_initialized') === 'true';
+    const menuIsLegacy = !rawMenu || (!isExplicitlyInitialized && rawMenu.length === 0) || (Array.isArray(rawMenu) && rawMenu.some((c: any) => c.name === 'aper' || c.name === 'Bakery'));
+    const resolvedMenu = menuIsLegacy ? seededMenu : rawMenu;
+    if (menuIsLegacy) {
+      try {
+        localStorage.setItem('menu', JSON.stringify(seededMenu));
+      } catch (e) {}
+    }
+
     const data = {
-      menu: loadFromLocalStorage('menu', seededMenu),
-      inventory: loadFromLocalStorage('inventory', [
-        { "id": "1", "name": "Pizza Base", "stock": 100, "capacity": 200, "unit": "unit", "category": "Bakery", "price": 50, "discount": 0 },
-        { "id": "2", "name": "Pasta", "stock": 50, "capacity": 100, "unit": "kg", "category": "Grains", "price": 420, "discount": 0 },
-        { "id": "3", "name": "Cheese", "stock": 20, "capacity": 50, "unit": "kg", "category": "Dairy", "price": 550, "discount": 0 },
-        { "id": "4", "name": "Coffee Beans", "stock": 30, "capacity": 50, "unit": "kg", "category": "Beverages", "price": 450, "discount": 0 },
-        { "id": "5", "name": "Premium Apple", "stock": 100, "capacity": 200, "unit": "kg", "category": "Fruits", "price": 250, "discount": 10 },
-        { "id": "6", "name": "Fresh Milk", "stock": 50, "capacity": 100, "unit": "ltr", "category": "Dairy", "price": 60, "discount": 0 },
-        { "id": "7", "name": "Whole Wheat Bread", "stock": 40, "capacity": 60, "unit": "pck", "category": "Bakery", "price": 45, "discount": 5 },
-        { "id": "8", "name": "Chicken Breast", "stock": 30, "capacity": 80, "unit": "kg", "category": "Meat", "price": 320, "discount": 15 },
-        { "id": "9", "name": "Cola Can", "stock": 200, "capacity": 500, "unit": "unit", "category": "Beverages", "price": 40, "discount": 0 },
-        { "id": "10", "name": "Dark Chocolate", "stock": 150, "capacity": 300, "unit": "bar", "category": "Snacks", "price": 120, "discount": 20 }
-      ]),
+      menu: resolvedMenu,
+      inventory: resolvedInventory,
       employees: loadFromLocalStorage('employees', [
         {
           id: 'owner-1',

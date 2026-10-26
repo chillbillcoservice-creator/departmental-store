@@ -10,23 +10,27 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Label } from '@/components/ui/label';
-import { PlusCircle, Edit, Trash2, Plus, Minus, Server, Search, FilePlus, Truck, AlertTriangle, ScanBarcode, Info, Tag, Package2, DollarSign, MapPin, Calendar, List, Check } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Plus, Minus, Server, Search, FilePlus, Truck, AlertTriangle, ScanBarcode, Info, Tag, Package2, DollarSign, MapPin, Calendar, List, Check, Sparkles, FileSpreadsheet, Upload, Download } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
-import type { InventoryItem, MenuCategory, Vendor, PurchaseOrder } from '@/lib/types';
+import type { InventoryItem, MenuCategory, Vendor, PurchaseOrder, DamageRecord } from '@/lib/types';
+import { DEPARTMENTAL_STORE_CATALOG } from '@/lib/departmental-catalog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from '@/lib/utils';
-import { ManageMenuDialog } from './manage-menu-dialog';
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useLanguage } from '@/contexts/language-context';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { X, PackageCheck } from 'lucide-react';
+import { X, PackageCheck, Flame, AlertOctagon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import ProfitAnalysis from './profit-analysis';
 import { TrendingUp } from 'lucide-react';
+import { BarcodeLabelDialog } from './barcode-label-dialog';
+import { ExpiryTrackerDialog } from './expiry-tracker-dialog';
+import { ShrinkageAuditDialog } from './shrinkage-audit-dialog';
 
 interface InventoryManagementProps {
   inventory: InventoryItem[];
@@ -71,6 +75,7 @@ function AddOrEditItemDialog({
   const [vendorId, setVendorId] = useState<string | undefined>();
   const [expiryDate, setExpiryDate] = useState('');
   const [taxRate, setTaxRate] = useState('0');
+  const [hsnCode, setHsnCode] = useState('');
   const [purchaseUnit, setPurchaseUnit] = useState('');
   const [sellUnit, setSellUnit] = useState('');
   const [conversionFactor, setConversionFactor] = useState('');
@@ -104,6 +109,7 @@ function AddOrEditItemDialog({
         setVendorId(existingItem.vendorId || 'none');
         setExpiryDate(existingItem.expiryDate || '');
         setTaxRate(String(existingItem.taxRate ?? '0'));
+        setHsnCode(existingItem.hsnCode || '');
         setPurchaseUnit(existingItem.purchaseUnit || '');
         setSellUnit(existingItem.sellUnit || '');
         setConversionFactor(String(existingItem.conversionFactor || ''));
@@ -121,6 +127,7 @@ function AddOrEditItemDialog({
         setVendorId('none');
         setExpiryDate('');
         setTaxRate('0');
+        setHsnCode('');
         setPurchaseUnit('');
         setSellUnit('');
         setConversionFactor('');
@@ -149,6 +156,7 @@ function AddOrEditItemDialog({
         vendorId: vendorId === 'none' ? null : vendorId,
         expiryDate: expiryDate || undefined,
         taxRate: parseFloat(taxRate),
+        hsnCode: hsnCode.trim() || undefined,
         purchaseUnit: purchaseUnit || undefined,
         sellUnit: sellUnit || undefined,
         conversionFactor: conversionFactor ? parseFloat(conversionFactor) : undefined,
@@ -392,20 +400,31 @@ function AddOrEditItemDialog({
                       <Input type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} className="pl-9 h-11 bg-muted/20 border-border/40" />
                     </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] font-black text-muted-foreground uppercase opacity-70">Tax %</Label>
-                    <Select value={taxRate} onValueChange={setTaxRate}>
-                      <SelectTrigger id="edit-tax-rate" className="h-11 bg-muted/20 border-border/40">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">0% (Exempt)</SelectItem>
-                        <SelectItem value="5">5%</SelectItem>
-                        <SelectItem value="12">12%</SelectItem>
-                        <SelectItem value="18">18%</SelectItem>
-                        <SelectItem value="28">28%</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-muted-foreground uppercase opacity-70">Tax % (GST)</Label>
+                      <Select value={taxRate} onValueChange={setTaxRate}>
+                        <SelectTrigger id="edit-tax-rate" className="h-11 bg-muted/20 border-border/40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">0% (Exempt)</SelectItem>
+                          <SelectItem value="5">5% (Essential)</SelectItem>
+                          <SelectItem value="12">12% (Standard)</SelectItem>
+                          <SelectItem value="18">18% (Standard+)</SelectItem>
+                          <SelectItem value="28">28% (Luxury/Sin)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-[10px] font-black text-muted-foreground uppercase opacity-70">HSN / SAC Code</Label>
+                      <Input
+                        value={hsnCode}
+                        onChange={e => setHsnCode(e.target.value)}
+                        placeholder="e.g. 1902"
+                        className="h-11 bg-muted/20 border-border/40 font-mono text-sm uppercase"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -450,10 +469,12 @@ function DamageLogDialog({ item, onLog }: { item: InventoryItem, onLog: (id: str
                 <SelectValue placeholder="Select reason" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Broken/Damaged">Broken/Damaged</SelectItem>
-                <SelectItem value="Expired">Expired</SelectItem>
-                <SelectItem value="Theft">Theft/Missing</SelectItem>
-                <SelectItem value="Quality Issue">Quality Issue</SelectItem>
+                <SelectItem value="Damaged / Leakage">💥 Damaged / Broken / Leaking</SelectItem>
+                <SelectItem value="Pest / Rodent Damage">🐀 Pest / Rodent Damage</SelectItem>
+                <SelectItem value="Expired / Spoiled">⏳ Expired / Spoiled</SelectItem>
+                <SelectItem value="Theft / Shrinkage">🕵️ Theft / Missing</SelectItem>
+                <SelectItem value="Physical Count Mismatch">📋 Physical Count Correction</SelectItem>
+                <SelectItem value="Store Use / Sample">🧪 Store Use / Sample</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -484,8 +505,35 @@ export default function InventoryManagement({
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isProfitDialogOpen, setIsProfitDialogOpen] = useState(false);
+  const [isBarcodeStudioOpen, setIsBarcodeStudioOpen] = useState(false);
+  const [barcodeTargetItem, setBarcodeTargetItem] = useState<InventoryItem | null>(null);
+  const [isExpiryTrackerOpen, setIsExpiryTrackerOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isShrinkageAuditOpen, setIsShrinkageAuditOpen] = useState(false);
+  const [damageRecords, setDamageRecords] = useState<DamageRecord[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('departmental_damage_records');
+        return saved ? JSON.parse(saved) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const nearExpiryCount = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return inventory.filter(i => {
+      if (!i.expiryDate) return false;
+      const exp = new Date(i.expiryDate);
+      exp.setHours(0, 0, 0, 0);
+      const days = Math.ceil((exp.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      return days <= 7;
+    }).length;
+  }, [inventory]);
 
   const [selectedPOVendor, setSelectedPOVendor] = useState<string | null>(null);
   const [poItems, setPoItems] = useState<any[]>([]);
@@ -500,6 +548,181 @@ export default function InventoryManagement({
   const [orderItem, setOrderItem] = useState<InventoryItem | null>(null);
   const [orderQty, setOrderQty] = useState('');
   const [focusField, setFocusField] = useState<string | null>(null);
+
+  // CSV Import & Wipe States
+  const [isCsvImportOpen, setIsCsvImportOpen] = useState(false);
+  const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
+  const [csvParsedItems, setCsvParsedItems] = useState<any[]>([]);
+  const [csvFileName, setCsvFileName] = useState<string>('');
+  const [csvImportMode, setCsvImportMode] = useState<'append' | 'replace'>('append');
+  const [csvError, setCsvError] = useState<string | null>(null);
+
+  const downloadSampleCsv = () => {
+    const headers = "Name,Category,Price,CostPrice,Stock,Barcode,HSN,Unit,MinStock\n";
+    const sample1 = "Tata Salt 1kg,Groceries & Staples,28,24,50,8901030383789,250100,Pack,10\n";
+    const sample2 = "Maggi 2-Minute Noodles 70g,Snacks & Packaged Foods,14,11.5,120,8901058852373,190230,Piece,20\n";
+    const sample3 = "Amul Butter 100g,Dairy & Breakfast,58,51,30,8901262010054,040510,Pack,5\n";
+    const blob = new Blob([headers + sample1 + sample2 + sample3], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", "chillbill_catalog_template.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleCsvFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCsvFileName(file.name);
+    setCsvError(null);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const text = event.target?.result as string;
+        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+        if (lines.length <= 1) {
+          setCsvError("CSV file must contain a header and at least one item row.");
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+        const nameIdx = headers.findIndex(h => h.includes('name') || h.includes('item'));
+        const catIdx = headers.findIndex(h => h.includes('cat'));
+        const priceIdx = headers.findIndex(h => h.includes('price') || h.includes('mrp'));
+        const costIdx = headers.findIndex(h => h.includes('cost') || h.includes('purchase'));
+        const stockIdx = headers.findIndex(h => h.includes('stock') || h.includes('qty'));
+        const barIdx = headers.findIndex(h => h.includes('bar') || h.includes('code'));
+        const hsnIdx = headers.findIndex(h => h.includes('hsn'));
+        const unitIdx = headers.findIndex(h => h.includes('unit'));
+        const minIdx = headers.findIndex(h => h.includes('min') || h.includes('capacity'));
+
+        if (nameIdx === -1) {
+          setCsvError("Missing 'Name' column in CSV.");
+          return;
+        }
+
+        const items: any[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const row = lines[i].split(',').map(col => col.trim().replace(/^["']|["']$/g, ''));
+          if (row.length === 0 || !row[nameIdx]) continue;
+
+          items.push({
+            name: row[nameIdx],
+            category: (catIdx > -1 && row[catIdx]) ? row[catIdx] : 'General',
+            price: (priceIdx > -1 && parseFloat(row[priceIdx])) ? parseFloat(row[priceIdx]) : 0,
+            costPrice: (costIdx > -1 && parseFloat(row[costIdx])) ? parseFloat(row[costIdx]) : 0,
+            stock: (stockIdx > -1 && parseInt(row[stockIdx], 10)) ? parseInt(row[stockIdx], 10) : 0,
+            barcode: (barIdx > -1 && row[barIdx]) ? row[barIdx] : '',
+            hsnCode: (hsnIdx > -1 && row[hsnIdx]) ? row[hsnIdx] : '',
+            unit: (unitIdx > -1 && row[unitIdx]) ? row[unitIdx] : 'Pack',
+            capacity: (minIdx > -1 && parseInt(row[minIdx], 10)) ? parseInt(row[minIdx], 10) : 5,
+          });
+        }
+
+        if (items.length === 0) {
+          setCsvError("No valid products found in CSV file.");
+          return;
+        }
+
+        setCsvParsedItems(items);
+      } catch (err: any) {
+        setCsvError("Failed to parse CSV file: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleConfirmCsvImport = () => {
+    if (csvParsedItems.length === 0) return;
+
+    const formattedNewItems: InventoryItem[] = csvParsedItems.map((item, idx) => ({
+      id: `ITEM-${Date.now()}-${idx + 1}`,
+      name: item.name,
+      category: item.category,
+      price: item.price,
+      costPrice: item.costPrice,
+      stock: item.stock,
+      barcode: item.barcode,
+      hsnCode: item.hsnCode,
+      unit: item.unit,
+      capacity: item.capacity,
+      status: item.stock > 0 ? 'In Stock' : 'Out of Stock',
+    }));
+
+    const finalInventory = csvImportMode === 'replace'
+      ? formattedNewItems
+      : [...inventory, ...formattedNewItems];
+
+    setInventory(finalInventory);
+
+    if (setMenu) {
+      const existingMenu = csvImportMode === 'replace' ? [] : [...menu];
+      const categoriesMap = new Map<string, any[]>();
+
+      existingMenu.forEach(cat => {
+        categoriesMap.set(cat.name.toLowerCase(), cat.items || []);
+      });
+
+      formattedNewItems.forEach(item => {
+        const catKey = (item.category || 'General').toLowerCase();
+        const currentList = categoriesMap.get(catKey) || [];
+        currentList.push({
+          name: item.name,
+          price: item.price,
+          barcode: item.barcode,
+          hsnCode: item.hsnCode,
+          code: String(currentList.length + 1).padStart(2, '0')
+        });
+        categoriesMap.set(catKey, currentList);
+      });
+
+      const updatedMenu: MenuCategory[] = Array.from(categoriesMap.entries()).map(([key, items]) => {
+        const found = existingMenu.find(c => c.name.toLowerCase() === key);
+        return {
+          id: found ? found.id : key.replace(/\s+/g, '-'),
+          name: found ? found.name : items[0]?.category || key.toUpperCase(),
+          items: items,
+          subcategories: found?.subcategories || []
+        };
+      });
+
+      setMenu(updatedMenu);
+      try {
+        localStorage.setItem('menu', JSON.stringify(updatedMenu));
+      } catch (e) {}
+    }
+
+    try {
+      localStorage.setItem('inventory', JSON.stringify(finalInventory));
+      localStorage.setItem('chillbill_catalog_initialized', 'true');
+    } catch (e) {}
+
+    toast({
+      title: t("Catalog Imported!"),
+      description: t(`Successfully imported ${formattedNewItems.length} products into your store catalog.`),
+    });
+
+    setIsCsvImportOpen(false);
+    setCsvParsedItems([]);
+    setCsvFileName('');
+  };
+
+  const handleClearAllInventory = () => {
+    setInventory([]);
+    if (setMenu) setMenu([]);
+    try {
+      localStorage.setItem('inventory', '[]');
+      localStorage.setItem('menu', '[]');
+      localStorage.setItem('chillbill_catalog_initialized', 'true');
+    } catch (e) {}
+    toast({
+      title: t("100% Blank Slate Activated"),
+      description: t("All inventory items and categories have been cleared. Store catalog is completely empty."),
+    });
+    setIsClearAllDialogOpen(false);
+  };
 
   const filteredInventory = useMemo(() => {
     if (!searchTerm) return inventory;
@@ -578,11 +801,52 @@ export default function InventoryManagement({
     const newStock = item.stock - damageAmount;
 
     setInventory(inventory.map(i => i.id === id ? { ...i, stock: newStock } : i));
+
+    const unitPrice = item.costPrice || item.price || 0;
+    const newRecord: DamageRecord = {
+      id: `DMG-${Date.now()}`,
+      itemId: item.id,
+      itemName: item.name,
+      quantity: damageAmount,
+      unit: item.unit,
+      price: unitPrice,
+      lossAmount: damageAmount * unitPrice,
+      reason,
+      date: new Date(),
+      reportedBy: 'Store Admin',
+    };
+
+    const updated = [newRecord, ...damageRecords];
+    setDamageRecords(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('departmental_damage_records', JSON.stringify(updated));
+    }
+
     toast({
       title: "Damage Logged",
-      description: `Logged ${damageAmount} ${item.unit} of ${item.name} as wastage. Reason: ${reason}`,
+      description: `Logged ${damageAmount} ${item.unit} of ${item.name} as wastage (${currency}${(damageAmount * unitPrice).toFixed(2)} loss). Reason: ${reason}`,
       variant: "destructive",
     });
+  };
+
+  const handleLogShrinkage = (record: Omit<DamageRecord, 'id' | 'date'>) => {
+    const item = inventory.find(i => i.id === record.itemId);
+    if (!item) return;
+
+    const newStock = Math.max(0, item.stock - record.quantity);
+    setInventory(inventory.map(i => i.id === item.id ? { ...i, stock: newStock } : i));
+
+    const newRecord: DamageRecord = {
+      ...record,
+      id: `DMG-${Date.now()}`,
+      date: new Date(),
+    };
+
+    const updated = [newRecord, ...damageRecords];
+    setDamageRecords(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('departmental_damage_records', JSON.stringify(updated));
+    }
   };
 
   const handlePrintLabel = (item: InventoryItem) => {
@@ -807,17 +1071,89 @@ export default function InventoryManagement({
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => setIsViewListOpen(true)} className="bg-orange-500/10 border-orange-500/20 hover:bg-orange-500/20 hover:border-orange-500 text-orange-600 transition-all">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setInventory(DEPARTMENTAL_STORE_CATALOG);
+                  try {
+                    localStorage.setItem('inventory', JSON.stringify(DEPARTMENTAL_STORE_CATALOG));
+                    localStorage.setItem('chillbill_catalog_initialized', 'true');
+                  } catch (e) {}
+                  toast({
+                    title: t("Catalog Loaded!"),
+                    description: t("Loaded 28 official Indian Departmental Store products with barcodes, stock & HSN.")
+                  });
+                }}
+                className="bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20 hover:border-emerald-500 text-emerald-600 transition-all font-bold"
+                title={t("Load full Indian Departmental Store inventory catalog")}
+              >
+                <Sparkles className="mr-2 h-4 w-4 text-emerald-500" /> {t('Load Sample Catalog')}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCsvParsedItems([]);
+                  setCsvFileName('');
+                  setCsvError(null);
+                  setIsCsvImportOpen(true);
+                }}
+                className="bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20 hover:border-indigo-500 text-indigo-600 transition-all font-bold"
+                title={t("Bulk import products from CSV spreadsheet")}
+              >
+                <FileSpreadsheet className="mr-2 h-4 w-4 text-indigo-500" /> {t('Import CSV')}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setIsClearAllDialogOpen(true)}
+                className="bg-rose-500/10 border-rose-500/20 hover:bg-rose-500/20 hover:border-rose-500 text-rose-600 transition-all font-bold"
+                title={t("Clear all products for a blank slate")}
+              >
+                <Trash2 className="mr-2 h-4 w-4 text-rose-500" /> {t('Clear All')}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => { setBarcodeTargetItem(null); setIsBarcodeStudioOpen(true); }}
+                className="bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20 hover:border-blue-500 text-blue-600 transition-all font-bold"
+              >
+                <ScanBarcode className="mr-2 h-4 w-4" /> {t('Barcode Studio')}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setIsExpiryTrackerOpen(true)}
+                className={cn(
+                  "transition-all font-bold",
+                  nearExpiryCount > 0
+                    ? "bg-orange-500/15 border-orange-500/40 hover:bg-orange-500/25 text-orange-700 animate-pulse"
+                    : "bg-muted/50 border-border/50 text-muted-foreground hover:bg-muted"
+                )}
+              >
+                <Flame className="mr-2 h-4 w-4 text-orange-500" />
+                {t('Expiry Alerts')} {nearExpiryCount > 0 && <Badge className="ml-1.5 bg-orange-600 text-white font-black text-[10px] px-1.5 py-0">{nearExpiryCount}</Badge>}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setIsShrinkageAuditOpen(true)}
+                className="bg-red-500/10 border-red-500/20 hover:bg-red-500/20 hover:border-red-500 text-red-600 transition-all font-bold"
+              >
+                <AlertOctagon className="mr-2 h-4 w-4 text-red-500" />
+                {t('Shrinkage & Loss')}
+                {damageRecords.length > 0 && (
+                  <Badge className="ml-1.5 bg-red-600 text-white font-black text-[10px] px-1.5 py-0">
+                    {damageRecords.length}
+                  </Badge>
+                )}
+              </Button>
+              <Button variant="outline" onClick={() => setIsViewListOpen(true)} className="bg-orange-500/10 border-orange-500/20 hover:bg-orange-500/20 hover:border-orange-500 text-orange-600 transition-all font-bold">
                 <List className="mr-2 h-4 w-4" /> {t('View List')}
               </Button>
-              <Button variant="outline" onClick={() => setIsPODialogOpen(true)} className="bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all">
+              <Button variant="outline" onClick={() => setIsPODialogOpen(true)} className="bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all font-bold">
                 <FilePlus className="mr-2 h-4 w-4" /> {t('Purchase Orders')}
               </Button>
-              <Button onClick={() => handleOpenDialog(null)} className="shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all">
+              <Button onClick={() => handleOpenDialog(null)} className="shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all font-bold">
                 <PlusCircle className="mr-2 h-4 w-4" /> {t('Add Item')}
               </Button>
-              <Button variant="outline" onClick={() => setIsProfitDialogOpen(true)} className="bg-green-500/10 border-green-500/20 hover:bg-green-500/20 hover:border-green-500 text-green-700 transition-all">
+              <Button variant="outline" onClick={() => setIsProfitDialogOpen(true)} className="bg-green-500/10 border-green-500/20 hover:bg-green-500/20 hover:border-green-500 text-green-700 transition-all font-bold">
                 <TrendingUp className="mr-2 h-4 w-4" /> {t('Profit Analysis')}
               </Button>
             </div>
@@ -904,6 +1240,11 @@ export default function InventoryManagement({
                               );
                             })()}
                             <span onClick={() => handleOpenDialog(item, 'edit-tax-rate')} className="text-[10px] font-black text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/10 uppercase cursor-pointer hover:bg-green-500/20 transition-colors">Tax: {item.taxRate || 0}%</span>
+                            {item.hsnCode && (
+                              <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                                HSN: {item.hsnCode}
+                              </span>
+                            )}
                             {item.purchaseUnit && item.sellUnit && (
                               <span onClick={() => handleOpenDialog(item, 'edit-bulk-unit')} className="text-[10px] text-orange-600 font-black bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/10 uppercase cursor-pointer hover:bg-orange-500/20 transition-colors">
                                 1 {item.purchaseUnit} = {item.conversionFactor} {item.sellUnit}
@@ -1061,11 +1402,19 @@ export default function InventoryManagement({
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-12 w-12 rounded-2xl text-blue-500 hover:bg-blue-50 border border-transparent hover:border-blue-100 mx-auto" onClick={() => handlePrintLabel(item)}>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-12 w-12 rounded-2xl text-blue-500 hover:bg-blue-50 border border-transparent hover:border-blue-100 mx-auto"
+                                onClick={() => {
+                                  setBarcodeTargetItem(item);
+                                  setIsBarcodeStudioOpen(true);
+                                }}
+                              >
                                 <ScanBarcode className="h-6 w-6" />
                               </Button>
                             </TooltipTrigger>
-                            <TooltipContent><p>Print Barcode Label</p></TooltipContent>
+                            <TooltipContent><p>{t('Print Barcode Stickers')}</p></TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
                       </TableCell>
@@ -1659,6 +2008,169 @@ export default function InventoryManagement({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <BarcodeLabelDialog
+        isOpen={isBarcodeStudioOpen}
+        onOpenChange={setIsBarcodeStudioOpen}
+        inventory={inventory}
+        selectedItem={barcodeTargetItem}
+        currency={currency}
+      />
+
+      <ExpiryTrackerDialog
+        isOpen={isExpiryTrackerOpen}
+        onOpenChange={setIsExpiryTrackerOpen}
+        inventory={inventory}
+        setInventory={setInventory}
+        currency={currency}
+      />
+
+      <ShrinkageAuditDialog
+        isOpen={isShrinkageAuditOpen}
+        onOpenChange={setIsShrinkageAuditOpen}
+        inventory={inventory}
+        records={damageRecords}
+        onLogShrinkage={handleLogShrinkage}
+        currency={currency}
+      />
+
+      {/* CSV Import Modal */}
+      <Dialog open={isCsvImportOpen} onOpenChange={setIsCsvImportOpen}>
+        <DialogContent className="sm:max-w-xl rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-black flex items-center gap-2 text-foreground">
+              <FileSpreadsheet className="h-5 w-5 text-indigo-500" />
+              Bulk Import Products via CSV / Excel
+            </DialogTitle>
+            <DialogDescription className="text-xs pt-1">
+              Upload a standard spreadsheet with product details. Download our template below to see the exact format.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-3">
+            {/* Template Download Banner */}
+            <div className="p-3.5 rounded-xl border border-indigo-500/20 bg-indigo-500/5 flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-foreground block">Need a starting template?</span>
+                <span className="text-[11px] text-muted-foreground block">Includes columns for Name, Category, Price, Cost, Stock, Barcode, HSN & Unit.</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={downloadSampleCsv}
+                className="shrink-0 border-indigo-500/30 text-indigo-600 hover:bg-indigo-500 hover:text-white font-bold text-xs rounded-xl"
+              >
+                <Download className="mr-1.5 h-3.5 w-3.5" /> Template
+              </Button>
+            </div>
+
+            {/* File Upload Box */}
+            <div className="border-2 border-dashed border-border/80 rounded-2xl p-6 text-center hover:border-primary/50 transition-colors bg-muted/20">
+              <input
+                type="file"
+                accept=".csv,text/csv"
+                id="csv-file-input"
+                className="hidden"
+                onChange={handleCsvFile}
+              />
+              <label htmlFor="csv-file-input" className="cursor-pointer flex flex-col items-center gap-2">
+                <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shadow-xs">
+                  <Upload className="h-5 w-5" />
+                </div>
+                <span className="text-xs font-bold text-foreground">
+                  {csvFileName ? `Selected: ${csvFileName}` : "Click to select CSV File"}
+                </span>
+                <span className="text-[10px] text-muted-foreground">Accepts .csv exported from Excel, Tally or Vyapar</span>
+              </label>
+            </div>
+
+            {csvError && (
+              <p className="text-xs text-destructive font-bold text-center bg-destructive/10 p-2 rounded-xl border border-destructive/20">{csvError}</p>
+            )}
+
+            {/* Preview of Parsed Items */}
+            {csvParsedItems.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold px-1">
+                  <span className="text-emerald-600 flex items-center gap-1.5">
+                    <Check className="h-4 w-4" /> Ready to import {csvParsedItems.length} products
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-muted-foreground font-normal">Mode:</span>
+                    <select
+                      value={csvImportMode}
+                      onChange={(e: any) => setCsvImportMode(e.target.value)}
+                      className="text-xs font-bold bg-muted px-2 py-1 rounded-lg border border-border"
+                    >
+                      <option value="append">Add to existing items</option>
+                      <option value="replace">Replace all current items</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="max-h-36 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 text-xs">
+                  {csvParsedItems.slice(0, 5).map((item, idx) => (
+                    <div key={idx} className="p-2 flex items-center justify-between bg-background/50">
+                      <div>
+                        <span className="font-bold text-foreground">{item.name}</span>
+                        <span className="text-[10px] text-muted-foreground block">{item.category} • Barcode: {item.barcode || 'N/A'}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold text-primary">{currency} {item.price}</span>
+                        <span className="text-[10px] text-muted-foreground block">Stock: {item.stock}</span>
+                      </div>
+                    </div>
+                  ))}
+                  {csvParsedItems.length > 5 && (
+                    <div className="p-2 text-center text-[10px] text-muted-foreground bg-muted/20">
+                      ...and {csvParsedItems.length - 5} more items
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button variant="outline" onClick={() => setIsCsvImportOpen(false)} className="rounded-xl">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmCsvImport}
+              disabled={csvParsedItems.length === 0}
+              className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              Confirm & Import {csvParsedItems.length > 0 ? `(${csvParsedItems.length})` : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Clear All Inventory Confirmation Modal */}
+      <AlertDialog open={isClearAllDialogOpen} onOpenChange={setIsClearAllDialogOpen}>
+        <AlertDialogContent className="rounded-2xl p-6">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-lg font-black flex items-center gap-2 text-destructive">
+              <Trash2 className="h-5 w-5" />
+              Wipe All Inventory (100% Blank Slate)?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs pt-1 leading-relaxed">
+              This will remove all {inventory.length} products and menu categories from your store catalog.
+              <br /><br />
+              Your catalog will remain completely empty until you add products or upload a CSV. You can also reload the 28 sample FMCG products anytime from Settings.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2 sm:gap-0 pt-3">
+            <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearAllInventory}
+              className="bg-destructive hover:bg-destructive/90 text-white font-bold rounded-xl"
+            >
+              Yes, Clear All Items
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div >
   );
 }

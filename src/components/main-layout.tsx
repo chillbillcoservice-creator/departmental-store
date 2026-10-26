@@ -931,6 +931,8 @@ export default function MainLayout({
             <TabsContent value="admin" className="m-0 p-0 h-full">
               <AdminDashboard
                 billHistory={initialBills}
+                setBills={setBills}
+                currentUser={currentUser}
                 employees={initialEmployees}
                 setEmployees={setEmployees}
                 expenses={initialExpenses}
