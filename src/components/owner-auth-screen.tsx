@@ -4,11 +4,15 @@ import { useState, useEffect, useRef } from "react";
 import {
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   User,
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { initializeFirebase } from "@/firebase";
 import { cn } from "@/lib/utils";
+import { verifyStoreLicense } from "@/lib/licensing";
 
 interface OwnerAuthScreenProps {
   onAuthSuccess: (user: User, venueId: string, isNewUser: boolean) => void;
@@ -37,6 +41,12 @@ function SparkleIcon() {
 export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: OwnerAuthScreenProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isHoveringSignIn, setIsHoveringSignIn] = useState(false);
   const [isHoveringSignUp, setIsHoveringSignUp] = useState(false);
@@ -44,6 +54,7 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
 
   const handleGoogleSignIn = async () => {
     setError("");
+    setSuccessMsg("");
     setIsLoading(true);
     try {
       const { auth, firestore } = initializeFirebase();
@@ -79,6 +90,94 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
       setError(userMsg);
       setIsLoading(false);
     }
+  };
+
+  const handleEmailAuth = async () => {
+    if (!email.trim()) {
+      setError("Please enter your email address.");
+      return;
+    }
+    if (!password || password.length < 6) {
+      setError("Password or License Key must be at least 6 characters.");
+      return;
+    }
+
+    setError("");
+    setSuccessMsg("");
+    setIsLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
+
+    try {
+      const { auth, firestore } = initializeFirebase();
+
+      // Check Whitelist
+      const whitelistSnap = await getDoc(doc(firestore, "whitelist", cleanEmail));
+      if (!whitelistSnap.exists()) {
+        onAccessDenied(cleanEmail);
+        setIsLoading(false);
+        return;
+      }
+
+      let userCred;
+      if (isSignUp) {
+        try {
+          userCred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+        } catch (createErr: any) {
+          if (createErr?.code === 'auth/email-already-in-use') {
+            userCred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+          } else {
+            throw createErr;
+          }
+        }
+      } else {
+        userCred = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      }
+
+      if (userCred?.user) {
+        const user = userCred.user;
+        const venueSnap = await getDoc(doc(firestore, "venues", user.uid));
+        onAuthSuccess(user, user.uid, !venueSnap.exists());
+      }
+    } catch (err: any) {
+      console.error("Email Auth error:", err);
+      let userMsg = "Authentication failed. Please try again.";
+      if (err?.code === 'auth/operation-not-allowed') {
+        userMsg = "Email/Password sign-in is not enabled in Firebase Console. Please enable Email/Password under Authentication -> Sign-in method.";
+      } else if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found') {
+        userMsg = isSignUp
+          ? "Account exists with this email. Password entered does not match."
+          : "Incorrect email or password. If you haven't created your password yet, switch to 'New Business'.";
+      } else if (err?.code === 'auth/weak-password') {
+        userMsg = "Password must be at least 6 characters.";
+      } else if (err?.code === 'auth/invalid-email') {
+        userMsg = "Please enter a valid email address.";
+      } else if (err?.message) {
+        userMsg = err.message;
+      }
+      setError(userMsg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setError("Please enter your email above to reset password.");
+      return;
+    }
+    setError("");
+    setIsLoading(true);
+    try {
+      const { auth } = initializeFirebase();
+      await sendPasswordResetEmail(auth, email.trim().toLowerCase());
+      setSuccessMsg(`Password reset link sent to ${email.trim()}! Check your inbox.`);
+    } catch (err: any) {
+      console.error("Password reset error:", err);
+      setError(err?.message || "Failed to send reset email.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -258,18 +357,117 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
             {/* Divider */}
             <div className="card-divider">
               <span className="divider-line" />
-              <span className="divider-text">or</span>
+              <span className="divider-text">or with any email</span>
               <span className="divider-line" />
             </div>
 
-            {/* Staff login */}
-            <button className="staff-btn" aria-label="Staff login">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-              Staff Login
-            </button>
+            {!showEmailForm ? (
+              <button
+                type="button"
+                className="staff-btn"
+                onClick={() => setShowEmailForm(true)}
+              >
+                Sign In / Register with Email (Yahoo, Outlook, etc.)
+              </button>
+            ) : (
+              <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#f97316' }}>
+                    {isSignUp ? 'New Store Account' : 'Owner Sign In'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => { setIsSignUp(!isSignUp); setError(""); setSuccessMsg(""); }}
+                    style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    {isSignUp ? 'Already registered? Sign In' : 'New? Register'}
+                  </button>
+                </div>
+
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => { setEmail(e.target.value); setError(""); setSuccessMsg(""); }}
+                  placeholder="name@yahoo.com or any email"
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    color: '#fff',
+                    fontSize: '13px',
+                    outline: 'none',
+                  }}
+                />
+
+                <div style={{ position: 'relative' }}>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => { setPassword(e.target.value); setError(""); setSuccessMsg(""); }}
+                    placeholder="Password or License Key (min 6 chars)"
+                    style={{
+                      width: '100%',
+                      padding: '10px 48px 10px 14px',
+                      borderRadius: '8px',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      color: '#fff',
+                      fontSize: '13px',
+                      outline: 'none',
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleEmailAuth(); }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '11px' }}
+                  >
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+
+                {!isSignUp && (
+                  <div style={{ textAlign: 'right' }}>
+                    <button
+                      type="button"
+                      onClick={handleForgotPassword}
+                      style={{ background: 'none', border: 'none', color: '#f97316', fontSize: '11px', cursor: 'pointer' }}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleEmailAuth}
+                  disabled={isLoading}
+                  style={{
+                    width: '100%',
+                    padding: '11px',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                    color: '#fff',
+                    fontWeight: 700,
+                    fontSize: '13px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(249,115,22,0.3)',
+                  }}
+                >
+                  {isLoading ? 'Processing...' : (isSignUp ? 'Create Store Account' : 'Sign In as Owner')}
+                </button>
+              </div>
+            )}
+
+            {/* Success message */}
+            {successMsg && (
+              <div style={{ fontSize: '12px', color: '#34d399', textAlign: 'center', marginTop: '8px' }}>
+                {successMsg}
+              </div>
+            )}
 
             {/* Error */}
             {error && (

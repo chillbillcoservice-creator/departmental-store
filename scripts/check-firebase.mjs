@@ -28,7 +28,7 @@ async function runDiagnostics() {
   }
 
   // 2. Check Google Sign-in Provider
-  console.log('\n[2/3] Checking Google Sign-in Provider...');
+  console.log('\n[2/4] Checking Google Sign-in Provider...');
   try {
     const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:createAuthUri?key=${API_KEY}`, {
       method: 'POST',
@@ -56,8 +56,34 @@ async function runDiagnostics() {
     hasIssues = true;
   }
 
-  // 3. Check Cloud Firestore Database
-  console.log('\n[3/3] Checking Cloud Firestore Database...');
+  // 3. Check Email/Password Provider
+  console.log('\n[3/4] Checking Email/Password Provider...');
+  try {
+    const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'chillbill_diagnostic_probe@example.com',
+        password: 'TemporaryProbePassword123!',
+        returnSecureToken: false
+      })
+    });
+    const data = await res.json();
+    if (data.error && data.error.message === 'OPERATION_NOT_ALLOWED') {
+      console.log('⚠️ EMAIL/PASSWORD SIGN-IN IS CURRENTLY DISABLED in Firebase Console!');
+      console.log('   👉 Fix: Open Firebase Console -> Authentication -> Sign-in method -> Click "Email/Password" -> Enable -> Save');
+      console.log(`   👉 Link: https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/providers`);
+      hasIssues = true;
+    } else {
+      console.log('✅ Email/Password Provider is ENABLED in Firebase Console!');
+    }
+  } catch (err) {
+    console.log('❌ Could not verify Email/Password Provider:', err.message);
+    hasIssues = true;
+  }
+
+  // 4. Check Cloud Firestore Database
+  console.log('\n[4/4] Checking Cloud Firestore Database...');
   try {
     const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/whitelist`;
     const res = await fetch(url);

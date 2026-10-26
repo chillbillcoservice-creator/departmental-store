@@ -6,12 +6,16 @@ import { buildUsername } from "@/lib/generate-username";
 import { cn } from "@/lib/utils";
 import {
     Eye, EyeOff, LogIn, User, Shield, CreditCard, Package, ShoppingCart, Zap,
-    Sparkles, ArrowRight, TrendingUp, Building2, ShieldCheck, X
+    Sparkles, ArrowRight, TrendingUp, Building2, ShieldCheck, X,
+    Mail, Lock, KeyRound, ChevronLeft, CheckCircle2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     GoogleAuthProvider,
     signInWithPopup,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
+    sendPasswordResetEmail,
     User as FirebaseUser,
 } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
@@ -190,6 +194,17 @@ function getRoleIcon(role: string) {
     }
 }
 
+function GoogleIcon({ className }: { className?: string }) {
+    return (
+        <svg className={className || "w-4 h-4"} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05" />
+            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+        </svg>
+    );
+}
+
 /* ═══════════════════════════════════════════════════
    COMPONENT
    ═══════════════════════════════════════════════════ */
@@ -199,7 +214,11 @@ export default function LoginScreen({
 }: LoginScreenProps) {
 
     /* ── Auth modal state ── */
-    const [authView, setAuthView] = useState<null | "landing" | "signup" | "login">(null);
+    const [authView, setAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(null);
+    const [emailInput, setEmailInput] = useState("");
+    const [passwordInput, setPasswordInput] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
+    const [successMsg, setSuccessMsg] = useState("");
     const [pin, setPin] = useState("");
     const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null);
     const [error, setError] = useState("");
@@ -240,6 +259,7 @@ export default function LoginScreen({
     const handleGoogleAuth = useCallback(async () => {
         setIsLoading(true);
         setError("");
+        setSuccessMsg("");
         try {
             const { auth, firestore: db } = initializeFirebase();
             const provider = new GoogleAuthProvider();
@@ -287,6 +307,116 @@ export default function LoginScreen({
         }
     }, [onOwnerLogin, onOwnerSignup, onAccessDenied, onLicenseExpired]);
 
+    /* ── Email & Password Auth (Supports Yahoo, Outlook, and Any Provider) ── */
+    const handleEmailAuth = useCallback(async (isSignUp: boolean) => {
+        if (!emailInput.trim()) {
+            setError("Please enter your email address.");
+            return;
+        }
+        if (!passwordInput || passwordInput.length < 6) {
+            setError("Password or License Key must be at least 6 characters.");
+            return;
+        }
+
+        setIsLoading(true);
+        setError("");
+        setSuccessMsg("");
+        const cleanEmail = emailInput.trim().toLowerCase();
+
+        try {
+            const { auth, firestore: db } = initializeFirebase();
+
+            // 1. Anti-piracy & commercial subscription whitelist check
+            const licResult = await verifyStoreLicense(cleanEmail, db);
+            if (!licResult.isValid) {
+                if (licResult.status === 'not_whitelisted') {
+                    onAccessDenied?.(cleanEmail);
+                } else {
+                    onLicenseExpired?.(licResult);
+                }
+                return;
+            }
+
+            let userCredential;
+            if (isSignUp) {
+                try {
+                    userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, passwordInput);
+                } catch (createErr: any) {
+                    if (createErr?.code === 'auth/email-already-in-use') {
+                        // Account already exists in Firebase Auth, attempt signing in
+                        userCredential = await signInWithEmailAndPassword(auth, cleanEmail, passwordInput);
+                    } else {
+                        throw createErr;
+                    }
+                }
+            } else {
+                userCredential = await signInWithEmailAndPassword(auth, cleanEmail, passwordInput);
+            }
+
+            if (userCredential?.user) {
+                const uid = userCredential.user.uid;
+                const venueSnap = await getDoc(doc(db, "venues", uid));
+                if (venueSnap.exists()) {
+                    onOwnerLogin?.(uid);
+                } else {
+                    onOwnerSignup?.(uid);
+                }
+            }
+        } catch (err: any) {
+            console.error("Email auth error:", err);
+            let userMsg = "Authentication failed. Please check your credentials.";
+            if (err?.code === 'auth/operation-not-allowed') {
+                userMsg = "Email/Password sign-in is not enabled in Firebase Console. Please enable Email/Password under Authentication -> Sign-in method.";
+            } else if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password' || err?.code === 'auth/user-not-found') {
+                userMsg = isSignUp
+                    ? "An account with this email already exists, but the password was incorrect."
+                    : "Incorrect email or password. If you haven't created an account yet, click 'Setup Your Business'.";
+            } else if (err?.code === 'auth/weak-password') {
+                userMsg = "Password must be at least 6 characters long.";
+            } else if (err?.code === 'auth/invalid-email') {
+                userMsg = "Please enter a valid email address.";
+            } else if (err?.message?.includes('database (default) does not exist') || err?.code === 'unavailable') {
+                userMsg = "Cloud Firestore Database has not been created yet in Firebase Console. Please create it under Firestore Database.";
+            } else if (err?.message) {
+                userMsg = err.message;
+            }
+            setError(userMsg);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [emailInput, passwordInput, onOwnerLogin, onOwnerSignup, onAccessDenied, onLicenseExpired]);
+
+    /* ── Password Reset for Email Users ── */
+    const handleForgotPassword = useCallback(async () => {
+        if (!emailInput.trim()) {
+            setError("Please enter your email above, then click 'Forgot Password'.");
+            return;
+        }
+        setIsLoading(true);
+        setError("");
+        setSuccessMsg("");
+        try {
+            const { auth } = initializeFirebase();
+            await sendPasswordResetEmail(auth, emailInput.trim().toLowerCase());
+            setSuccessMsg(`Password reset link sent to ${emailInput.trim()}! Check your inbox.`);
+        } catch (err: any) {
+            console.error("Password reset error:", err);
+            let msg = "Failed to send reset email.";
+            if (err?.code === 'auth/user-not-found') {
+                msg = "No account found with this email.";
+            } else if (err?.code === 'auth/invalid-email') {
+                msg = "Please enter a valid email address.";
+            } else if (err?.code === 'auth/operation-not-allowed') {
+                msg = "Email/Password provider is not enabled in Firebase Console.";
+            } else if (err?.message) {
+                msg = err.message;
+            }
+            setError(msg);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [emailInput]);
+
     const handlePinLogin = useCallback(() => {
         if (!selectedEmp) return;
         if (pin === (selectedEmp.loginCode || "0000")) {
@@ -300,9 +430,13 @@ export default function LoginScreen({
         }
     }, [selectedEmp, pin, onLogin]);
 
-    const openAuthModal = useCallback((view: "landing" | "signup" | "login") => {
+    const openAuthModal = useCallback((view: "landing" | "signup" | "login" | "owner-login") => {
         setAuthView(view);
         setError("");
+        setSuccessMsg("");
+        setEmailInput("");
+        setPasswordInput("");
+        setShowPassword(false);
         setPin("");
         setSelectedEmp(null);
     }, []);
@@ -416,12 +550,12 @@ export default function LoginScreen({
                                             <div className="text-sm font-black" style={{ color: T.text }}>Staff Login</div>
                                             <div className="text-[10px] mt-1" style={{ color: T.textMute }}>PIN access (0000)</div>
                                         </button>
-                                        <button onClick={handleGoogleAuth}
+                                        <button onClick={() => setAuthView("owner-login")}
                                             className="p-6 rounded-xl text-center transition-all hover:scale-[1.02] cursor-pointer"
                                             style={{ background: "rgba(255,142,83,0.08)", border: `1px solid rgba(${T.peachRgb},0.2)` }}>
                                             <Shield size={24} className="mx-auto mb-3" style={{ color: T.peach }} />
                                             <div className="text-sm font-black" style={{ color: T.text }}>Owner Login</div>
-                                            <div className="text-[10px] mt-1" style={{ color: T.textMute }}>Google SSO</div>
+                                            <div className="text-[10px] mt-1" style={{ color: T.textMute }}>Google SSO & Email</div>
                                         </button>
                                     </div>
                                     {process.env.NODE_ENV !== 'production' && (
@@ -440,24 +574,185 @@ export default function LoginScreen({
                                 </div>
                             )}
 
-                            {/* Signup — Google Auth */}
+                            {/* Owner Login — Google or Email */}
+                            {authView === "owner-login" && (
+                                <div className="space-y-5">
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => setAuthView("landing")} className="p-1 rounded-lg hover:opacity-80" style={{ color: T.textMute }}>
+                                            <ChevronLeft size={20} />
+                                        </button>
+                                        <div>
+                                            <h2 className="text-lg font-black" style={{ color: T.text }}>Store Owner Login</h2>
+                                            <p className="text-xs" style={{ color: T.textMute }}>Sign in with Google, Yahoo, or registered email</p>
+                                        </div>
+                                    </div>
+
+                                    <button onClick={handleGoogleAuth} disabled={isLoading}
+                                        className="w-full h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm"
+                                        style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", border: `1px solid ${T.borderLt}`, color: T.text }}>
+                                        <GoogleIcon className="w-4 h-4" />
+                                        <span>Continue with Google</span>
+                                    </button>
+
+                                    <div className="relative flex items-center justify-center my-1">
+                                        <div className="border-t w-full" style={{ borderColor: T.borderLt }} />
+                                        <span className="px-3 text-[10px] font-bold uppercase tracking-widest shrink-0" style={{ color: T.textMute }}>
+                                            or sign in with email
+                                        </span>
+                                        <div className="border-t w-full" style={{ borderColor: T.borderLt }} />
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none" style={{ color: T.textMute }}>
+                                                <Mail size={16} />
+                                            </div>
+                                            <input
+                                                type="email"
+                                                value={emailInput}
+                                                onChange={e => { setEmailInput(e.target.value); setError(""); setSuccessMsg(""); }}
+                                                placeholder="storeowner@yahoo.com or any email"
+                                                className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm transition-all focus:outline-none"
+                                                style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
+                                            />
+                                        </div>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none" style={{ color: T.textMute }}>
+                                                <Lock size={16} />
+                                            </div>
+                                            <input
+                                                type={showPassword ? "text" : "password"}
+                                                value={passwordInput}
+                                                onChange={e => { setPasswordInput(e.target.value); setError(""); setSuccessMsg(""); }}
+                                                placeholder="Password or License Key"
+                                                className="w-full h-11 pl-10 pr-10 rounded-xl border text-sm transition-all focus:outline-none"
+                                                style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
+                                                onKeyDown={e => { if (e.key === "Enter") handleEmailAuth(false); }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(p => !p)}
+                                                className="absolute inset-y-0 right-0 pr-3.5 flex items-center"
+                                                style={{ color: T.textMute }}
+                                            >
+                                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            </button>
+                                        </div>
+
+                                        <div className="flex justify-end">
+                                            <button
+                                                type="button"
+                                                onClick={handleForgotPassword}
+                                                className="text-xs hover:underline"
+                                                style={{ color: T.coral }}
+                                            >
+                                                Forgot password?
+                                            </button>
+                                        </div>
+
+                                        <button
+                                            onClick={() => handleEmailAuth(false)}
+                                            disabled={isLoading}
+                                            className="w-full h-11 rounded-xl font-bold text-sm flex items-center justify-center gap-2 text-white transition-all hover:opacity-90 cursor-pointer shadow-md"
+                                            style={{ background: T.grad }}
+                                        >
+                                            {isLoading ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>Sign In as Owner <ArrowRight size={16} /></>}
+                                        </button>
+                                    </div>
+
+                                    {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+                                    {successMsg && <p className="text-xs text-emerald-400 text-center flex items-center justify-center gap-1"><CheckCircle2 size={14} />{successMsg}</p>}
+
+                                    <p className="text-center text-xs" style={{ color: T.textMute }}>
+                                        New business? <button onClick={() => setAuthView("signup")} className="font-bold underline" style={{ color: T.coral }}>Setup Your Business</button>
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* Signup — Universal (Google + Any Email) */}
                             {authView === "signup" && (
-                                <div className="space-y-6">
+                                <div className="space-y-5">
                                     <div className="text-center">
-                                        <div className="w-14 h-14 mx-auto mb-4 rounded-xl flex items-center justify-center" style={{ background: T.grad }}>
-                                            <Sparkles size={22} className="text-white" />
+                                        <div className="w-12 h-12 mx-auto mb-3 rounded-xl flex items-center justify-center" style={{ background: T.grad }}>
+                                            <Sparkles size={20} className="text-white" />
                                         </div>
                                         <h2 className="text-xl font-black" style={{ color: T.text }}>Setup Your Business</h2>
-                                        <p className="text-sm mt-1" style={{ color: T.textMute }}>Create your ChillBill account</p>
+                                        <p className="text-xs mt-1" style={{ color: T.textMute }}>Create your ChillBill store account</p>
                                     </div>
+
+                                    {/* Google Option */}
                                     <button onClick={handleGoogleAuth} disabled={isLoading}
-                                        className="w-full h-12 rounded-xl font-bold text-sm flex items-center justify-center gap-3 transition-all hover:opacity-90"
-                                        style={{ background: T.grad, color: "#0f0f0f" }}>
-                                        {isLoading ? <span className="h-4 w-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> : <>Continue with Google <ArrowRight size={16} /></>}
+                                        className="w-full h-11 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all hover:opacity-90 shadow-sm"
+                                        style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", border: `1px solid ${T.borderLt}`, color: T.text }}>
+                                        <GoogleIcon className="w-4 h-4" />
+                                        <span>Continue with Google</span>
                                     </button>
-                                    {error && <p className="text-sm text-red-400 text-center">{error}</p>}
+
+                                    {/* Universal Email Option */}
+                                    <div className="relative flex items-center justify-center my-1">
+                                        <div className="border-t w-full" style={{ borderColor: T.borderLt }} />
+                                        <span className="px-3 text-[10px] font-bold uppercase tracking-widest shrink-0" style={{ color: T.textMute }}>
+                                            or register with any email
+                                        </span>
+                                        <div className="border-t w-full" style={{ borderColor: T.borderLt }} />
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none" style={{ color: T.textMute }}>
+                                                <Mail size={16} />
+                                            </div>
+                                            <input
+                                                type="email"
+                                                value={emailInput}
+                                                onChange={e => { setEmailInput(e.target.value); setError(""); setSuccessMsg(""); }}
+                                                placeholder="name@yahoo.com, outlook, etc."
+                                                className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm transition-all focus:outline-none"
+                                                style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
+                                            />
+                                        </div>
+                                        <div className="relative">
+                                            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none" style={{ color: T.textMute }}>
+                                                <Lock size={16} />
+                                            </div>
+                                            <input
+                                                type={showPassword ? "text" : "password"}
+                                                value={passwordInput}
+                                                onChange={e => { setPasswordInput(e.target.value); setError(""); setSuccessMsg(""); }}
+                                                placeholder="Create password or paste License Key"
+                                                className="w-full h-11 pl-10 pr-10 rounded-xl border text-sm transition-all focus:outline-none"
+                                                style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
+                                                onKeyDown={e => { if (e.key === "Enter") handleEmailAuth(true); }}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassword(p => !p)}
+                                                className="absolute inset-y-0 right-0 pr-3.5 flex items-center"
+                                                style={{ color: T.textMute }}
+                                            >
+                                                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            </button>
+                                        </div>
+
+                                        <p className="text-[11px]" style={{ color: T.textMute }}>
+                                            Works with Yahoo, Outlook, Gmail, and any business email.
+                                        </p>
+
+                                        <button
+                                            onClick={() => handleEmailAuth(true)}
+                                            disabled={isLoading}
+                                            className="w-full h-11 rounded-xl font-bold text-sm flex items-center justify-center gap-2 text-white transition-all hover:opacity-90 cursor-pointer shadow-md"
+                                            style={{ background: T.grad }}
+                                        >
+                                            {isLoading ? <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <>Create Store Account <ArrowRight size={16} /></>}
+                                        </button>
+                                    </div>
+
+                                    {error && <p className="text-xs text-red-400 text-center">{error}</p>}
+                                    {successMsg && <p className="text-xs text-emerald-400 text-center flex items-center justify-center gap-1"><CheckCircle2 size={14} />{successMsg}</p>}
+
                                     <p className="text-center text-xs" style={{ color: T.textMute }}>
-                                        Already have an account? <button onClick={() => setAuthView("landing")} className="font-bold underline" style={{ color: T.coral }}>Log In</button>
+                                        Already have an account? <button onClick={() => setAuthView("owner-login")} className="font-bold underline" style={{ color: T.coral }}>Log In</button>
                                     </p>
                                 </div>
                             )}
