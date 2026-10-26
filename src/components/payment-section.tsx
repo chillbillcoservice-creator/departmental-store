@@ -1109,28 +1109,35 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                         <h3 className="font-bold text-lg leading-tight group-hover:text-primary transition-colors line-clamp-2">{item.name}</h3>
                                     </div>
 
-                                    <div className="flex justify-between items-center mt-auto">
-                                        <div className="flex flex-col">
+                                    <div className="flex items-end justify-between gap-3 mt-auto pt-2.5 border-t border-border/30">
+                                        <div className="flex flex-col min-w-0 flex-1">
                                             {(item.discount && item.discount > 0) ? (
                                                 <>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-sm font-bold text-muted-foreground line-through decoration-destructive/50 decoration-2">
+                                                    <div className="flex items-center gap-1.5 mb-0.5">
+                                                        <span className="text-[11px] font-bold text-muted-foreground line-through decoration-destructive/50">
                                                             {activeCurrency} {(item.price || 0).toFixed(2)}
                                                         </span>
-                                                        <span className="text-[10px] font-black bg-green-500 text-white px-1.5 py-0.5 rounded-md">
+                                                        <span className="text-[9px] font-black bg-emerald-500/20 text-emerald-500 px-1.5 py-0.5 rounded">
                                                             -{item.discount}%
                                                         </span>
                                                     </div>
-                                                    <span className="text-2xl font-black text-primary drop-shadow-sm">
+                                                    <span className="text-lg xl:text-xl font-black text-primary drop-shadow-sm tracking-tight truncate">
                                                         {activeCurrency} {((item.price || 0) * (1 - item.discount / 100)).toFixed(2)}
                                                     </span>
                                                 </>
                                             ) : (
-                                                <span className="text-2xl font-black text-primary drop-shadow-sm">MRP {activeCurrency} {(item.price || 0).toFixed(2)}</span>
+                                                <>
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                                                        {t("MRP")}
+                                                    </span>
+                                                    <span className="text-lg xl:text-xl font-black text-foreground drop-shadow-sm tracking-tight truncate">
+                                                        {activeCurrency} {(item.price || 0).toFixed(2)}
+                                                    </span>
+                                                </>
                                             )}
                                         </div>
                                         <div
-                                            className="bg-primary hover:bg-primary/90 shadow-md hover:shadow-primary/30 hover:shadow-lg p-2.5 rounded-xl text-white transform transition-transform duration-200 hover:rotate-90 hover:scale-110 active:scale-95 cursor-pointer shrink-0"
+                                            className="w-9 h-9 rounded-xl bg-primary hover:bg-orange-600 shadow-md hover:shadow-primary/30 flex items-center justify-center text-white shrink-0 hover:scale-110 active:scale-95 transition-all cursor-pointer"
                                             title={t("Add to Bill")}
                                         >
                                             <Plus className="h-5 w-5" />
@@ -1442,39 +1449,39 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                     </ScrollArea>
 
                     <div className={cn("space-y-2 pt-2 border-t border-border/50 shrink-0 mt-auto", paymentMethod === 'Cash' && "space-y-1 pt-1")}>
-                        <div className="grid grid-cols-3 gap-1.5 p-1 bg-muted/30 rounded-xl">
+                        <div className="grid grid-cols-3 gap-1.5 p-1 bg-muted/40 rounded-xl border border-border/40">
                             <Button
                                 variant="ghost"
                                 className={cn(
-                                    "flex items-center justify-center gap-1.5 h-9 rounded-lg transition-all font-bold text-xs",
+                                    "flex items-center justify-center gap-2 h-11 rounded-lg transition-all font-bold text-xs sm:text-sm",
                                     paymentMethod === 'Online'
-                                        ? "bg-background text-primary shadow-sm"
+                                        ? "bg-background text-primary shadow-sm border border-border/40"
                                         : "text-muted-foreground hover:bg-background/50"
                                 )}
                                 onClick={() => setPaymentMethod('Online')}
                             >
-                                <CreditCard className="h-3.5 w-3.5" />
+                                <CreditCard className="h-4 w-4" />
                                 {t("Online")}
                             </Button>
                             <Button
                                 variant="ghost"
                                 className={cn(
-                                    "flex items-center justify-center gap-1.5 h-9 rounded-lg transition-all font-bold text-xs",
+                                    "flex items-center justify-center gap-2 h-11 rounded-lg transition-all font-bold text-xs sm:text-sm",
                                     paymentMethod === 'Cash'
-                                        ? "bg-background text-primary shadow-sm"
+                                        ? "bg-background text-primary shadow-sm border border-border/40"
                                         : "text-muted-foreground hover:bg-background/50"
                                 )}
                                 onClick={() => setPaymentMethod('Cash')}
                             >
-                                <Banknote className="h-3.5 w-3.5" />
+                                <Banknote className="h-4 w-4" />
                                 {t("Cash")}
                             </Button>
                             <Button
                                 variant="ghost"
                                 className={cn(
-                                    "flex items-center justify-center gap-1.5 h-9 rounded-lg transition-all font-bold text-xs",
+                                    "flex items-center justify-center gap-2 h-11 rounded-lg transition-all font-bold text-xs sm:text-sm",
                                     paymentMethod === 'Split'
-                                        ? "bg-background text-primary shadow-sm"
+                                        ? "bg-background text-primary shadow-sm border border-border/40"
                                         : "text-muted-foreground hover:bg-background/50"
                                 )}
                                 onClick={() => {
@@ -1484,49 +1491,111 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                     setSplitOnline(parseFloat((total - half).toFixed(2)));
                                 }}
                             >
-                                <Layers className="h-3.5 w-3.5" />
+                                <Layers className="h-4 w-4" />
                                 {t("Split")}
                             </Button>
                         </div>
 
                         {paymentMethod === 'Split' && (
-                            <div className="p-2 bg-primary/5 rounded-xl border border-primary/20 space-y-1.5 animate-in fade-in-50">
-                                <div className="text-[10px] font-black uppercase tracking-wider text-muted-foreground flex justify-between">
-                                    <span>{t("Split Tender Amounts")}</span>
-                                    <span className="text-primary font-bold">{activeCurrency} {total.toFixed(2)}</span>
+                            <div className="p-3 bg-card/90 rounded-2xl border-2 border-primary/30 space-y-2.5 shadow-sm animate-in fade-in-50">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-black uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                                        <Layers className="h-3.5 w-3.5 text-primary" />
+                                        {t("Split Tender Amounts")}
+                                    </span>
+                                    <span className="text-xs font-black text-primary font-mono bg-primary/10 px-2 py-0.5 rounded-md">
+                                        Total: {activeCurrency} {total.toFixed(2)}
+                                    </span>
                                 </div>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <div className="space-y-0.5">
-                                        <div className="text-[9px] font-bold text-emerald-600 uppercase">{t("Cash")}</div>
-                                        <Input
-                                            type="number"
-                                            min="0"
-                                            max={total}
-                                            value={splitCash || ''}
-                                            onChange={(e) => {
-                                                const c = parseFloat(e.target.value) || 0;
-                                                setSplitCash(c);
-                                                setSplitOnline(Math.max(0, parseFloat((total - c).toFixed(2))));
-                                            }}
-                                            className="h-7 text-xs font-black bg-background text-right"
-                                            placeholder="Cash"
-                                        />
+
+                                {/* 1-Tap Quick Split Shortcuts */}
+                                <div className="flex items-center gap-1.5">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const half = parseFloat((total / 2).toFixed(2));
+                                            setSplitCash(half);
+                                            setSplitOnline(parseFloat((total - half).toFixed(2)));
+                                        }}
+                                        className="flex-1 py-1 px-2 text-[10px] font-bold rounded-lg bg-muted/60 hover:bg-muted text-foreground/80 border border-border/50 transition-all hover:text-primary active:scale-95"
+                                    >
+                                        ⚖️ 50 / 50
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSplitCash(total);
+                                            setSplitOnline(0);
+                                        }}
+                                        className="flex-1 py-1 px-2 text-[10px] font-bold rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 border border-emerald-500/30 transition-all active:scale-95"
+                                    >
+                                        💵 Full Cash
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSplitCash(0);
+                                            setSplitOnline(total);
+                                        }}
+                                        className="flex-1 py-1 px-2 text-[10px] font-bold rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 border border-blue-500/30 transition-all active:scale-95"
+                                    >
+                                        📱 Full UPI
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    {/* Cash Input */}
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-1 text-[11px] font-bold text-emerald-500 uppercase tracking-wider">
+                                            <Banknote className="h-3.5 w-3.5" />
+                                            <span>{t("Cash")}</span>
+                                        </div>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground pointer-events-none">
+                                                {activeCurrency}
+                                            </span>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                max={total}
+                                                step="any"
+                                                value={splitCash || ''}
+                                                onChange={(e) => {
+                                                    const c = parseFloat(e.target.value) || 0;
+                                                    setSplitCash(c);
+                                                    setSplitOnline(Math.max(0, parseFloat((total - c).toFixed(2))));
+                                                }}
+                                                className="h-11 pl-9 pr-3 text-base font-black font-mono bg-background text-right rounded-xl border-2 border-emerald-500/30 focus:border-emerald-500 shadow-inner"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
                                     </div>
-                                    <div className="space-y-0.5">
-                                        <div className="text-[9px] font-bold text-blue-600 uppercase">{t("UPI / Online")}</div>
-                                        <Input
-                                            type="number"
-                                            min="0"
-                                            max={total}
-                                            value={splitOnline || ''}
-                                            onChange={(e) => {
-                                                const o = parseFloat(e.target.value) || 0;
-                                                setSplitOnline(o);
-                                                setSplitCash(Math.max(0, parseFloat((total - o).toFixed(2))));
-                                            }}
-                                            className="h-7 text-xs font-black bg-background text-right"
-                                            placeholder="UPI"
-                                        />
+
+                                    {/* Online / UPI Input */}
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-1 text-[11px] font-bold text-blue-500 uppercase tracking-wider">
+                                            <QrCode className="h-3.5 w-3.5" />
+                                            <span>{t("UPI / Online")}</span>
+                                        </div>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground pointer-events-none">
+                                                {activeCurrency}
+                                            </span>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                max={total}
+                                                step="any"
+                                                value={splitOnline || ''}
+                                                onChange={(e) => {
+                                                    const o = parseFloat(e.target.value) || 0;
+                                                    setSplitOnline(o);
+                                                    setSplitCash(Math.max(0, parseFloat((total - o).toFixed(2))));
+                                                }}
+                                                className="h-11 pl-9 pr-3 text-base font-black font-mono bg-background text-right rounded-xl border-2 border-blue-500/30 focus:border-blue-500 shadow-inner"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1565,11 +1634,11 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
 
                         <div className="flex items-center gap-2">
                             <div className="relative flex-grow">
-                                <Percent className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                                <Percent className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     type="number"
                                     placeholder={t("Apply Discount (%)")}
-                                    className="pl-8 h-8 bg-background/50 border-none rounded-xl font-bold text-xs text-right pr-3"
+                                    className="pl-9 h-10 bg-background/50 border border-border/40 rounded-xl font-bold text-sm text-right pr-3 focus:border-primary"
                                     min="0"
                                     max="100"
                                     value={discount || ''}
@@ -1578,26 +1647,26 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                             </div>
                         </div>
 
-                        <div className="space-y-1 px-1">
-                            <div className="flex justify-between text-xs font-bold text-muted-foreground px-0.5">
-                                <span className="uppercase text-[10px] tracking-wider">{t("Subtotal")}</span>
-                                <span className="text-foreground font-mono">{activeCurrency} {subtotal.toFixed(2)}</span>
+                        <div className="space-y-1.5 px-0.5">
+                            <div className="flex justify-between text-xs font-bold text-muted-foreground px-1">
+                                <span className="uppercase text-[11px] tracking-wider">{t("Subtotal")}</span>
+                                <span className="text-foreground font-mono text-sm">{activeCurrency} {subtotal.toFixed(2)}</span>
                             </div>
                             {effectiveDiscount > 0 && (
-                                <div className="flex justify-between text-xs font-bold text-destructive px-0.5">
-                                    <span className="uppercase text-[10px] tracking-wider">{t("Discount")}</span>
-                                    <span className="font-mono">-{activeCurrency} {effectiveDiscount.toFixed(2)}</span>
+                                <div className="flex justify-between text-xs font-bold text-destructive px-1">
+                                    <span className="uppercase text-[11px] tracking-wider">{t("Discount")}</span>
+                                    <span className="font-mono text-sm">-{activeCurrency} {effectiveDiscount.toFixed(2)}</span>
                                 </div>
                             )}
                             {vatAmount > 0 && (
-                                <div className="flex justify-between text-xs font-bold text-blue-600 px-0.5">
-                                    <span className="uppercase text-[10px] tracking-wider">{t("GST Tax")}</span>
-                                    <span className="font-mono">{activeCurrency} {vatAmount.toFixed(2)}</span>
+                                <div className="flex justify-between text-xs font-bold text-blue-500 px-1">
+                                    <span className="uppercase text-[11px] tracking-wider">{t("GST Tax")}</span>
+                                    <span className="font-mono text-sm">+{activeCurrency} {vatAmount.toFixed(2)}</span>
                                 </div>
                             )}
-                            <div className="flex justify-between items-center px-3.5 py-2 bg-primary rounded-xl shadow-lg shadow-primary/20 mt-1">
+                            <div className="flex justify-between items-center px-4 py-2.5 bg-primary rounded-xl shadow-lg shadow-primary/25 mt-1">
                                 <span className="text-xs font-black text-white uppercase tracking-wider">{t("Total Payable")}</span>
-                                <span className="text-2xl font-black text-white leading-none tracking-tight">{activeCurrency} {total.toFixed(2)}</span>
+                                <span className="text-2xl xl:text-3xl font-black text-white leading-none tracking-tight font-mono">{activeCurrency} {total.toFixed(2)}</span>
                             </div>
                         </div>
 
