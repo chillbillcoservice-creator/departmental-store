@@ -575,19 +575,6 @@ export default function LoginScreen({
                                             <div className="text-[10px] mt-1" style={{ color: T.textMute }}>Google SSO & Email</div>
                                         </button>
                                     </div>
-                                    {process.env.NODE_ENV !== 'production' && (
-                                        <button
-                                            onClick={() => {
-                                                const ownerEmp = employees.find(e => e.role === 'Owner') || employees[0];
-                                                if (ownerEmp) onLogin(ownerEmp);
-                                            }}
-                                            className="w-full py-3.5 px-4 rounded-xl text-center font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-all hover:opacity-90 shadow-md text-white"
-                                            style={{ background: T.grad }}
-                                        >
-                                            <Zap size={15} className="text-yellow-300" />
-                                            ⚡ 1-Click Instant Login (Store Owner — Dev Demo)
-                                        </button>
-                                    )}
                                 </div>
                             )}
 
@@ -855,17 +842,6 @@ export default function LoginScreen({
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => {
-                                const ownerEmp = employees.find(e => e.role === 'Owner') || employees[0];
-                                if (ownerEmp) onLogin(ownerEmp);
-                            }}
-                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-white transition-all shadow hover:opacity-90 cursor-pointer"
-                            style={{ background: "linear-gradient(135deg, #10b981, #059669)" }}
-                        >
-                            <Zap size={13} className="text-yellow-300" />
-                            <span>⚡ Quick Login</span>
-                        </button>
                         <ThemeToggle />
                         <button onClick={() => openAuthModal("landing")}
                             className="px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-200"
