@@ -236,110 +236,7 @@ function PinInput({
 }
 
 const COUNTRIES = [
-  { name: "Afghanistan", code: "AF", currency: "?", currencyName: "AFN", languages: ["en"] },
-  { name: "Albania", code: "AL", currency: "L", currencyName: "ALL", languages: ["en"] },
-  { name: "Algeria", code: "DZ", currency: "?.?", currencyName: "DZD", languages: ["en", "fr"] },
-  { name: "Andorra", code: "AD", currency: "€", currencyName: "EUR", languages: ["en", "es", "fr"] },
-  { name: "Angola", code: "AO", currency: "Kz", currencyName: "AOA", languages: ["en"] },
-  { name: "Argentina", code: "AR", currency: "$", currencyName: "ARS", languages: ["es", "en"] },
-  { name: "Armenia", code: "AM", currency: "?", currencyName: "AMD", languages: ["en"] },
-  { name: "Australia", code: "AU", currency: "$", currencyName: "AUD", languages: ["en"] },
-  { name: "Austria", code: "AT", currency: "€", currencyName: "EUR", languages: ["de", "en"] },
-  { name: "Azerbaijan", code: "AZ", currency: "?", currencyName: "AZN", languages: ["en"] },
-  { name: "Bahrain", code: "BH", currency: ".?.?", currencyName: "BHD", languages: ["en"] },
-  { name: "Bangladesh", code: "BD", currency: "?", currencyName: "BDT", languages: ["en"] },
-  { name: "Belarus", code: "BY", currency: "Br", currencyName: "BYN", languages: ["en"] },
-  { name: "Belgium", code: "BE", currency: "€", currencyName: "EUR", languages: ["fr", "de", "en"] },
-  { name: "Bhutan", code: "BT", currency: "Nu.", currencyName: "BTN", languages: ["en"] },
-  { name: "Bolivia", code: "BO", currency: "Bs.", currencyName: "BOB", languages: ["es", "en"] },
-  { name: "Bosnia and Herzegovina", code: "BA", currency: "KM", currencyName: "BAM", languages: ["en"] },
-  { name: "Brazil", code: "BR", currency: "R$", currencyName: "BRL", languages: ["en"] },
-  { name: "Bulgaria", code: "BG", currency: "??", currencyName: "BGN", languages: ["en"] },
-  { name: "Cambodia", code: "KH", currency: "?", currencyName: "KHR", languages: ["en"] },
-  { name: "Canada", code: "CA", currency: "$", currencyName: "CAD", languages: ["en", "fr"] },
-  { name: "Chile", code: "CL", currency: "$", currencyName: "CLP", languages: ["es", "en"] },
-  { name: "China", code: "CN", currency: "¥", currencyName: "CNY", languages: ["zh", "en"] },
-  { name: "Colombia", code: "CO", currency: "$", currencyName: "COP", languages: ["es", "en"] },
-  { name: "Costa Rica", code: "CR", currency: "¢", currencyName: "CRC", languages: ["es", "en"] },
-  { name: "Croatia", code: "HR", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Cuba", code: "CU", currency: "$", currencyName: "CUP", languages: ["es", "en"] },
-  { name: "Cyprus", code: "CY", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Czech Republic", code: "CZ", currency: "Kc", currencyName: "CZK", languages: ["en"] },
-  { name: "Denmark", code: "DK", currency: "kr", currencyName: "DKK", languages: ["en"] },
-  { name: "Dominican Republic", code: "DO", currency: "RD$", currencyName: "DOP", languages: ["es", "en"] },
-  { name: "Ecuador", code: "EC", currency: "$", currencyName: "USD", languages: ["es", "en"] },
-  { name: "Egypt", code: "EG", currency: "E£", currencyName: "EGP", languages: ["en"] },
-  { name: "Estonia", code: "EE", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Ethiopia", code: "ET", currency: "Br", currencyName: "ETB", languages: ["en"] },
-  { name: "Finland", code: "FI", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "France", code: "FR", currency: "€", currencyName: "EUR", languages: ["fr", "en"] },
-  { name: "Georgia", code: "GE", currency: "?", currencyName: "GEL", languages: ["en"] },
-  { name: "Germany", code: "DE", currency: "€", currencyName: "EUR", languages: ["de", "en"] },
-  { name: "Ghana", code: "GH", currency: "?", currencyName: "GHS", languages: ["en"] },
-  { name: "Greece", code: "GR", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Hong Kong", code: "HK", currency: "$", currencyName: "HKD", languages: ["zh", "en"] },
-  { name: "Hungary", code: "HU", currency: "Ft", currencyName: "HUF", languages: ["en"] },
-  { name: "Iceland", code: "IS", currency: "kr", currencyName: "ISK", languages: ["en"] },
-  { name: "India", code: "IN", currency: "Rs.", currencyName: "INR", languages: ["hi", "ta", "gu", "ml", "pa", "bn", "mr", "ur", "en"] },
-  { name: "Indonesia", code: "ID", currency: "Rp", currencyName: "IDR", languages: ["en"] },
-  { name: "Iran", code: "IR", currency: "?", currencyName: "IRR", languages: ["en"] },
-  { name: "Iraq", code: "IQ", currency: "?.?", currencyName: "IQD", languages: ["en"] },
-  { name: "Ireland", code: "IE", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Israel", code: "IL", currency: "?", currencyName: "ILS", languages: ["en"] },
-  { name: "Italy", code: "IT", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Japan", code: "JP", currency: "¥", currencyName: "JPY", languages: ["ja", "en"] },
-  { name: "Jordan", code: "JO", currency: "?.?", currencyName: "JOD", languages: ["en"] },
-  { name: "Kazakhstan", code: "KZ", currency: "?", currencyName: "KZT", languages: ["en"] },
-  { name: "Kenya", code: "KE", currency: "KSh", currencyName: "KES", languages: ["en"] },
-  { name: "Kuwait", code: "KW", currency: "?.?", currencyName: "KWD", languages: ["en"] },
-  { name: "Latvia", code: "LV", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Lebanon", code: "LB", currency: "?.?", currencyName: "LBP", languages: ["en"] },
-  { name: "Lithuania", code: "LT", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Luxembourg", code: "LU", currency: "€", currencyName: "EUR", languages: ["fr", "de", "en"] },
-  { name: "Malaysia", code: "MY", currency: "RM", currencyName: "MYR", languages: ["en"] },
-  { name: "Maldives", code: "MV", currency: "Rf", currencyName: "MVR", languages: ["en"] },
-  { name: "Malta", code: "MT", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Mexico", code: "MX", currency: "$", currencyName: "MXN", languages: ["es", "en"] },
-  { name: "Monaco", code: "MC", currency: "€", currencyName: "EUR", languages: ["fr", "en"] },
-  { name: "Mongolia", code: "MN", currency: "?", currencyName: "MNT", languages: ["en"] },
-  { name: "Morocco", code: "MA", currency: "?.?.", currencyName: "MAD", languages: ["en"] },
-  { name: "Myanmar", code: "MM", currency: "K", currencyName: "MMK", languages: ["en"] },
-  { name: "Nepal", code: "NP", currency: "?", currencyName: "NPR", languages: ["en"] },
-  { name: "Netherlands", code: "NL", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "New Zealand", code: "NZ", currency: "$", currencyName: "NZD", languages: ["en"] },
-  { name: "Nigeria", code: "NG", currency: "?", currencyName: "NGN", languages: ["en"] },
-  { name: "North Korea", code: "KP", currency: "?", currencyName: "KPW", languages: ["en"] },
-  { name: "Norway", code: "NO", currency: "kr", currencyName: "NOK", languages: ["en"] },
-  { name: "Oman", code: "OM", currency: "?.?.", currencyName: "OMR", languages: ["en"] },
-  { name: "Pakistan", code: "PK", currency: "Rs", currencyName: "PKR", languages: ["ur", "en"] },
-  { name: "Peru", code: "PE", currency: "S/.", currencyName: "PEN", languages: ["es", "en"] },
-  { name: "Philippines", code: "PH", currency: "?", currencyName: "PHP", languages: ["en"] },
-  { name: "Poland", code: "PL", currency: "zl", currencyName: "PLN", languages: ["en"] },
-  { name: "Portugal", code: "PT", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Qatar", code: "QA", currency: "?.?", currencyName: "QAR", languages: ["en"] },
-  { name: "Romania", code: "RO", currency: "lei", currencyName: "RON", languages: ["en"] },
-  { name: "Russia", code: "RU", currency: "?", currencyName: "RUB", languages: ["ru", "en"] },
-  { name: "Saudi Arabia", code: "SA", currency: "?", currencyName: "SAR", languages: ["en"] },
-  { name: "Singapore", code: "SG", currency: "$", currencyName: "SGD", languages: ["zh", "en"] },
-  { name: "Slovakia", code: "SK", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Slovenia", code: "SI", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "South Africa", code: "ZA", currency: "R", currencyName: "ZAR", languages: ["en"] },
-  { name: "South Korea", code: "KR", currency: "?", currencyName: "KRW", languages: ["en"] },
-  { name: "Spain", code: "ES", currency: "€", currencyName: "EUR", languages: ["es", "en"] },
-  { name: "Sri Lanka", code: "LK", currency: "Rs", currencyName: "LKR", languages: ["en"] },
-  { name: "Sweden", code: "SE", currency: "kr", currencyName: "SEK", languages: ["en"] },
-  { name: "Switzerland", code: "CH", currency: "Fr", currencyName: "CHF", languages: ["de", "fr", "en"] },
-  { name: "Taiwan", code: "TW", currency: "NT$", currencyName: "TWD", languages: ["zh", "en"] },
-  { name: "Thailand", code: "TH", currency: "?", currencyName: "THB", languages: ["en"] },
-  { name: "Turkey", code: "TR", currency: "?", currencyName: "TRY", languages: ["en"] },
-  { name: "Ukraine", code: "UA", currency: "?", currencyName: "UAH", languages: ["en"] },
-  { name: "United Arab Emirates", code: "AE", currency: "?.?", currencyName: "AED", languages: ["en"] },
-  { name: "United Kingdom", code: "GB", currency: "£", currencyName: "GBP", languages: ["en"] },
-  { name: "United States", code: "US", currency: "$", currencyName: "USD", languages: ["en"] },
-  { name: "Vatican City", code: "VA", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Venezuela", code: "VE", currency: "Bs.S", currencyName: "VES", languages: ["es", "en"] },
-  { name: "Vietnam", code: "VN", currency: "?", currencyName: "VND", languages: ["en"] },
-  { name: "Other", code: "OT", currency: "$", currencyName: "USD", languages: ["en"] },
+  { name: "India", code: "IN", currency: "Rs.", currencyName: "INR", languages: ["en", "hi", "ta", "gu", "ml", "pa", "bn", "mr", "ur"] },
 ];
 
 export default function SetupWizard({ onComplete, initialData }: SetupWizardProps) {
@@ -859,29 +756,6 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                       </SelectContent>
                     </Select>
                   </div>
-
-                  {venue.country === 'Other' && (
-                    <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
-                      <div className="space-y-2">
-                        <Label className="text-sm font-bold text-muted-foreground">{t('Country Name')}</Label>
-                        <Input
-                          value={customCountry}
-                          onChange={(e) => setCustomCountry(e.target.value)}
-                          placeholder={t('Enter Name')}
-                          className="h-10 bg-background border-input text-sm"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-sm font-bold text-muted-foreground">{t('Currency Symbol')}</Label>
-                        <Input
-                          value={customCurrency}
-                          onChange={(e) => setCustomCurrency(e.target.value)}
-                          placeholder="e.g. $"
-                          className="h-10 bg-background border-input text-sm"
-                        />
-                      </div>
-                    </div>
-                  )}
 
                   {/* Hidden fields for compatibility */}
                   <div className="hidden">
