@@ -1,11 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useState, useRef } from "react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { Employee } from "@/lib/types";
 import { useLanguage } from "@/contexts/language-context";
-import { User, Shield, ChefHat, Utensils, Zap, ArrowLeft, LogIn } from "lucide-react";
+import { User, Shield, ChefHat, Utensils, Zap, ArrowLeft, LogIn, X } from "lucide-react";
 
 interface StaffLoginProps {
     isOpen: boolean;
@@ -112,11 +112,25 @@ export default function StaffLogin({ isOpen, onOpenChange, employees, onLogin, i
     return (
         <Dialog open={isOpen} onOpenChange={handleClose}>
             <DialogContent className={cn(
-                "max-w-2xl border-none p-0 bg-transparent shadow-none overflow-visible",
+                "max-w-2xl border-none p-0 bg-transparent shadow-none overflow-visible [&>button]:hidden",
                 isForced && "close-button-hidden"
             )}>
+                <DialogTitle className="sr-only">{t('Staff PIN Login')}</DialogTitle>
+                <DialogDescription className="sr-only">{t('Enter 4-digit PIN to access counter')}</DialogDescription>
                 <div className="relative rounded-3xl overflow-hidden shadow-2xl"
                     style={{ background: "linear-gradient(145deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)" }}>
+
+                    {/* Close Button on top-right */}
+                    {!isForced && (
+                        <button
+                            type="button"
+                            onClick={handleClose}
+                            className="absolute top-5 right-5 z-50 w-9 h-9 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+                            title="Close (Esc)"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                    )}
 
                     {/* Top ambient glow */}
                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[60%] h-[1px]"
@@ -168,6 +182,11 @@ export default function StaffLogin({ isOpen, onOpenChange, employees, onLogin, i
                                                     style={{ color: "rgba(255,255,255,0.35)" }}>
                                                     {employee.role}
                                                 </p>
+                                                {employee.username && (
+                                                    <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-mono text-orange-400 bg-orange-500/10 border border-orange-500/20">
+                                                        @{employee.username}
+                                                    </span>
+                                                )}
                                             </div>
                                         </button>
                                     ))}

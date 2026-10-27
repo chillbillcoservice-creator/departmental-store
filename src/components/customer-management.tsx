@@ -12,6 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Label } from '@/components/ui/label';
 import { PlusCircle, Edit, Search, Trash2, Eye, Printer, Mail, CalendarDays, ShoppingBag, ArrowUpDown, ChevronDown, ChevronUp, HandCoins, ChevronsUpDown, CalendarIcon, AlertTriangle } from 'lucide-react';
 import type { Bill, Customer, PendingBill, PendingBillTransaction } from '@/lib/types';
+import { logShiftActivity } from '@/lib/shift-manager';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, isValid } from 'date-fns';
 import { Textarea } from './ui/textarea';
@@ -60,6 +61,8 @@ function AddOrEditCustomerDialog({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [gstin, setGstin] = useState('');
 
   useEffect(() => {
     if (existingCustomer) {
@@ -67,11 +70,15 @@ function AddOrEditCustomerDialog({
       setPhone(existingCustomer.phone);
       setEmail(existingCustomer.email || '');
       setAddress(existingCustomer.address || '');
+      setCompanyName(existingCustomer.companyName || '');
+      setGstin(existingCustomer.gstin || '');
     } else {
       setName('');
       setPhone('');
       setEmail('');
       setAddress('');
+      setCompanyName('');
+      setGstin('');
     }
   }, [existingCustomer, open]);
 
@@ -83,6 +90,8 @@ function AddOrEditCustomerDialog({
         phone,
         email,
         address,
+        companyName,
+        gstin,
       });
       onOpenChange(false);
     }
@@ -94,20 +103,30 @@ function AddOrEditCustomerDialog({
         <DialogHeader>
           <DialogTitle>{existingCustomer ? t('Edit Customer') : t('Add New Customer')}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
-          <div className="space-y-2">
+        <div className="space-y-3 py-4">
+          <div className="space-y-1.5">
             <Label htmlFor="customer-name">{t('Customer Name')}</Label>
             <Input id="customer-name" value={name} onChange={e => setName(e.target.value)} placeholder={t('e.g., Jane Doe')} />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="customer-phone">{t('Phone Number')}</Label>
             <Input id="customer-phone" value={phone} onChange={e => setPhone(e.target.value)} placeholder={t('e.g., 9876543210')} />
           </div>
-          <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="customer-company">{t('Company / Shop Name (B2B)')}</Label>
+              <Input id="customer-company" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder={t('e.g., Sharma Caterers')} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="customer-gstin">{t('Customer GSTIN (B2B)')}</Label>
+              <Input id="customer-gstin" value={gstin} onChange={e => setGstin(e.target.value.toUpperCase())} placeholder={t('15-digit GSTIN')} maxLength={15} />
+            </div>
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="customer-email">{t('Email (Optional)')}</Label>
             <Input id="customer-email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="e.g., jane.d@example.com" />
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="customer-address">{t('Address (Optional)')}</Label>
             <Textarea id="customer-address" value={address} onChange={e => setAddress(e.target.value)} placeholder={t('Full Address')} />
           </div>
@@ -827,9 +846,19 @@ export default function CustomerManagement({
     const billToClear = pendingBills.find(b => b.id === billId);
     if (!billToClear) return;
 
+    const totalCleared = billToClear.transactions.reduce((sum, tx) => sum + tx.amount, 0);
     const newPendingBills = pendingBills.filter(b => b.id !== billId);
     setPendingBills(newPendingBills);
     toast({ title: t(`${billToClear.name}'s pending bills have been cleared.`) });
+
+    logShiftActivity({
+      type: 'khata_collection',
+      title: `Khata Cleared: ${billToClear.name}`,
+      description: `Collected full credit recovery of ${currency}${totalCleared.toFixed(2)} (Cash in till)`,
+      amount: totalCleared,
+      paymentMethod: 'Cash',
+      referenceId: billId,
+    });
   };
 
   const handleSettleTransaction = async (billId: string, transactionId: string, amount: number) => {
@@ -846,6 +875,15 @@ export default function CustomerManagement({
 
     setPendingBills(newPendingBills);
     toast({ title: t("Transaction Settled"), description: t(`${billToUpdate.name}'s transaction has been settled.`) });
+
+    logShiftActivity({
+      type: 'khata_collection',
+      title: `Khata Collected: ${billToUpdate.name}`,
+      description: `Collected credit payment of ${currency}${amount.toFixed(2)} (Cash in till)`,
+      amount: amount,
+      paymentMethod: 'Cash',
+      referenceId: billId,
+    });
   };
 
   return (

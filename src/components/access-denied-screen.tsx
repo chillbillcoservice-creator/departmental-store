@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { signOut } from "firebase/auth";
 import { initializeFirebase } from "@/firebase";
@@ -72,14 +72,14 @@ export default function AccessDeniedScreen({ email, onSignOut }: AccessDeniedScr
                     {/* CTA Buttons */}
                     <div className="space-y-3">
                         <a
-                            href="mailto:support@chillbill.co?subject=ChillBill%20Access%20Request&body=Hi%2C%20I%20would%20like%20to%20get%20access%20to%20ChillBill%20POS%20for%20my%20restaurant.%0A%0AEmail%3A%20"
+                            href="mailto:support@chillbill.co?subject=ChillBill%20Access%20Request&body=Hi%2C%20I%20would%20like%20to%20get%20access%20to%20ChillBill%20POS%20for%20my%20departmental%20store.%0A%0AEmail%3A%20"
                             className="w-full h-12 rounded-xl flex items-center justify-center gap-2.5 bg-white text-[#111] text-sm font-semibold hover:bg-gray-50 active:scale-[0.98] transition-all shadow-md"
                         >
                             <Mail size={15} />
                             <span>Email Us to Get Access</span>
                         </a>
                         <a
-                            href="https://wa.me/+919999999999?text=Hi%2C%20I%20want%20to%20get%20access%20to%20ChillBill%20POS%20for%20my%20restaurant."
+                            href="https://wa.me/+919999999999?text=Hi%2C%20I%20want%20to%20get%20access%20to%20ChillBill%20POS%20for%20my%20departmental%20store."
                             target="_blank"
                             rel="noopener noreferrer"
                             className="w-full h-12 rounded-xl flex items-center justify-center gap-2.5 bg-[#25D366]/10 border border-[#25D366]/20 text-[#25D366] text-sm font-semibold hover:bg-[#25D366]/15 active:scale-[0.98] transition-all"
@@ -100,7 +100,7 @@ export default function AccessDeniedScreen({ email, onSignOut }: AccessDeniedScr
                 </button>
 
                 <p className="text-white/12 text-[11px]">
-                    © {new Date().getFullYear()} ChillBill · Restaurant Management Platform
+                    © {new Date().getFullYear()} ChillBill · Retail & Departmental Store POS
                 </p>
             </div>
         </div>

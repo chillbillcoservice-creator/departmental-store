@@ -1,7 +1,6 @@
-
 'use server';
 /**
- * @fileOverview A flow to generate and email sales and staff reports by fetching data from Firestore.
+ * @fileOverview A flow to generate and email sales and staff reports for a departmental store by fetching data from Firestore.
  *
  * - generateAndSendReport - A function that fetches data, compiles a report, and emails it.
  */
@@ -9,12 +8,12 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 import { sendEmailReceipt } from './send-email-receipt';
-import { GenerateReportInputSchema, GenerateReportOutputSchema, type GenerateReportInput, type GenerateReportOutput, type Bill, type Employee, type Expense, type PendingBill, type Attendance, type Advance, type Table, type InventoryItem, type Customer } from '@/lib/types';
+import { GenerateReportInputSchema, GenerateReportOutputSchema, type GenerateReportInput, type GenerateReportOutput, type Bill, type Employee, type Expense, type PendingBill, type Attendance, type Advance, type InventoryItem, type Customer } from '@/lib/types';
 import { getFirestore, getDoc, doc, collection, getDocs } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 
 const ReportOutputSchema = z.object({
-  reportTitle: z.string().describe('The title of the report (e.g., "Daily Sales Report").'),
+  reportTitle: z.string().describe('The title of the report (e.g., "Daily Store Sales Report").'),
   reportContent: z.string().describe('The full report content, formatted nicely for an email body.'),
   totalRevenue: z.number().describe('The total revenue for the period.'),
 });
@@ -23,10 +22,9 @@ const generateReportPrompt = ai.definePrompt({
   name: 'generateReportPrompt',
   input: { schema: GenerateReportInputSchema },
   output: { schema: ReportOutputSchema },
-  prompt: `You are an expert financial analyst for a restaurant. Your task is to generate a comprehensive business report based on the provided data. The report should be clear, concise, and ready to be emailed.
+  prompt: `You are an expert financial analyst for a retail departmental store and supermarket. Your task is to generate a comprehensive business report based on the provided store data. The report should be clear, professional, concise, and ready to be emailed to the store owner.
 
 Report Type: {{{reportType}}}
-Recipient: {{{recipientEmail}}}
 Recipient: {{{recipientEmail}}}
 Currency: {{{currency}}}
 Current Date: ${new Date().toDateString()}
@@ -38,36 +36,33 @@ Filter the provided data based on the report type.
 
 Your report MUST contain the following sections, in this order:
 
-1.  **Sales Summary**:
-    *   Total number of bills.
-    *   Total revenue from all bills in the period.
-    *   A list of all bills with their ID, total amount, and timestamp.
+1.  **Store Sales & Revenue Summary**:
+    *   Total number of bills generated.
+    *   Total store revenue in the period.
+    *   Average transaction / basket size.
+    *   Payment mode breakdown (Cash vs Online).
 
-2.  **Table Performance Summary**:
-    *   For each table, calculate the total revenue and the number of turnovers (times occupied) during the period.
-    *   List tables sorted by revenue in descending order.
+2.  **Top Selling & Fast-Moving Items**:
+    *   Identify the highest-selling items by quantity and revenue.
 
-3.  **Customer Summary**:
-    *   List all customers, sorted by their total spending in descending order.
-    *   For each customer, show their name, phone number, total visits, and total amount spent.
+3.  **Customer Khata & Credit Summary**:
+    *   Total outstanding khata to collect from customers.
+    *   List of top customers with pending udhaar balances.
 
-4.  **Expense Summary**:
+4.  **Store Expenses**:
     *   Total expenses for the period.
-    *   A breakdown of expenses by category.
-    *   A list of all individual expenses with their date, description, and amount.
+    *   Breakdown by category (Rent, Utilities, Maintenance, Packaging, Tea/Snacks, etc.).
 
-5.  **Pending Bills Summary**:
-    *   A section for "To Collect from Customers": List each person and the total amount pending from them.
-    *   A section for "To Pay to Vendors": List each person/vendor and the total amount you need to pay them.
+5.  **Vendor Payables & Stock Purchases**:
+    *   Total outstanding amount to pay to suppliers/vendors.
+    *   List of vendors with pending balances.
 
-6.  **Staff Report**:
-    *   **Attendance Summary**: List employees who were absent or on half-day during the period.
-    *   **Salary Advances**: List any salary advances given to employees during the period, including who received it and how much.
-    *   **Full Employee List**: A list of all employees with their name, role, and salary.
+6.  **Staff & Attendance Summary**:
+    *   Staff attendance status for the period.
+    *   Salary advances issued during the period.
 
-7.  **Inventory & Reservations Report**:
-    *   **Inventory Status**: List all items that are low in stock or out of stock based on their stock and capacity.
-    *   **Reservation History**: List all table reservations made, including guest name, mobile, time, and table number.
+7.  **Inventory Alerts**:
+    *   List all items that are low in stock (below threshold) or completely out of stock.
 
 Analyze all the provided data to generate the report.
 
@@ -75,10 +70,9 @@ DATA (JSON Format):
 - Bill History: {{{json billHistory}}}
 - Employee Data: {{{json employees}}}
 - Expense History: {{{json expenses}}}
-- Pending Bills: {{{json pendingBills}}}
+- Pending Bills (Khata & Payables): {{{json pendingBills}}}
 - Attendance Records: {{{json attendance}}}
 - Salary Advances: {{{json advances}}}
-- Table Configuration: {{{json tables}}}
 - Inventory Levels: {{{json inventory}}}
 - Customer Summary: {{{json customerSummary}}}
 
@@ -98,97 +92,79 @@ const generateAndSendReportFlow = ai.defineFlow(
     const { recipientEmails, ...promptInput } = input;
 
     if (!Array.isArray(recipientEmails) || recipientEmails.length === 0) {
-      throw new Error("Recipient emails are missing or in the wrong format.");
+      throw new Error("No recipient emails provided.");
     }
 
-    try {
-      const { output } = await generateReportPrompt(promptInput);
+    const { output } = await generateReportPrompt(promptInput);
 
-      if (!output) {
-        throw new Error('Failed to generate the report content.');
-      }
+    if (!output) {
+      throw new Error('Failed to generate report content.');
+    }
 
-      const emailPromises = recipientEmails.map(email =>
-        sendEmailReceipt({
+    const emailHtml = `
+      <div style="font-family: sans-serif; line-height: 1.6; color: #333;">
+        <h2>${output.reportTitle}</h2>
+        <div style="white-space: pre-wrap; font-family: monospace; background: #f9f9f9; padding: 15px; border-radius: 5px; border: 1px solid #eee;">
+          ${output.reportContent}
+        </div>
+      </div>
+    `;
+
+    for (const email of recipientEmails) {
+      try {
+        await sendEmailReceipt({
           customerEmail: email,
+          subject: output.reportTitle,
           receiptContent: output.reportContent,
           totalAmount: output.totalRevenue,
-          subject: output.reportTitle,
-          currency: input.currency,
-        })
-      );
-
-      const emailResults = await Promise.all(emailPromises);
-
-      const failedEmails = emailResults.filter(r => !r.success);
-
-      if (failedEmails.length > 0) {
-        const failedAddresses = recipientEmails.filter((_, index) => !emailResults[index].success);
-        throw new Error(`Failed to send report to the following addresses: ${failedAddresses.join(', ')}`);
+          currency: promptInput.currency,
+        });
+      } catch (error) {
+        console.error(`Failed to send report to ${email}:`, error);
+        return {
+          success: false,
+          message: `Failed to send report to ${email}. Check server logs for details.`,
+        };
       }
-
-      return {
-        success: true,
-        message: 'Report generated and sent to all recipients successfully.',
-      };
-    } catch (error: any) {
-      console.error("Error in generateReportFlow:", error);
-      return {
-        success: false,
-        message: error.message || 'An unexpected error occurred.',
-      };
     }
+
+    return {
+      success: true,
+      message: `Report successfully sent to ${recipientEmails.join(', ')}.`,
+    };
   }
 );
 
-// We have to create a wrapper because the frontend cannot pass complex types like `Date`
-// to the backend flow. We convert them to JSON-serializable formats here.
-export async function generateAndSendReport(
-  input: {
-    reportType: 'daily' | 'monthly' | 'yearly';
-    recipientEmail?: string;
-    currency: string;
-  }
-): Promise<GenerateReportOutput> {
+export async function generateAndSendReport(input: {
+  reportType: 'daily' | 'monthly' | 'yearly';
+  recipientEmail: string;
+  currency: string;
+}): Promise<GenerateReportOutput> {
   const { firestore: db } = initializeFirebase();
-  const recipientEmails: string[] = [];
 
-  // 1. Fetch venue email from settings/venue
+  // Fetch recipients from settings
   const venueSettingsDoc = await getDoc(doc(db, "settings", "venue"));
-  const venueSettingsData = venueSettingsDoc.data();
-  const venueEmail = input.recipientEmail || venueSettingsData?.email || venueSettingsData?.venueEmail;
-  if (venueEmail) {
-    recipientEmails.push(venueEmail);
+  let additionalEmails: string[] = [];
+  if (venueSettingsDoc.exists()) {
+    const data = venueSettingsDoc.data();
+    if (data.reportRecipients && typeof data.reportRecipients === 'string') {
+      additionalEmails = data.reportRecipients.split(',').map((e: string) => e.trim()).filter((e: string) => e);
+    }
   }
 
-  // 2. Fetch owner emails from settings/owners
-  const ownersSettingsDoc = await getDoc(doc(db, "settings", "owners"));
-  const ownersSettingsData = ownersSettingsDoc.data();
-  if (ownersSettingsData && Array.isArray(ownersSettingsData.list)) {
-    ownersSettingsData.list.forEach((owner: any) => {
-      if (owner.email) {
-        recipientEmails.push(owner.email);
-      }
-    });
-  }
+  const allEmails = [input.recipientEmail, ...additionalEmails];
+  const uniqueRecipientEmails = Array.from(new Set(allEmails));
 
-  // 3. Create a unique list of emails
-  const uniqueRecipientEmails = [...new Set(recipientEmails)];
-
-  if (uniqueRecipientEmails.length === 0) {
-    throw new Error("No recipient emails found. Please complete the setup wizard to add a venue or owner email.");
-  }
-
-
-  // Fetch all necessary data from Firestore
   const billsSnapshot = await getDocs(collection(db, "bills"));
   const billHistory: Bill[] = billsSnapshot.docs.map(doc => {
     const data = doc.data();
     return {
-      ...data,
       id: doc.id,
-      timestamp: data.timestamp.toDate(),
-    } as Bill;
+      ...data,
+      timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : new Date(data.timestamp),
+      createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : new Date(data.createdAt),
+      completedAt: data.completedAt?.toDate ? data.completedAt.toDate() : new Date(data.completedAt),
+    } as unknown as Bill;
   });
 
   const employeesSnapshot = await getDocs(collection(db, "employees"));
@@ -197,7 +173,11 @@ export async function generateAndSendReport(
   const expensesSnapshot = await getDocs(collection(db, "expenses"));
   const expenses: Expense[] = expensesSnapshot.docs.map(doc => {
     const data = doc.data();
-    return { ...data, id: doc.id, date: data.date.toDate() } as Expense;
+    return {
+      id: doc.id,
+      ...data,
+      date: data.date?.toDate ? data.date.toDate() : new Date(data.date),
+    } as unknown as Expense;
   });
 
   const pendingBillsSnapshot = await getDocs(collection(db, "pendingBills"));
@@ -206,63 +186,70 @@ export async function generateAndSendReport(
     return {
       id: doc.id,
       ...data,
-      transactions: (data.transactions || []).map((tx: any) => ({ ...tx, date: tx.date.toDate() })),
-    } as PendingBill;
+      transactions: (data.transactions || []).map((t: any) => ({
+        ...t,
+        date: t.date?.toDate ? t.date.toDate() : new Date(t.date),
+      }))
+    } as unknown as PendingBill;
   });
 
   const attendanceSnapshot = await getDocs(collection(db, "attendance"));
   const attendance: Attendance[] = attendanceSnapshot.docs.map(doc => {
     const data = doc.data();
-    return { ...data, id: doc.id, date: data.date.toDate() } as Attendance;
+    return {
+      id: doc.id,
+      ...data,
+      date: data.date?.toDate ? data.date.toDate() : new Date(data.date),
+    } as unknown as Attendance;
   });
 
   const advancesSnapshot = await getDocs(collection(db, "advances"));
   const advances: Advance[] = advancesSnapshot.docs.map(doc => {
     const data = doc.data();
-    return { ...data, id: doc.id, date: data.date.toDate() } as Advance;
+    return {
+      id: doc.id,
+      ...data,
+      date: data.date?.toDate ? data.date.toDate() : new Date(data.date),
+    } as unknown as Advance;
   });
-
-  const tablesSnapshot = await getDocs(collection(db, "tables"));
-  const tables: Table[] = tablesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as unknown as Table));
 
   const inventorySnapshot = await getDocs(collection(db, "inventory"));
   const inventory: InventoryItem[] = inventorySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem));
 
-  // Aggregate Customer Data
+  // Compute customer summary from bill history
   const customerMap = new Map<string, Customer>();
   billHistory.forEach(bill => {
-    if (!bill.customerDetails || !bill.customerDetails.phone) return;
-    const { phone, name, email, address } = bill.customerDetails;
-    const existing = customerMap.get(phone);
-    if (existing) {
-      existing.totalSpent += bill.total;
-      existing.totalVisits += 1;
-      if (bill.timestamp > existing.lastSeen) {
-        existing.lastSeen = bill.timestamp;
+    if (bill.customerDetails && bill.customerDetails.phone) {
+      const phone = bill.customerDetails.phone;
+      const existing = customerMap.get(phone);
+      if (existing) {
+        existing.totalSpent += bill.total;
+        existing.totalVisits += 1;
+        if (bill.timestamp > existing.lastSeen) {
+          existing.lastSeen = bill.timestamp;
+        }
+        if (bill.timestamp < existing.firstSeen) {
+          existing.firstSeen = bill.timestamp;
+        }
+      } else {
+        customerMap.set(phone, {
+          id: phone,
+          name: bill.customerDetails.name,
+          phone: bill.customerDetails.phone,
+          address: bill.customerDetails.address,
+          totalSpent: bill.total,
+          totalVisits: 1,
+          firstSeen: bill.timestamp,
+          lastSeen: bill.timestamp,
+        });
       }
-    } else {
-      customerMap.set(phone, {
-        id: phone, phone, name, email: email || '', address: address || '',
-        firstSeen: bill.timestamp, lastSeen: bill.timestamp,
-        totalVisits: 1, totalSpent: bill.total,
-      });
-    }
-  });
-  pendingBills.filter(pb => pb.type === 'customer').forEach(pBill => {
-    if (pBill.mobile && !customerMap.has(pBill.mobile)) {
-      const firstTxDate = pBill.transactions.length > 0 ? pBill.transactions[0].date : new Date();
-      customerMap.set(pBill.mobile, {
-        id: pBill.mobile, phone: pBill.mobile, name: pBill.name, email: '', address: '',
-        firstSeen: firstTxDate, lastSeen: firstTxDate, totalVisits: 1, totalSpent: 0,
-      });
     }
   });
   const customerSummary: Customer[] = Array.from(customerMap.values());
 
-
   const serializableInput: GenerateReportInput & { recipientEmails: string[] } = {
     reportType: input.reportType,
-    recipientEmail: uniqueRecipientEmails.join(', '), // For display in prompt
+    recipientEmail: uniqueRecipientEmails.join(', '),
     recipientEmails: uniqueRecipientEmails,
     currency: input.currency,
     billHistory: billHistory.map(bill => ({
@@ -283,7 +270,6 @@ export async function generateAndSendReport(
     })),
     attendance: attendance.map(a => ({ ...a, date: a.date.toISOString() })),
     advances: advances.map(adv => ({ ...adv, date: adv.date.toISOString() })),
-    tables,
     inventory,
     customerSummary: customerSummary.map(c => ({
       ...c,

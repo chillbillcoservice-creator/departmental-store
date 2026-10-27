@@ -1,4 +1,4 @@
-﻿import { collection, doc, setDoc, getDoc, getDocs, Timestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, Timestamp } from 'firebase/firestore';
 import { initializeFirebase } from '@/firebase';
 import { SetupData, Employee } from './types';
 import { buildUsername } from './generate-username';
@@ -41,7 +41,7 @@ export const saveVenueSetup = async (setupData: SetupData, uid?: string) => {
         allowedTabs: ['all'],
         password: setupData.owner.password || '',
         loginCode: setupData.owner.loginCode || '0000',
-        username: buildUsername(setupData.venue.name, setupData.owner.name, setupData.owner.loginCode || '0000')
+        username: setupData.owner.username?.trim() || buildUsername(setupData.venue.name, setupData.owner.name, setupData.owner.loginCode || '0000')
     };
     allEmployees.push(ownerEmployee);
 
@@ -60,7 +60,7 @@ export const saveVenueSetup = async (setupData: SetupData, uid?: string) => {
                 allowedTabs: ['all'],
                 password: partner.password || '',
                 loginCode: partner.loginCode || '0000',
-                username: buildUsername(setupData.venue.name, partner.name, partner.loginCode || '0000')
+                username: partner.username?.trim() || buildUsername(setupData.venue.name, partner.name, partner.loginCode || '0000')
             });
         });
     }
@@ -79,7 +79,7 @@ export const saveVenueSetup = async (setupData: SetupData, uid?: string) => {
             allowedTabs: emp.allowedTabs || [],
             password: emp.password || '',
             loginCode: emp.loginCode || '0000',
-            username: emp.username || buildUsername(setupData.venue.name, emp.name, emp.loginCode || '0000')
+            username: emp.username?.trim() || buildUsername(setupData.venue.name, emp.name, emp.loginCode || '0000')
         });
     });
 

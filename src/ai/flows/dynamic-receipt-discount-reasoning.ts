@@ -1,8 +1,7 @@
-
 'use server';
 
 /**
- * @fileOverview A flow to dynamically generate a receipt preview based on applied discounts.
+ * @fileOverview A flow to dynamically generate a receipt preview for a departmental store based on applied discounts.
  *
  * - generateReceipt - A function that generates the receipt preview with dynamic discount information.
  * - GenerateReceiptInput - The input type for the generateReceipt function, including order details and discount.
@@ -13,7 +12,7 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
 const GenerateReceiptInputSchema = z.object({
-  venueName: z.string().describe('The name of the restaurant/cafe.'),
+  venueName: z.string().describe('The name of the departmental store or supermarket.'),
   items: z.array(
     z.object({
       name: z.string().describe('Name of the item.'),
@@ -43,13 +42,13 @@ const prompt = ai.definePrompt({
   name: 'generateReceiptPrompt',
   input: { schema: GenerateReceiptInputSchema },
   output: { schema: GenerateReceiptOutputSchema },
-  prompt: `You are a point-of-sale (POS) assistant for a cafe. Your task is to generate a receipt preview. The receipt must be well-formatted, easy to read, and professional.
+  prompt: `You are a point-of-sale (POS) assistant for a departmental store and supermarket. Your task is to generate a retail receipt preview. The receipt must be well-formatted, easy to read, and professional.
 
 The receipt should have the following structure:
-1. A header, which is the name of the venue: {{{venueName}}}.
-2. A section for "Order Details" with a numbered list of items. Each line should show: quantity, item name, and the total price for that line item (quantity * price).
+1. A header, which is the name of the store: {{{venueName}}}.
+2. A section for "Item Details" with an aligned list of items. Each line should show: quantity, item name, and the total price for that line item (quantity * price).
 3. A summary section showing the "Subtotal", "Discount" (only if applicable), and the final "Total".
-4. A footer (e.g., a thank you message).
+4. A footer thanking the customer for shopping.
 
 **Formatting Rules:**
 - Use a monospaced font style for alignment.
@@ -59,7 +58,7 @@ The receipt should have the following structure:
 - **CRITICAL**: Always use "{{{currency}}}" as the currency symbol.
 
 **Order Data:**
-- **Venue Name**: {{{venueName}}}
+- **Store Name**: {{{venueName}}}
 - **Items**: I will provide an array of item objects. For each item, you must calculate the line total (item.price * item.quantity).
 - **Discount Percentage**: {{discount}}%
 - **Subtotal**: {{{currency}}}{{subtotal}}
@@ -70,41 +69,40 @@ The receipt should have the following structure:
 - {{quantity}} x {{name}} (at {{{currency}}}{{price}} each)
 {{/each}}
 
+**Example of a correctly formatted receipt with a discount:**
+***********************************
+     PREMIER DEPARTMENTAL STORE
+***********************************
 
-**Example of a correctly formatted receipt with a discount (using "Up & Above Cafe" as venue name):**
-*************************
-    Up & Above Cafe
-*************************
+Item Details:
+1. 1 x Basmati Rice 1kg   Rs.140.00
+2. 2 x Amul Butter 100g   Rs.116.00
 
-Order Details:
-1. 2 x Latte             Rs.178.00
-2. 1 x Croissant          Rs.90.00
+-----------------------------------
+Subtotal:                 Rs.256.00
+Discount (5%):            -Rs.12.80
+-----------------------------------
+Total:                    Rs.243.20
 
--------------------------
-Subtotal:              Rs.268.00
-Discount (10%):        -Rs.26.80
--------------------------
-Total:                 Rs.241.20
+   Thank you for shopping with us!
+***********************************
 
-   Thank you for dining!
-*************************
+**Example of a correctly formatted receipt without a discount:**
+***********************************
+     PREMIER DEPARTMENTAL STORE
+***********************************
 
-**Example of a correctly formatted receipt without a discount (using "Up & Above Cafe" as venue name):**
-*************************
-    Up & Above Cafe
-*************************
+Item Details:
+1. 1 x Tata Salt 1kg       Rs.28.00
+2. 2 x Maggi Noodles 70g   Rs.28.00
 
-Order Details:
-1. 1 x Espresso           Rs.95.00
-2. 1 x Muffin             Rs.80.00
+-----------------------------------
+Subtotal:                  Rs.56.00
+-----------------------------------
+Total:                     Rs.56.00
 
--------------------------
-Subtotal:              Rs.175.00
--------------------------
-Total:                 Rs.175.00
-
-   Thank you for dining!
-*************************
+   Thank you for shopping with us!
+***********************************
 
 Now, please generate the receipt for the provided order data, using {{{venueName}}} as the header.
 `,
@@ -120,13 +118,11 @@ const generateReceiptFlow = ai.defineFlow(
     try {
       const { output } = await prompt(input);
       if (!output) {
-        // This case handles if the AI returns a null/undefined response.
         return { receiptPreview: '' };
       }
       return output;
     } catch (error) {
       console.error("AI receipt generation failed, falling back to local format. Error:", error);
-      // Return an empty preview so the client-side knows to use its local fallback.
       return { receiptPreview: '' };
     }
   }

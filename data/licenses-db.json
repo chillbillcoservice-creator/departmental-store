@@ -1,0 +1,66 @@
+{
+  "licenses": {
+    "CBILL-2026-EK9N": {
+      "licenseKey": "CBILL-2026-EK9N",
+      "ownerEmail": "demo@chillbill.in",
+      "storeName": "ChillBill Demo Store",
+      "ownerName": "Krishna",
+      "phone": "9876543210",
+      "plan": "annual",
+      "status": "active",
+      "validUntil": "2028-10-22T14:41:09.965Z",
+      "maxCounters": 1,
+      "createdAt": "2026-10-23T14:41:09.965Z"
+    },
+    "CBILL-2026-86LA": {
+      "licenseKey": "CBILL-2026-86LA",
+      "ownerEmail": "krishna.madnani@yahoo.com",
+      "storeName": "krishna supermart",
+      "ownerName": "krishna madnani",
+      "phone": "9971509502",
+      "plan": "annual",
+      "status": "active",
+      "validUntil": "2027-10-24T15:42:02.381Z",
+      "maxCounters": 1,
+      "createdAt": "2026-10-24T15:42:02.382Z"
+    },
+    "CBILL-2026-Y66P": {
+      "licenseKey": "CBILL-2026-Y66P",
+      "ownerEmail": "bhartiboutique8287@gmail.com",
+      "storeName": "BHARTI ENTERPRISES",
+      "ownerName": "BHARTI",
+      "phone": "9220790423",
+      "plan": "annual",
+      "status": "active",
+      "validUntil": "2027-10-26T08:20:03.212Z",
+      "maxCounters": 1,
+      "createdAt": "2026-10-26T08:20:03.212Z"
+    }
+  },
+  "whitelist": {
+    "demo@chillbill.in": {
+      "email": "demo@chillbill.in",
+      "storeName": "ChillBill Demo Store",
+      "ownerName": "Krishna",
+      "status": "approved",
+      "licenseKey": "CBILL-2026-EK9N",
+      "createdAt": "2026-10-23T14:41:09.965Z"
+    },
+    "krishna.madnani@yahoo.com": {
+      "email": "krishna.madnani@yahoo.com",
+      "storeName": "krishna supermart",
+      "ownerName": "krishna madnani",
+      "status": "approved",
+      "licenseKey": "CBILL-2026-86LA",
+      "createdAt": "2026-10-24T15:42:02.382Z"
+    },
+    "bhartiboutique8287@gmail.com": {
+      "email": "bhartiboutique8287@gmail.com",
+      "storeName": "BHARTI ENTERPRISES",
+      "ownerName": "BHARTI",
+      "status": "approved",
+      "licenseKey": "CBILL-2026-Y66P",
+      "createdAt": "2026-10-26T08:20:03.212Z"
+    }
+  }
+}

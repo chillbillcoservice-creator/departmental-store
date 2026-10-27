@@ -41,7 +41,9 @@ import {
   ChevronUp,
   Monitor,
   Smartphone,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { UniversalCatalogImportDialog } from './universal-catalog-import-dialog';
 import { useThemeColor } from '@/contexts/theme-color-context';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -308,7 +310,8 @@ export default function AdminDashboard({
   const [summaryDetailTitle, setSummaryDetailTitle] = useState('');
   const [summaryDetailContent, setSummaryDetailContent] = useState<React.ReactNode>(null);
 
-  // Data Reset & Fresh Slate State
+  // Data Reset, Catalog Import & Fresh Slate State
+  const [isUniversalImportOpen, setIsUniversalImportOpen] = useState(false);
   const [resetModalOpen, setResetModalOpen] = useState(false);
   const [resetType, setResetType] = useState<'bills' | 'inventory' | 'catalog' | 'factory' | null>(null);
   const [ownerPinAttempt, setOwnerPinAttempt] = useState('');
@@ -1217,6 +1220,15 @@ export default function AdminDashboard({
                 <Download className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
                 <span className="font-bold">{t('Install App')}</span>
               </Button>
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-20 text-base flex-col gap-2 bg-gradient-to-br from-indigo-500/10 to-primary/10 border-indigo-500/30 hover:border-indigo-500 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all shadow-sm font-semibold"
+                onClick={() => setIsUniversalImportOpen(true)}
+              >
+                <FileSpreadsheet className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
+                <span className="font-bold">{t('Import CSV / PDF')}</span>
+              </Button>
               <Button variant="outline" size="lg" className="h-20 text-base flex-col gap-2 col-span-full mt-2 bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-primary text-primary transition-all" onClick={onRerunSetup}>
                 <Repeat className="h-6 w-6" />
                 <span>{t('Rerun Setup Wizard')}</span>
@@ -1551,7 +1563,7 @@ export default function AdminDashboard({
                 Store Admin Only
               </Badge>
             </CardHeader>
-            <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
               {/* Option 1: Clear Test Bills */}
               <div className="p-4 rounded-2xl border border-amber-500/20 bg-amber-500/5 flex flex-col justify-between space-y-3">
                 <div className="space-y-1.5">
@@ -1615,7 +1627,28 @@ export default function AdminDashboard({
                 </Button>
               </div>
 
-              {/* Option 4: Full Factory Reset */}
+              {/* Option 4: Bulk Import Catalog (CSV / PDF) */}
+              <div className="p-4 rounded-2xl border border-indigo-500/20 bg-indigo-500/5 flex flex-col justify-between space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-sm">
+                    <FileSpreadsheet className="h-4 w-4 shrink-0" />
+                    <span>Import CSV / PDF</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Upload distributor wholesale PDF invoices or CSV spreadsheets to auto-extract & add all items.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsUniversalImportOpen(true)}
+                  className="w-full border-indigo-500/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white font-bold text-xs rounded-xl"
+                >
+                  Import Products (CSV/PDF)
+                </Button>
+              </div>
+
+              {/* Option 5: Full Factory Reset */}
               <div className="p-4 rounded-2xl border border-destructive/30 bg-destructive/5 flex flex-col justify-between space-y-3">
                 <div className="space-y-1.5">
                   <div className="flex items-center gap-2 text-destructive font-bold text-sm">
@@ -1883,6 +1916,15 @@ export default function AdminDashboard({
         bills={billHistory}
         currency={currency}
         venueDetails={venueDetails}
+      />
+      <UniversalCatalogImportDialog
+        isOpen={isUniversalImportOpen}
+        onOpenChange={setIsUniversalImportOpen}
+        inventory={inventory}
+        setInventory={setInventory}
+        menu={menu}
+        setMenu={setMenu}
+        currency={currency}
       />
     </div >
   );

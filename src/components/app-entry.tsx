@@ -5,6 +5,8 @@ import MainLayout from "./main-layout";
 import SetupWizard from "./setup-wizard";
 import LoginScreen from "./login-screen";
 import AccessDeniedScreen from "./access-denied-screen";
+import LicenseExpiredScreen from "./license-expired-screen";
+import { verifyStoreLicense, LicenseCheckResult } from "@/lib/licensing";
 import { useState, useEffect } from "react";
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
@@ -12,6 +14,7 @@ import { User } from 'firebase/auth';
 import { LanguageProvider } from "@/contexts/language-context";
 import { buildUsername } from "@/lib/generate-username";
 import { saveVenueSetup } from "@/lib/db";
+import { DEPARTMENTAL_STORE_CATALOG, isLegacyInventory } from "@/lib/departmental-catalog";
 
 interface AppEntryProps {
   initialMenu: MenuCategory[];
@@ -117,6 +120,15 @@ export default function AppEntry({
   const [employees, setEmployees] = useLocalStorageState<Employee[]>('employees', initialEmployees.length > 0 ? initialEmployees : DEFAULT_STAFF);
 
   useEffect(() => {
+    if (isLegacyInventory(inventory)) {
+      setInventory(DEPARTMENTAL_STORE_CATALOG);
+      try {
+        localStorage.setItem('inventory', JSON.stringify(DEPARTMENTAL_STORE_CATALOG));
+      } catch (e) {}
+    }
+  }, [inventory, setInventory]);
+
+  useEffect(() => {
     if (employees.length === 0) {
       setEmployees(DEFAULT_STAFF);
     }
@@ -137,13 +149,35 @@ export default function AppEntry({
   const [venueDetails, setVenueDetails] = useLocalStorageState<VenueDetails | null>('venueDetails', null);
   const [ownerDetails, setOwnerDetails] = useLocalStorageState<OwnerDetails | null>('ownerDetails', null);
 
+  // Auto-heal legacy or default '$' to 'Rs.'
+  useEffect(() => {
+    if (currency === '$' || !currency) {
+      setCurrency('Rs.');
+    }
+  }, [currency, setCurrency]);
+
   // Authentication & Profile switching state
   const [ownerUser, setOwnerUser] = useState<User | null>(null);
   const [currentEmployee, setCurrentEmployee] = useState<Employee | null>(null);
   const [isNewOwner, setIsNewOwner] = useState<boolean | null>(null);
   const [deniedEmail, setDeniedEmail] = useState<string | null>(null);
+  const [licenseError, setLicenseError] = useState<LicenseCheckResult | null>(null);
   const [isLoadingVenue, setIsLoadingVenue] = useState(false);
   const [venueId, setVenueId] = useState<string | null>(null);
+
+  // Verify license & 14-day offline grace on mount if store is already setup
+  useEffect(() => {
+    const checkActiveLicense = async () => {
+      const email = ownerDetails?.email || '';
+      if (email || typeof window !== 'undefined') {
+        const result = await verifyStoreLicense(email, db);
+        if (!result.isValid && result.status !== 'not_whitelisted') {
+          setLicenseError(result);
+        }
+      }
+    };
+    checkActiveLicense();
+  }, [ownerDetails, db]);
 
   // Sync Currency from Firestore on mount
   useEffect(() => {
@@ -154,7 +188,7 @@ export default function AppEntry({
         if (docRef.exists()) {
           const data = docRef.data();
           if (data.currency) {
-            const syncedCurrency = data.currency === '₹' ? 'Rs.' : data.currency;
+            const syncedCurrency = (data.currency === '$' || !data.currency) ? 'Rs.' : data.currency;
             setCurrency(syncedCurrency);
           }
           if (data.language) {
@@ -192,6 +226,7 @@ export default function AppEntry({
 
     // Build owner as first employee (so they appear on PIN login screen)
     const ownerLoginCode = data.owner.loginCode || '0000';
+    const ownerUsername = data.owner.username?.trim() || buildUsername(data.venue.name, data.owner.name, ownerLoginCode) || 'owner';
     const ownerEmployee: Employee = {
       id: 'owner-1',
       name: data.owner.name,
@@ -203,16 +238,38 @@ export default function AppEntry({
       allowedTabs: ['all'],
       password: data.owner.password || '',
       loginCode: ownerLoginCode,
-      username: buildUsername(data.venue.name, data.owner.name, ownerLoginCode),
+      username: ownerUsername,
     };
 
     const newEmployees: Employee[] = [ownerEmployee];
 
+    // Also include additional owners (partners) in the local employees list
+    if (data.additionalOwners && data.additionalOwners.length > 0) {
+      data.additionalOwners.forEach((partner, index) => {
+        if (!partner.name) return;
+        const partnerLoginCode = partner.loginCode || '0000';
+        const partnerUsername = partner.username?.trim() || buildUsername(data.venue.name, partner.name, partnerLoginCode) || `partner${index + 1}`;
+        newEmployees.push({
+          id: `owner-${index + 2}`,
+          name: partner.name,
+          role: 'Partner',
+          salary: 0,
+          color: '#f59e0b',
+          mobile: partner.contactNumber,
+          email: partner.email,
+          allowedTabs: ['all'],
+          password: partner.password || '',
+          loginCode: partnerLoginCode,
+          username: partnerUsername,
+        });
+      });
+    }
+
     if (data.employees && data.employees.length > 0) {
       data.employees.forEach((emp, index) => {
         if (!emp.name) return;
-        const loginCode = emp.loginCode || String(Math.floor(1000 + Math.random() * 9000));
-        const username = emp.username || buildUsername(data.venue.name, emp.name || 'Unknown', loginCode);
+        const loginCode = emp.loginCode || '0000';
+        const username = emp.username?.trim() || buildUsername(data.venue.name, emp.name || 'Unknown', loginCode);
         newEmployees.push({
           id: `EMP${String(index + 1).padStart(3, '0')}`,
           name: emp.name || 'Unknown',
@@ -263,6 +320,31 @@ export default function AppEntry({
     return <AccessDeniedScreen email={deniedEmail} onSignOut={() => setDeniedEmail(null)} />;
   }
 
+  // Step 1.5: Subscription Expired, Suspended, or 14-Day Offline Limit Reached
+  if (licenseError) {
+    return (
+      <LicenseExpiredScreen
+        status={licenseError.status}
+        storeName={licenseError.storeName || venueName}
+        licenseKey={licenseError.licenseKey}
+        validUntil={licenseError.validUntil}
+        email={ownerUser?.email || ownerDetails?.email || undefined}
+        onRefresh={async () => {
+          const email = ownerUser?.email || ownerDetails?.email || '';
+          const res = await verifyStoreLicense(email, db);
+          if (res.isValid) {
+            setLicenseError(null);
+          }
+        }}
+        onSignOut={() => {
+          setLicenseError(null);
+          setOwnerUser(null);
+          setCurrentEmployee(null);
+        }}
+      />
+    );
+  }
+
   // Step 2: Loading venue data
   if (isLoadingVenue) {
     return (
@@ -283,6 +365,7 @@ export default function AppEntry({
           venueId={venueId || undefined}
           onLogin={(emp) => setCurrentEmployee(emp)}
           onAccessDenied={(email) => setDeniedEmail(email)}
+          onLicenseExpired={(lic) => setLicenseError(lic)}
           onOwnerLogin={async (uid) => {
             setIsLoadingVenue(true);
             try {
@@ -358,7 +441,7 @@ export default function AppEntry({
         initialVenueName={venueName}
         initialAttendance={attendance}
         initialAdvances={advances}
-        initialCurrency={currency || 'Rs.'}
+        initialCurrency={(!currency || currency === '$') ? 'Rs.' : currency}
         setMenu={setMenu}
         setInventory={setInventory}
         setEmployees={setEmployees}

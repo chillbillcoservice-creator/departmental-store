@@ -13,8 +13,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { PlusCircle, Edit, Trash2, Check, X, CircleSlash, Pencil, UserCheck, UserX, UserMinus, Banknote, Eye } from 'lucide-react';
-import type { Employee, Advance, Attendance, AttendanceStatus } from '@/lib/types';
+import { PlusCircle, Edit, Trash2, Check, X, CircleSlash, Pencil, UserCheck, UserX, UserMinus, Banknote, Eye, Shield, Copy, Receipt, Clock, Truck, Printer, Share2, Wallet } from 'lucide-react';
+import { generateUniqueUsername, isUsernameTaken } from '@/lib/generate-username';
+import type { Employee, Advance, Attendance, AttendanceStatus, StaffShiftSession } from '@/lib/types';
+import { getShiftHistory, formatDuration, generateShiftReceiptText } from '@/lib/shift-manager';
+import { Badge } from '@/components/ui/badge';
 import { format, isSameDay, startOfDay, isToday, isPast, getMonth, getYear, getDaysInMonth, isValid } from 'date-fns';
 
 const safeFormat = (date: any, formatStr: string) => {
@@ -47,7 +50,7 @@ const attendanceStatusConfig: Record<AttendanceStatus, { icon: React.ElementType
 };
 
 const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-indigo-500', 'bg-teal-500'];
-const defaultRoles = ["Manager", "Head Chef", "Chef", "Waiter", "Cleaner", "Helper", "Bar Tender"];
+const defaultRoles = ["Store Manager", "Cashier", "Inventory Clerk", "Billing Clerk", "Floor Assistant", "Security", "Helper"];
 
 interface StaffManagementProps {
   employees: Employee[];
@@ -75,6 +78,13 @@ export default function StaffManagement({ employees, setEmployees, advances, set
   const [summaryEmployee, setSummaryEmployee] = useState<Employee | null>(null);
   const [isAttendanceListDialogOpen, setIsAttendanceListDialogOpen] = useState(false);
   const [attendanceList, setAttendanceList] = useState<{ title: string, employees: Employee[] }>({ title: '', employees: [] });
+
+  const [shiftHistory, setShiftHistory] = useState<StaffShiftSession[]>([]);
+  const [selectedShiftDetails, setSelectedShiftDetails] = useState<StaffShiftSession | null>(null);
+
+  useEffect(() => {
+    setShiftHistory(getShiftHistory());
+  }, []);
 
   const [showAdvancesOnCalendar, setShowAdvancesOnCalendar] = useState(false);
   const [showAbsencesOnCalendar, setShowAbsencesOnCalendar] = useState(false);
@@ -336,9 +346,10 @@ export default function StaffManagement({ employees, setEmployees, advances, set
   return (
     <div className="p-4 space-y-4">
       <Tabs defaultValue="attendance" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 bg-muted p-1 h-auto rounded-lg">
-          <TabsTrigger value="attendance" className="py-2 text-primary data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-base font-bold uppercase transition-all duration-300 border border-primary/40 hover:border-primary">{t('ATTENDANCE & ADVANCE')}</TabsTrigger>
-          <TabsTrigger value="employees" className="py-2 text-primary data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-base font-bold uppercase transition-all duration-300 border border-primary/40 hover:border-primary">{t('EMPLOYEE DETAILS')}</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 bg-muted p-1 h-auto rounded-lg">
+          <TabsTrigger value="attendance" className="py-2 text-primary data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-xs sm:text-sm font-bold uppercase transition-all duration-300 border border-primary/40 hover:border-primary">{t('ATTENDANCE & ADVANCE')}</TabsTrigger>
+          <TabsTrigger value="employees" className="py-2 text-primary data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-xs sm:text-sm font-bold uppercase transition-all duration-300 border border-primary/40 hover:border-primary">{t('EMPLOYEE DETAILS')}</TabsTrigger>
+          <TabsTrigger value="shifts" className="py-2 text-primary data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border data-[state=active]:border-primary data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20 text-xs sm:text-sm font-bold uppercase transition-all duration-300 border border-primary/40 hover:border-primary">{t('SHIFT AUDIT LOGS')}</TabsTrigger>
         </TabsList>
         <TabsContent value="attendance">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-4">
@@ -557,6 +568,153 @@ export default function StaffManagement({ employees, setEmployees, advances, set
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="shifts">
+          <Card className="mt-4 shadow-lg">
+            <CardHeader className="pb-3 border-b">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div>
+                  <CardTitle className="text-xl font-black text-foreground flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-primary" />
+                    {t('Cashier & Manager Shift Handover Logs')}
+                  </CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground mt-0.5">
+                    {t('360° accountability audit trail for all shifts: Sales, Customer Khata collections, Vendor POs, Deliveries, and Cash Drawer Discrepancies.')}
+                  </CardDescription>
+                </div>
+                <Badge variant="outline" className="text-xs px-2.5 py-1 font-bold border-primary/40 text-primary">
+                  {shiftHistory.length} {t('Shifts Logged')}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="p-4">
+              {shiftHistory.length === 0 ? (
+                <div className="text-center py-12 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto">
+                    <Clock className="h-6 w-6" />
+                  </div>
+                  <h4 className="text-base font-bold text-foreground">{t('No Shift Handover Logs Yet')}</h4>
+                  <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                    {t('Shifts are automatically recorded whenever a cashier or manager logs into the software and clicks "End Shift & Log Out" in the top navigation bar.')}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border">
+                  <Table>
+                    <TableHeader className="bg-muted/50">
+                      <TableRow>
+                        <TableHead className="font-bold text-xs">{t('Staff / Role')}</TableHead>
+                        <TableHead className="font-bold text-xs">{t('Shift Timing & Duration')}</TableHead>
+                        <TableHead className="font-bold text-xs text-right">{t('Bills & Sales')}</TableHead>
+                        <TableHead className="font-bold text-xs">{t('Vendor Supply Chain')}</TableHead>
+                        <TableHead className="font-bold text-xs">{t('Cash In Till Tally')}</TableHead>
+                        <TableHead className="font-bold text-xs text-center">{t('Discrepancy')}</TableHead>
+                        <TableHead className="font-bold text-xs text-right">{t('Actions')}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {shiftHistory.map((shift) => {
+                        const openTime = new Date(shift.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        const closeTime = shift.closedAt
+                          ? new Date(shift.closedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : 'In Progress';
+                        const dateStr = new Date(shift.openedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+                        const duration = formatDuration(shift.durationMinutes);
+                        const diff = shift.cashDifference || 0;
+                        const isBalanced = Math.abs(diff) < 0.01;
+                        const isSurplus = diff > 0.01;
+
+                        return (
+                          <TableRow key={shift.id} className="hover:bg-muted/30">
+                            <TableCell className="font-medium">
+                              <div className="flex flex-col">
+                                <span className="font-black text-sm text-foreground">{shift.employeeName}</span>
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 w-fit mt-0.5 uppercase font-bold text-muted-foreground">
+                                  {shift.employeeRole}
+                                </Badge>
+                              </div>
+                            </TableCell>
+
+                            <TableCell>
+                              <div className="flex flex-col text-xs">
+                                <span className="font-bold text-foreground">{dateStr}</span>
+                                <span className="text-[11px] text-muted-foreground">{openTime} – {closeTime}</span>
+                                <span className="text-[10px] font-bold text-primary mt-0.5">{duration}</span>
+                              </div>
+                            </TableCell>
+
+                            <TableCell className="text-right">
+                              <div className="flex flex-col items-end text-xs">
+                                <span className="font-black text-foreground">{currency} {shift.totalSales.toFixed(2)}</span>
+                                <span className="text-[10px] text-muted-foreground">{shift.billsCount} bills ({shift.itemsSoldCount} items)</span>
+                                <span className="text-[10px] text-emerald-600 font-semibold">Cash: {currency}{shift.cashSales.toFixed(0)}</span>
+                              </div>
+                            </TableCell>
+
+                            <TableCell>
+                              <div className="flex flex-col text-xs">
+                                <span className="font-bold text-foreground">
+                                  {shift.vendorPOsCreated?.length || 0} {t('POs Placed')}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {shift.vendorDeliveriesReceived?.length || 0} {t('Deliveries Received')}
+                                </span>
+                                {shift.vendorPaymentsCash > 0 && (
+                                  <span className="text-[10px] text-destructive font-semibold">
+                                    Paid: {currency}{shift.vendorPaymentsCash.toFixed(0)}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+
+                            <TableCell>
+                              <div className="flex flex-col text-xs">
+                                <span className="text-muted-foreground">Exp: <span className="font-bold text-foreground">{currency}{shift.expectedCashInDrawer.toFixed(0)}</span></span>
+                                <span className="text-muted-foreground">Act: <span className="font-bold text-foreground">{currency}{(shift.actualCashCounted ?? shift.expectedCashInDrawer).toFixed(0)}</span></span>
+                              </div>
+                            </TableCell>
+
+                            <TableCell className="text-center">
+                              <Badge
+                                variant={isBalanced ? "outline" : isSurplus ? "secondary" : "destructive"}
+                                className={cn(
+                                  "text-[10px] font-black uppercase px-2 py-0.5",
+                                  isBalanced && "border-emerald-500/50 text-emerald-600 bg-emerald-500/10"
+                                )}
+                              >
+                                {isBalanced ? t('Balanced ✅') : isSurplus ? `+${currency}${diff.toFixed(0)}` : `-${currency}${Math.abs(diff).toFixed(0)}`}
+                              </Badge>
+                            </TableCell>
+
+                            <TableCell className="text-right">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 px-2 text-xs font-bold gap-1 rounded-lg border-primary/30 text-primary hover:bg-primary/10"
+                                onClick={() => {
+                                  const text = generateShiftReceiptText(shift, {}, currency);
+                                  const win = window.open('', '_blank');
+                                  if (win) {
+                                    win.document.write(`<pre style="font-family: monospace; padding: 10px;">${text}</pre><script>window.onload = () => window.print();</script>`);
+                                    win.document.close();
+                                  }
+                                }}
+                                title={t('Print 80mm/58mm Shift Thermal Receipt')}
+                              >
+                                <Printer className="h-3 w-3" />
+                                <span>{t('Slip')}</span>
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       <AddOrEditAdvanceDialog
@@ -582,6 +740,7 @@ export default function StaffManagement({ employees, setEmployees, advances, set
         open={isEmployeeDialogOpen}
         onOpenChange={setIsEmployeeDialogOpen}
         employee={editingEmployee}
+        existingEmployees={employees}
         onSave={(employeeData) => {
           handleSaveEmployee(employeeData as Partial<Employee>);
           setIsEmployeeDialogOpen(false);
@@ -775,18 +934,38 @@ function NotesDialog({
   )
 }
 
-function EmployeeDialog({ open, onOpenChange, employee, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; employee: Employee | null; onSave: (data: Partial<Employee>) => void; }) {
+function EmployeeDialog({ open, onOpenChange, employee, existingEmployees = [], onSave }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  employee: Employee | null;
+  existingEmployees?: Employee[];
+  onSave: (data: Partial<Employee>) => void;
+}) {
   const { t } = useLanguage();
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [isUsernameCustom, setIsUsernameCustom] = useState(false);
+  const [loginCode, setLoginCode] = useState('');
   const [role, setRole] = useState('');
   const [customRole, setCustomRole] = useState('');
   const [salary, setSalary] = useState('');
   const [mobile, setMobile] = useState('');
   const [govtId, setGovtId] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  const takenUsernames = useMemo(() => {
+    return existingEmployees
+      .filter(e => e.id !== employee?.id)
+      .map(e => e.username)
+      .filter(Boolean) as string[];
+  }, [existingEmployees, employee]);
 
   useEffect(() => {
     if (open) {
       setName(employee?.name || '');
+      setUsername(employee?.username || '');
+      setIsUsernameCustom(Boolean(employee?.username));
+      setLoginCode(employee?.loginCode || '');
       const empRole = employee?.role || '';
       if (defaultRoles.includes(empRole)) {
         setRole(empRole);
@@ -804,14 +983,32 @@ function EmployeeDialog({ open, onOpenChange, employee, onSave }: { open: boolea
     }
   }, [open, employee]);
 
+  const handleNameChange = (val: string) => {
+    setName(val);
+    if (!isUsernameCustom) {
+      setUsername(val.trim() ? generateUniqueUsername(val, takenUsernames) : '');
+    }
+  };
+
+  const handleUsernameChange = (val: string) => {
+    const clean = val.toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+    setIsUsernameCustom(true);
+    setUsername(clean);
+  };
+
   const handleSave = () => {
     const finalRole = role === 'Other' ? customRole : role;
     if (!name || !finalRole || !salary) {
       return;
     }
 
+    const finalUsername = username.trim() || generateUniqueUsername(name, takenUsernames);
+    const finalCode = loginCode.trim() || employee?.loginCode || '0000';
+
     const data: Partial<Employee> = {
       name,
+      username: finalUsername,
+      loginCode: finalCode,
       role: finalRole,
       salary: parseFloat(salary),
       mobile,
@@ -822,7 +1019,7 @@ function EmployeeDialog({ open, onOpenChange, employee, onSave }: { open: boolea
     }
     onSave(data);
     onOpenChange(false);
-  }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -839,7 +1036,65 @@ function EmployeeDialog({ open, onOpenChange, employee, onSave }: { open: boolea
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="name">{t('Employee Name')}</Label>
-              <Input id="name" placeholder={t('e.g., John Doe')} value={name} onChange={(e) => setName(e.target.value)} required />
+              <Input id="name" placeholder={t('e.g., John Doe')} value={name} onChange={(e) => handleNameChange(e.target.value)} required />
+            </div>
+
+            {/* Login Username & Passcode PIN */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="emp-username" className="text-xs font-bold text-muted-foreground flex items-center gap-1">
+                    <Shield size={12} className="text-orange-400" />
+                    {t('Login ID')}
+                  </Label>
+                  <span className="text-[10px] text-orange-400/90 font-medium">Auto • Editable</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    id="emp-username"
+                    value={username}
+                    onChange={(e) => handleUsernameChange(e.target.value)}
+                    placeholder={name ? generateUniqueUsername(name, takenUsernames) : "e.g., amit"}
+                    className="h-9 bg-background border-orange-500/30 font-mono text-xs text-orange-500 tracking-wider focus:border-orange-500"
+                  />
+                  {username && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(username);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 1500);
+                      }}
+                      className="h-9 w-9 flex-shrink-0 flex items-center justify-center rounded-md bg-background border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 transition-colors"
+                      title="Copy Login ID"
+                    >
+                      {copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
+                    </button>
+                  )}
+                </div>
+                {username && isUsernameTaken(username, takenUsernames) ? (
+                  <p className="text-[10px] text-amber-500 font-medium leading-tight">⚠️ Username already in use</p>
+                ) : (
+                  <p className="text-[10px] text-muted-foreground leading-tight">Used for POS staff login</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="emp-pin" className="text-xs font-bold text-muted-foreground flex items-center gap-1">
+                  <Shield size={12} className="text-orange-400" />
+                  4-Digit PIN
+                </Label>
+                <Input
+                  id="emp-pin"
+                  type="password"
+                  maxLength={4}
+                  value={loginCode}
+                  onChange={(e) => setLoginCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                  placeholder="0000"
+                  className="h-9 bg-background border-orange-500/30 font-mono text-center tracking-[0.3em] text-sm focus:border-orange-500"
+                />
+                <p className="text-[10px] text-muted-foreground leading-tight">Passcode to switch profile</p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="role">{t('Role')}</Label>
@@ -856,7 +1111,7 @@ function EmployeeDialog({ open, onOpenChange, employee, onSave }: { open: boolea
             {role === 'Other' && (
               <div className="space-y-2">
                 <Label htmlFor="custom-role">{t('Custom Role')}</Label>
-                <Input id="custom-role" placeholder={t('e.g., Dishwasher')} value={customRole} onChange={(e) => setCustomRole(e.target.value)} required />
+                <Input id="custom-role" placeholder={t('e.g., Cashier')} value={customRole} onChange={(e) => setCustomRole(e.target.value)} required />
               </div>
             )}
             <div className="space-y-2">

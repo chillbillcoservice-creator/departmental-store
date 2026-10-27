@@ -31,6 +31,7 @@ import { TrendingUp } from 'lucide-react';
 import { BarcodeLabelDialog } from './barcode-label-dialog';
 import { ExpiryTrackerDialog } from './expiry-tracker-dialog';
 import { ShrinkageAuditDialog } from './shrinkage-audit-dialog';
+import { UniversalCatalogImportDialog } from './universal-catalog-import-dialog';
 
 interface InventoryManagementProps {
   inventory: InventoryItem[];
@@ -549,165 +550,9 @@ export default function InventoryManagement({
   const [orderQty, setOrderQty] = useState('');
   const [focusField, setFocusField] = useState<string | null>(null);
 
-  // CSV Import & Wipe States
+  // CSV / PDF Import & Wipe States
   const [isCsvImportOpen, setIsCsvImportOpen] = useState(false);
   const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
-  const [csvParsedItems, setCsvParsedItems] = useState<any[]>([]);
-  const [csvFileName, setCsvFileName] = useState<string>('');
-  const [csvImportMode, setCsvImportMode] = useState<'append' | 'replace'>('append');
-  const [csvError, setCsvError] = useState<string | null>(null);
-
-  const downloadSampleCsv = () => {
-    const headers = "Name,Category,Price,CostPrice,Stock,Barcode,HSN,Unit,MinStock\n";
-    const sample1 = "Tata Salt 1kg,Groceries & Staples,28,24,50,8901030383789,250100,Pack,10\n";
-    const sample2 = "Maggi 2-Minute Noodles 70g,Snacks & Packaged Foods,14,11.5,120,8901058852373,190230,Piece,20\n";
-    const sample3 = "Amul Butter 100g,Dairy & Breakfast,58,51,30,8901262010054,040510,Pack,5\n";
-    const blob = new Blob([headers + sample1 + sample2 + sample3], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "chillbill_catalog_template.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleCsvFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setCsvFileName(file.name);
-    setCsvError(null);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
-        if (lines.length <= 1) {
-          setCsvError("CSV file must contain a header and at least one item row.");
-          return;
-        }
-
-        const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
-        const nameIdx = headers.findIndex(h => h.includes('name') || h.includes('item'));
-        const catIdx = headers.findIndex(h => h.includes('cat'));
-        const priceIdx = headers.findIndex(h => h.includes('price') || h.includes('mrp'));
-        const costIdx = headers.findIndex(h => h.includes('cost') || h.includes('purchase'));
-        const stockIdx = headers.findIndex(h => h.includes('stock') || h.includes('qty'));
-        const barIdx = headers.findIndex(h => h.includes('bar') || h.includes('code'));
-        const hsnIdx = headers.findIndex(h => h.includes('hsn'));
-        const unitIdx = headers.findIndex(h => h.includes('unit'));
-        const minIdx = headers.findIndex(h => h.includes('min') || h.includes('capacity'));
-
-        if (nameIdx === -1) {
-          setCsvError("Missing 'Name' column in CSV.");
-          return;
-        }
-
-        const items: any[] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const row = lines[i].split(',').map(col => col.trim().replace(/^["']|["']$/g, ''));
-          if (row.length === 0 || !row[nameIdx]) continue;
-
-          items.push({
-            name: row[nameIdx],
-            category: (catIdx > -1 && row[catIdx]) ? row[catIdx] : 'General',
-            price: (priceIdx > -1 && parseFloat(row[priceIdx])) ? parseFloat(row[priceIdx]) : 0,
-            costPrice: (costIdx > -1 && parseFloat(row[costIdx])) ? parseFloat(row[costIdx]) : 0,
-            stock: (stockIdx > -1 && parseInt(row[stockIdx], 10)) ? parseInt(row[stockIdx], 10) : 0,
-            barcode: (barIdx > -1 && row[barIdx]) ? row[barIdx] : '',
-            hsnCode: (hsnIdx > -1 && row[hsnIdx]) ? row[hsnIdx] : '',
-            unit: (unitIdx > -1 && row[unitIdx]) ? row[unitIdx] : 'Pack',
-            capacity: (minIdx > -1 && parseInt(row[minIdx], 10)) ? parseInt(row[minIdx], 10) : 5,
-          });
-        }
-
-        if (items.length === 0) {
-          setCsvError("No valid products found in CSV file.");
-          return;
-        }
-
-        setCsvParsedItems(items);
-      } catch (err: any) {
-        setCsvError("Failed to parse CSV file: " + err.message);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleConfirmCsvImport = () => {
-    if (csvParsedItems.length === 0) return;
-
-    const formattedNewItems: InventoryItem[] = csvParsedItems.map((item, idx) => ({
-      id: `ITEM-${Date.now()}-${idx + 1}`,
-      name: item.name,
-      category: item.category,
-      price: item.price,
-      costPrice: item.costPrice,
-      stock: item.stock,
-      barcode: item.barcode,
-      hsnCode: item.hsnCode,
-      unit: item.unit,
-      capacity: item.capacity,
-      status: item.stock > 0 ? 'In Stock' : 'Out of Stock',
-    }));
-
-    const finalInventory = csvImportMode === 'replace'
-      ? formattedNewItems
-      : [...inventory, ...formattedNewItems];
-
-    setInventory(finalInventory);
-
-    if (setMenu) {
-      const existingMenu = csvImportMode === 'replace' ? [] : [...menu];
-      const categoriesMap = new Map<string, any[]>();
-
-      existingMenu.forEach(cat => {
-        categoriesMap.set(cat.name.toLowerCase(), cat.items || []);
-      });
-
-      formattedNewItems.forEach(item => {
-        const catKey = (item.category || 'General').toLowerCase();
-        const currentList = categoriesMap.get(catKey) || [];
-        currentList.push({
-          name: item.name,
-          price: item.price,
-          barcode: item.barcode,
-          hsnCode: item.hsnCode,
-          code: String(currentList.length + 1).padStart(2, '0')
-        });
-        categoriesMap.set(catKey, currentList);
-      });
-
-      const updatedMenu: MenuCategory[] = Array.from(categoriesMap.entries()).map(([key, items]) => {
-        const found = existingMenu.find(c => c.name.toLowerCase() === key);
-        return {
-          id: found ? found.id : key.replace(/\s+/g, '-'),
-          name: found ? found.name : items[0]?.category || key.toUpperCase(),
-          items: items,
-          subcategories: found?.subcategories || []
-        };
-      });
-
-      setMenu(updatedMenu);
-      try {
-        localStorage.setItem('menu', JSON.stringify(updatedMenu));
-      } catch (e) {}
-    }
-
-    try {
-      localStorage.setItem('inventory', JSON.stringify(finalInventory));
-      localStorage.setItem('chillbill_catalog_initialized', 'true');
-    } catch (e) {}
-
-    toast({
-      title: t("Catalog Imported!"),
-      description: t(`Successfully imported ${formattedNewItems.length} products into your store catalog.`),
-    });
-
-    setIsCsvImportOpen(false);
-    setCsvParsedItems([]);
-    setCsvFileName('');
-  };
 
   const handleClearAllInventory = () => {
     setInventory([]);
@@ -1092,16 +937,11 @@ export default function InventoryManagement({
               </Button>
               <Button
                 variant="outline"
-                onClick={() => {
-                  setCsvParsedItems([]);
-                  setCsvFileName('');
-                  setCsvError(null);
-                  setIsCsvImportOpen(true);
-                }}
+                onClick={() => setIsCsvImportOpen(true)}
                 className="bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20 hover:border-indigo-500 text-indigo-600 transition-all font-bold"
-                title={t("Bulk import products from CSV spreadsheet")}
+                title={t("Bulk import products from CSV spreadsheet or PDF invoice")}
               >
-                <FileSpreadsheet className="mr-2 h-4 w-4 text-indigo-500" /> {t('Import CSV')}
+                <FileSpreadsheet className="mr-2 h-4 w-4 text-indigo-500" /> {t('Import CSV / PDF')}
               </Button>
               <Button
                 variant="outline"
@@ -2034,117 +1874,16 @@ export default function InventoryManagement({
         currency={currency}
       />
 
-      {/* CSV Import Modal */}
-      <Dialog open={isCsvImportOpen} onOpenChange={setIsCsvImportOpen}>
-        <DialogContent className="sm:max-w-xl rounded-2xl p-6">
-          <DialogHeader>
-            <DialogTitle className="text-lg font-black flex items-center gap-2 text-foreground">
-              <FileSpreadsheet className="h-5 w-5 text-indigo-500" />
-              Bulk Import Products via CSV / Excel
-            </DialogTitle>
-            <DialogDescription className="text-xs pt-1">
-              Upload a standard spreadsheet with product details. Download our template below to see the exact format.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-3">
-            {/* Template Download Banner */}
-            <div className="p-3.5 rounded-xl border border-indigo-500/20 bg-indigo-500/5 flex items-center justify-between gap-3">
-              <div className="space-y-0.5">
-                <span className="text-xs font-bold text-foreground block">Need a starting template?</span>
-                <span className="text-[11px] text-muted-foreground block">Includes columns for Name, Category, Price, Cost, Stock, Barcode, HSN & Unit.</span>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={downloadSampleCsv}
-                className="shrink-0 border-indigo-500/30 text-indigo-600 hover:bg-indigo-500 hover:text-white font-bold text-xs rounded-xl"
-              >
-                <Download className="mr-1.5 h-3.5 w-3.5" /> Template
-              </Button>
-            </div>
-
-            {/* File Upload Box */}
-            <div className="border-2 border-dashed border-border/80 rounded-2xl p-6 text-center hover:border-primary/50 transition-colors bg-muted/20">
-              <input
-                type="file"
-                accept=".csv,text/csv"
-                id="csv-file-input"
-                className="hidden"
-                onChange={handleCsvFile}
-              />
-              <label htmlFor="csv-file-input" className="cursor-pointer flex flex-col items-center gap-2">
-                <div className="w-10 h-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shadow-xs">
-                  <Upload className="h-5 w-5" />
-                </div>
-                <span className="text-xs font-bold text-foreground">
-                  {csvFileName ? `Selected: ${csvFileName}` : "Click to select CSV File"}
-                </span>
-                <span className="text-[10px] text-muted-foreground">Accepts .csv exported from Excel, Tally or Vyapar</span>
-              </label>
-            </div>
-
-            {csvError && (
-              <p className="text-xs text-destructive font-bold text-center bg-destructive/10 p-2 rounded-xl border border-destructive/20">{csvError}</p>
-            )}
-
-            {/* Preview of Parsed Items */}
-            {csvParsedItems.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-bold px-1">
-                  <span className="text-emerald-600 flex items-center gap-1.5">
-                    <Check className="h-4 w-4" /> Ready to import {csvParsedItems.length} products
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-muted-foreground font-normal">Mode:</span>
-                    <select
-                      value={csvImportMode}
-                      onChange={(e: any) => setCsvImportMode(e.target.value)}
-                      className="text-xs font-bold bg-muted px-2 py-1 rounded-lg border border-border"
-                    >
-                      <option value="append">Add to existing items</option>
-                      <option value="replace">Replace all current items</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="max-h-36 overflow-y-auto border border-border/60 rounded-xl divide-y divide-border/40 text-xs">
-                  {csvParsedItems.slice(0, 5).map((item, idx) => (
-                    <div key={idx} className="p-2 flex items-center justify-between bg-background/50">
-                      <div>
-                        <span className="font-bold text-foreground">{item.name}</span>
-                        <span className="text-[10px] text-muted-foreground block">{item.category} • Barcode: {item.barcode || 'N/A'}</span>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-bold text-primary">{currency} {item.price}</span>
-                        <span className="text-[10px] text-muted-foreground block">Stock: {item.stock}</span>
-                      </div>
-                    </div>
-                  ))}
-                  {csvParsedItems.length > 5 && (
-                    <div className="p-2 text-center text-[10px] text-muted-foreground bg-muted/20">
-                      ...and {csvParsedItems.length - 5} more items
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0 pt-2">
-            <Button variant="outline" onClick={() => setIsCsvImportOpen(false)} className="rounded-xl">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleConfirmCsvImport}
-              disabled={csvParsedItems.length === 0}
-              className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white"
-            >
-              Confirm & Import {csvParsedItems.length > 0 ? `(${csvParsedItems.length})` : ''}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Universal Catalog Import Modal (CSV & PDF) */}
+      <UniversalCatalogImportDialog
+        isOpen={isCsvImportOpen}
+        onOpenChange={setIsCsvImportOpen}
+        inventory={inventory}
+        setInventory={setInventory}
+        menu={menu}
+        setMenu={setMenu}
+        currency={currency || '₹'}
+      />
 
       {/* Clear All Inventory Confirmation Modal */}
       <AlertDialog open={isClearAllDialogOpen} onOpenChange={setIsClearAllDialogOpen}>

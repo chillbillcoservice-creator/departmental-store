@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useCallback, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -7,13 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Building2, CheckCircle2, User, Users, Plus, Trash2, ArrowRight, ArrowLeft, Rocket, ChevronDown, ChevronUp, PlusCircle, Truck, LayoutGrid, Utensils, Soup, Landmark, Receipt, Users2, Shield } from "lucide-react";
+import { Building2, CheckCircle2, User, Users, Plus, Trash2, ArrowRight, ArrowLeft, Rocket, ChevronDown, ChevronUp, PlusCircle, Truck, ShoppingCart, Package, Landmark, Receipt, Users2, Shield } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SetupData, VenueDetails, OwnerDetails, Employee } from "@/lib/types";
 import { ThemeToggle } from "./theme-toggle";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/language-context";
-import { buildUsername, generateLoginCode } from "@/lib/generate-username";
+import { buildUsername, generateUniqueUsername, isUsernameTaken } from "@/lib/generate-username";
 import { Copy, Check } from "lucide-react";
 
 interface SetupWizardProps {
@@ -22,19 +22,18 @@ interface SetupWizardProps {
 }
 
 const steps = [
-  { id: 1, title: "Venue", icon: Building2 },
+  { id: 1, title: "Store", icon: Building2 },
   { id: 2, title: "Owner", icon: User },
   { id: 3, title: "Staff", icon: Users },
   { id: 4, title: "Vendors", icon: Truck },
 ];
 
 const DASHBOARD_TABS = [
-  { id: 'pos', label: 'Main POS', icon: Utensils },
-  { id: 'tables', label: 'Tables', icon: LayoutGrid },
-  { id: 'kitchen', label: 'Kitchen & Inv.', icon: Soup },
-  { id: 'vendors', label: 'Vendors', icon: Landmark },
+  { id: 'payments', label: 'Billing / POS', icon: ShoppingCart },
+  { id: 'inventory', label: 'Inventory', icon: Package },
   { id: 'expenses', label: 'Expenses', icon: Receipt },
-  { id: 'customers', label: 'Customers', icon: Users2 },
+  { id: 'customers', label: 'Customers / Khata', icon: Users2 },
+  { id: 'vendors', label: 'Vendors', icon: Landmark },
   { id: 'staff', label: 'Staff', icon: Users },
   { id: 'admin', label: 'Admin', icon: Shield },
 ];
@@ -42,20 +41,26 @@ const DASHBOARD_TABS = [
 const getRoleDefaults = (role: string) => {
   switch (role) {
     case 'Admin':
-      return ['pos', 'tables', 'kitchen', 'vendors', 'expenses', 'customers', 'staff', 'admin'];
+    case 'Store Owner':
+    case 'Owner':
+      return ['payments', 'inventory', 'expenses', 'customers', 'vendors', 'staff', 'admin'];
     case 'Manager':
-      return ['pos', 'tables', 'kitchen', 'vendors', 'expenses', 'customers', 'staff', 'admin'];
-    case 'Waiter':
-      return ['pos', 'tables'];
-    case 'Head Chef':
-    case 'Chef':
-      return ['kitchen'];
+    case 'Store Manager':
+      return ['payments', 'inventory', 'expenses', 'customers', 'vendors', 'staff', 'admin'];
     case 'Cashier':
-      return ['pos', 'expenses', 'customers'];
+    case 'Billing Clerk':
+      return ['payments', 'inventory', 'customers'];
+    case 'Inventory Clerk':
+    case 'Stock Keeper':
+      return ['inventory', 'vendors'];
+    case 'Floor Assistant':
+    case 'Helper':
+      return ['payments', 'inventory'];
     case 'Delivery Boy':
-      return ['pos'];
+    case 'Delivery Person':
+      return ['payments'];
     default:
-      return ['pos'];
+      return ['payments'];
   }
 };
 
@@ -82,84 +87,184 @@ function WizardSection({ title, children, defaultOpen = false }: { title: string
   );
 }
 
-function PinInput({ id, value, onChange }: { id?: string; value: string; onChange: (v: string) => void }) {
+function PinInput({
+  id,
+  value = "",
+  onChange,
+  disabled = false,
+}: {
+  id?: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
   const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
-  const digits = [value[0] || '', value[1] || '', value[2] || '', value[3] || ''];
+  const cleanVal = (value || "").replace(/\D/g, "").slice(0, 4);
+  const digits = [cleanVal[0] || "", cleanVal[1] || "", cleanVal[2] || "", cleanVal[3] || ""];
 
-  const handleChange = (idx: number, char: string) => {
-    const digit = char.replace(/\D/g, '').slice(-1);
+  const handleChange = (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, "");
+    if (!raw) return;
+    const char = raw.slice(-1);
+
     const newDigits = [...digits];
-    newDigits[idx] = digit;
-    onChange(newDigits.join(''));
-    if (digit && idx < 3) inputsRef.current[idx + 1]?.focus();
-  };
+    newDigits[idx] = char;
 
-  const handleKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !digits[idx] && idx > 0) {
-      inputsRef.current[idx - 1]?.focus();
-    } else if (e.key === 'ArrowLeft' && idx > 0) {
-      inputsRef.current[idx - 1]?.focus();
-    } else if (e.key === 'ArrowRight' && idx < 3) {
+    let lastFilled = idx;
+    for (let i = 3; i >= 0; i--) {
+      if (newDigits[i]) {
+        lastFilled = Math.max(lastFilled, i);
+        break;
+      }
+    }
+    const chars: string[] = [];
+    for (let i = 0; i <= lastFilled; i++) {
+      chars.push(newDigits[i] || "0");
+    }
+    const nextVal = chars.join("").slice(0, 4);
+    onChange(nextVal);
+
+    if (idx < 3) {
       inputsRef.current[idx + 1]?.focus();
+      inputsRef.current[idx + 1]?.select();
     }
   };
 
+  const handleKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace") {
+      e.preventDefault();
+      if (digits[idx]) {
+        const chars = cleanVal.split("");
+        chars.splice(idx, 1);
+        onChange(chars.join(""));
+      } else if (idx > 0) {
+        const chars = cleanVal.split("");
+        chars.splice(idx - 1, 1);
+        onChange(chars.join(""));
+        inputsRef.current[idx - 1]?.focus();
+      }
+    } else if (e.key === "ArrowLeft" && idx > 0) {
+      e.preventDefault();
+      inputsRef.current[idx - 1]?.focus();
+      inputsRef.current[idx - 1]?.select();
+    } else if (e.key === "ArrowRight" && idx < 3) {
+      e.preventDefault();
+      inputsRef.current[idx + 1]?.focus();
+      inputsRef.current[idx + 1]?.select();
+    } else if (e.key === "Delete") {
+      e.preventDefault();
+      const chars = cleanVal.split("");
+      chars.splice(idx, 1);
+      onChange(chars.join(""));
+    }
+  };
+
+  const handleFocus = (idx: number, e: React.FocusEvent<HTMLInputElement>) => {
+    const firstEmpty = digits.findIndex((d) => !d);
+    if (firstEmpty !== -1 && firstEmpty < idx) {
+      inputsRef.current[firstEmpty]?.focus();
+      inputsRef.current[firstEmpty]?.select();
+      return;
+    }
+    e.target.select();
+  };
+
   const handlePaste = (e: React.ClipboardEvent) => {
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 4);
-    if (pasted) onChange(pasted.padEnd(4, '').slice(0, 4));
     e.preventDefault();
+    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
+    if (pasted) {
+      onChange(pasted);
+      const targetIdx = Math.min(pasted.length - 1, 3);
+      inputsRef.current[targetIdx]?.focus();
+    }
   };
 
   return (
-    <div id={id} className="flex gap-2" onPaste={handlePaste}>
-      {digits.map((d, idx) => (
-        <input
-          key={idx}
-          ref={el => { inputsRef.current[idx] = el; }}
-          type="text"
-          inputMode="numeric"
-          maxLength={1}
-          value={d}
-          onChange={e => handleChange(idx, e.target.value)}
-          onKeyDown={e => handleKeyDown(idx, e)}
-          className="w-12 h-12 text-center text-xl font-black rounded-lg bg-background border border-input text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500 transition-all"
-          placeholder="•"
-        />
-      ))}
+    <div className="space-y-1.5">
+      <div id={id} className="flex items-center gap-2" onPaste={handlePaste}>
+        {digits.map((d, idx) => (
+          <input
+            key={idx}
+            ref={(el) => { inputsRef.current[idx] = el; }}
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={2}
+            value={d}
+            onChange={(e) => handleChange(idx, e)}
+            onKeyDown={(e) => handleKeyDown(idx, e)}
+            onFocus={(e) => handleFocus(idx, e)}
+            disabled={disabled}
+            className={cn(
+              "w-12 h-12 text-center text-xl font-black rounded-lg bg-background border transition-all select-all",
+              d
+                ? "border-orange-500/80 text-foreground ring-1 ring-orange-500/30 bg-orange-500/5 shadow-sm"
+                : "border-input text-muted-foreground hover:border-zinc-500",
+              "focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+            )}
+            placeholder="•"
+          />
+        ))}
+        {cleanVal.length > 0 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              onChange("");
+              inputsRef.current[0]?.focus();
+            }}
+            className="h-8 px-2 text-xs text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+            title="Clear Passcode"
+          >
+            Clear
+          </Button>
+        )}
+      </div>
+      {cleanVal.length > 0 && cleanVal.length < 4 && (
+        <p className="text-[11px] font-medium text-amber-500">
+          Please enter all 4 digits ({cleanVal.length}/4)
+        </p>
+      )}
+      {cleanVal.length === 4 && (
+        <p className="text-[11px] font-medium text-emerald-500">
+          ✓ 4-digit PIN ready
+        </p>
+      )}
     </div>
   );
 }
 
 const COUNTRIES = [
-  { name: "Afghanistan", code: "AF", currency: "؋", currencyName: "AFN", languages: ["en"] },
+  { name: "Afghanistan", code: "AF", currency: "?", currencyName: "AFN", languages: ["en"] },
   { name: "Albania", code: "AL", currency: "L", currencyName: "ALL", languages: ["en"] },
-  { name: "Algeria", code: "DZ", currency: "د.ج", currencyName: "DZD", languages: ["en", "fr"] },
+  { name: "Algeria", code: "DZ", currency: "?.?", currencyName: "DZD", languages: ["en", "fr"] },
   { name: "Andorra", code: "AD", currency: "€", currencyName: "EUR", languages: ["en", "es", "fr"] },
   { name: "Angola", code: "AO", currency: "Kz", currencyName: "AOA", languages: ["en"] },
   { name: "Argentina", code: "AR", currency: "$", currencyName: "ARS", languages: ["es", "en"] },
-  { name: "Armenia", code: "AM", currency: "֏", currencyName: "AMD", languages: ["en"] },
+  { name: "Armenia", code: "AM", currency: "?", currencyName: "AMD", languages: ["en"] },
   { name: "Australia", code: "AU", currency: "$", currencyName: "AUD", languages: ["en"] },
   { name: "Austria", code: "AT", currency: "€", currencyName: "EUR", languages: ["de", "en"] },
-  { name: "Azerbaijan", code: "AZ", currency: "₼", currencyName: "AZN", languages: ["en"] },
-  { name: "Bahrain", code: "BH", currency: ".د.ب", currencyName: "BHD", languages: ["en"] },
-  { name: "Bangladesh", code: "BD", currency: "৳", currencyName: "BDT", languages: ["en"] },
+  { name: "Azerbaijan", code: "AZ", currency: "?", currencyName: "AZN", languages: ["en"] },
+  { name: "Bahrain", code: "BH", currency: ".?.?", currencyName: "BHD", languages: ["en"] },
+  { name: "Bangladesh", code: "BD", currency: "?", currencyName: "BDT", languages: ["en"] },
   { name: "Belarus", code: "BY", currency: "Br", currencyName: "BYN", languages: ["en"] },
   { name: "Belgium", code: "BE", currency: "€", currencyName: "EUR", languages: ["fr", "de", "en"] },
   { name: "Bhutan", code: "BT", currency: "Nu.", currencyName: "BTN", languages: ["en"] },
   { name: "Bolivia", code: "BO", currency: "Bs.", currencyName: "BOB", languages: ["es", "en"] },
   { name: "Bosnia and Herzegovina", code: "BA", currency: "KM", currencyName: "BAM", languages: ["en"] },
   { name: "Brazil", code: "BR", currency: "R$", currencyName: "BRL", languages: ["en"] },
-  { name: "Bulgaria", code: "BG", currency: "лв", currencyName: "BGN", languages: ["en"] },
-  { name: "Cambodia", code: "KH", currency: "៛", currencyName: "KHR", languages: ["en"] },
+  { name: "Bulgaria", code: "BG", currency: "??", currencyName: "BGN", languages: ["en"] },
+  { name: "Cambodia", code: "KH", currency: "?", currencyName: "KHR", languages: ["en"] },
   { name: "Canada", code: "CA", currency: "$", currencyName: "CAD", languages: ["en", "fr"] },
   { name: "Chile", code: "CL", currency: "$", currencyName: "CLP", languages: ["es", "en"] },
   { name: "China", code: "CN", currency: "¥", currencyName: "CNY", languages: ["zh", "en"] },
   { name: "Colombia", code: "CO", currency: "$", currencyName: "COP", languages: ["es", "en"] },
-  { name: "Costa Rica", code: "CR", currency: "₡", currencyName: "CRC", languages: ["es", "en"] },
+  { name: "Costa Rica", code: "CR", currency: "¢", currencyName: "CRC", languages: ["es", "en"] },
   { name: "Croatia", code: "HR", currency: "€", currencyName: "EUR", languages: ["en"] },
   { name: "Cuba", code: "CU", currency: "$", currencyName: "CUP", languages: ["es", "en"] },
   { name: "Cyprus", code: "CY", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Czech Republic", code: "CZ", currency: "Kč", currencyName: "CZK", languages: ["en"] },
+  { name: "Czech Republic", code: "CZ", currency: "Kc", currencyName: "CZK", languages: ["en"] },
   { name: "Denmark", code: "DK", currency: "kr", currencyName: "DKK", languages: ["en"] },
   { name: "Dominican Republic", code: "DO", currency: "RD$", currencyName: "DOP", languages: ["es", "en"] },
   { name: "Ecuador", code: "EC", currency: "$", currencyName: "USD", languages: ["es", "en"] },
@@ -168,27 +273,27 @@ const COUNTRIES = [
   { name: "Ethiopia", code: "ET", currency: "Br", currencyName: "ETB", languages: ["en"] },
   { name: "Finland", code: "FI", currency: "€", currencyName: "EUR", languages: ["en"] },
   { name: "France", code: "FR", currency: "€", currencyName: "EUR", languages: ["fr", "en"] },
-  { name: "Georgia", code: "GE", currency: "₾", currencyName: "GEL", languages: ["en"] },
+  { name: "Georgia", code: "GE", currency: "?", currencyName: "GEL", languages: ["en"] },
   { name: "Germany", code: "DE", currency: "€", currencyName: "EUR", languages: ["de", "en"] },
-  { name: "Ghana", code: "GH", currency: "₵", currencyName: "GHS", languages: ["en"] },
+  { name: "Ghana", code: "GH", currency: "?", currencyName: "GHS", languages: ["en"] },
   { name: "Greece", code: "GR", currency: "€", currencyName: "EUR", languages: ["en"] },
   { name: "Hong Kong", code: "HK", currency: "$", currencyName: "HKD", languages: ["zh", "en"] },
   { name: "Hungary", code: "HU", currency: "Ft", currencyName: "HUF", languages: ["en"] },
   { name: "Iceland", code: "IS", currency: "kr", currencyName: "ISK", languages: ["en"] },
   { name: "India", code: "IN", currency: "Rs.", currencyName: "INR", languages: ["hi", "ta", "gu", "ml", "pa", "bn", "mr", "ur", "en"] },
   { name: "Indonesia", code: "ID", currency: "Rp", currencyName: "IDR", languages: ["en"] },
-  { name: "Iran", code: "IR", currency: "﷼", currencyName: "IRR", languages: ["en"] },
-  { name: "Iraq", code: "IQ", currency: "ع.د", currencyName: "IQD", languages: ["en"] },
+  { name: "Iran", code: "IR", currency: "?", currencyName: "IRR", languages: ["en"] },
+  { name: "Iraq", code: "IQ", currency: "?.?", currencyName: "IQD", languages: ["en"] },
   { name: "Ireland", code: "IE", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Israel", code: "IL", currency: "₪", currencyName: "ILS", languages: ["en"] },
+  { name: "Israel", code: "IL", currency: "?", currencyName: "ILS", languages: ["en"] },
   { name: "Italy", code: "IT", currency: "€", currencyName: "EUR", languages: ["en"] },
   { name: "Japan", code: "JP", currency: "¥", currencyName: "JPY", languages: ["ja", "en"] },
-  { name: "Jordan", code: "JO", currency: "د.ا", currencyName: "JOD", languages: ["en"] },
-  { name: "Kazakhstan", code: "KZ", currency: "₸", currencyName: "KZT", languages: ["en"] },
+  { name: "Jordan", code: "JO", currency: "?.?", currencyName: "JOD", languages: ["en"] },
+  { name: "Kazakhstan", code: "KZ", currency: "?", currencyName: "KZT", languages: ["en"] },
   { name: "Kenya", code: "KE", currency: "KSh", currencyName: "KES", languages: ["en"] },
-  { name: "Kuwait", code: "KW", currency: "د.ك", currencyName: "KWD", languages: ["en"] },
+  { name: "Kuwait", code: "KW", currency: "?.?", currencyName: "KWD", languages: ["en"] },
   { name: "Latvia", code: "LV", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Lebanon", code: "LB", currency: "ل.ل", currencyName: "LBP", languages: ["en"] },
+  { name: "Lebanon", code: "LB", currency: "?.?", currencyName: "LBP", languages: ["en"] },
   { name: "Lithuania", code: "LT", currency: "€", currencyName: "EUR", languages: ["en"] },
   { name: "Luxembourg", code: "LU", currency: "€", currencyName: "EUR", languages: ["fr", "de", "en"] },
   { name: "Malaysia", code: "MY", currency: "RM", currencyName: "MYR", languages: ["en"] },
@@ -196,44 +301,44 @@ const COUNTRIES = [
   { name: "Malta", code: "MT", currency: "€", currencyName: "EUR", languages: ["en"] },
   { name: "Mexico", code: "MX", currency: "$", currencyName: "MXN", languages: ["es", "en"] },
   { name: "Monaco", code: "MC", currency: "€", currencyName: "EUR", languages: ["fr", "en"] },
-  { name: "Mongolia", code: "MN", currency: "₮", currencyName: "MNT", languages: ["en"] },
-  { name: "Morocco", code: "MA", currency: "د.م.", currencyName: "MAD", languages: ["en"] },
+  { name: "Mongolia", code: "MN", currency: "?", currencyName: "MNT", languages: ["en"] },
+  { name: "Morocco", code: "MA", currency: "?.?.", currencyName: "MAD", languages: ["en"] },
   { name: "Myanmar", code: "MM", currency: "K", currencyName: "MMK", languages: ["en"] },
-  { name: "Nepal", code: "NP", currency: "₨", currencyName: "NPR", languages: ["en"] },
+  { name: "Nepal", code: "NP", currency: "?", currencyName: "NPR", languages: ["en"] },
   { name: "Netherlands", code: "NL", currency: "€", currencyName: "EUR", languages: ["en"] },
   { name: "New Zealand", code: "NZ", currency: "$", currencyName: "NZD", languages: ["en"] },
-  { name: "Nigeria", code: "NG", currency: "₦", currencyName: "NGN", languages: ["en"] },
-  { name: "North Korea", code: "KP", currency: "₩", currencyName: "KPW", languages: ["en"] },
+  { name: "Nigeria", code: "NG", currency: "?", currencyName: "NGN", languages: ["en"] },
+  { name: "North Korea", code: "KP", currency: "?", currencyName: "KPW", languages: ["en"] },
   { name: "Norway", code: "NO", currency: "kr", currencyName: "NOK", languages: ["en"] },
-  { name: "Oman", code: "OM", currency: "ر.ع.", currencyName: "OMR", languages: ["en"] },
+  { name: "Oman", code: "OM", currency: "?.?.", currencyName: "OMR", languages: ["en"] },
   { name: "Pakistan", code: "PK", currency: "Rs", currencyName: "PKR", languages: ["ur", "en"] },
   { name: "Peru", code: "PE", currency: "S/.", currencyName: "PEN", languages: ["es", "en"] },
-  { name: "Philippines", code: "PH", currency: "₱", currencyName: "PHP", languages: ["en"] },
-  { name: "Poland", code: "PL", currency: "zł", currencyName: "PLN", languages: ["en"] },
+  { name: "Philippines", code: "PH", currency: "?", currencyName: "PHP", languages: ["en"] },
+  { name: "Poland", code: "PL", currency: "zl", currencyName: "PLN", languages: ["en"] },
   { name: "Portugal", code: "PT", currency: "€", currencyName: "EUR", languages: ["en"] },
-  { name: "Qatar", code: "QA", currency: "ر.ق", currencyName: "QAR", languages: ["en"] },
+  { name: "Qatar", code: "QA", currency: "?.?", currencyName: "QAR", languages: ["en"] },
   { name: "Romania", code: "RO", currency: "lei", currencyName: "RON", languages: ["en"] },
-  { name: "Russia", code: "RU", currency: "₽", currencyName: "RUB", languages: ["ru", "en"] },
-  { name: "Saudi Arabia", code: "SA", currency: "﷼", currencyName: "SAR", languages: ["en"] },
+  { name: "Russia", code: "RU", currency: "?", currencyName: "RUB", languages: ["ru", "en"] },
+  { name: "Saudi Arabia", code: "SA", currency: "?", currencyName: "SAR", languages: ["en"] },
   { name: "Singapore", code: "SG", currency: "$", currencyName: "SGD", languages: ["zh", "en"] },
   { name: "Slovakia", code: "SK", currency: "€", currencyName: "EUR", languages: ["en"] },
   { name: "Slovenia", code: "SI", currency: "€", currencyName: "EUR", languages: ["en"] },
   { name: "South Africa", code: "ZA", currency: "R", currencyName: "ZAR", languages: ["en"] },
-  { name: "South Korea", code: "KR", currency: "₩", currencyName: "KRW", languages: ["en"] },
+  { name: "South Korea", code: "KR", currency: "?", currencyName: "KRW", languages: ["en"] },
   { name: "Spain", code: "ES", currency: "€", currencyName: "EUR", languages: ["es", "en"] },
   { name: "Sri Lanka", code: "LK", currency: "Rs", currencyName: "LKR", languages: ["en"] },
   { name: "Sweden", code: "SE", currency: "kr", currencyName: "SEK", languages: ["en"] },
   { name: "Switzerland", code: "CH", currency: "Fr", currencyName: "CHF", languages: ["de", "fr", "en"] },
   { name: "Taiwan", code: "TW", currency: "NT$", currencyName: "TWD", languages: ["zh", "en"] },
-  { name: "Thailand", code: "TH", currency: "฿", currencyName: "THB", languages: ["en"] },
-  { name: "Turkey", code: "TR", currency: "₺", currencyName: "TRY", languages: ["en"] },
-  { name: "Ukraine", code: "UA", currency: "₴", currencyName: "UAH", languages: ["en"] },
-  { name: "United Arab Emirates", code: "AE", currency: "د.إ", currencyName: "AED", languages: ["en"] },
+  { name: "Thailand", code: "TH", currency: "?", currencyName: "THB", languages: ["en"] },
+  { name: "Turkey", code: "TR", currency: "?", currencyName: "TRY", languages: ["en"] },
+  { name: "Ukraine", code: "UA", currency: "?", currencyName: "UAH", languages: ["en"] },
+  { name: "United Arab Emirates", code: "AE", currency: "?.?", currencyName: "AED", languages: ["en"] },
   { name: "United Kingdom", code: "GB", currency: "£", currencyName: "GBP", languages: ["en"] },
   { name: "United States", code: "US", currency: "$", currencyName: "USD", languages: ["en"] },
   { name: "Vatican City", code: "VA", currency: "€", currencyName: "EUR", languages: ["en"] },
   { name: "Venezuela", code: "VE", currency: "Bs.S", currencyName: "VES", languages: ["es", "en"] },
-  { name: "Vietnam", code: "VN", currency: "₫", currencyName: "VND", languages: ["en"] },
+  { name: "Vietnam", code: "VN", currency: "?", currencyName: "VND", languages: ["en"] },
   { name: "Other", code: "OT", currency: "$", currencyName: "USD", languages: ["en"] },
 ];
 
@@ -262,26 +367,31 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
   const [customCountry, setCustomCountry] = useState("");
   const [customCurrencyName, setCustomCurrencyName] = useState("");
 
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
   const [owner, setOwner] = useState<OwnerDetails>({
     name: initialData?.owner?.name || "",
     contactNumber: initialData?.owner?.contactNumber || "",
     email: initialData?.owner?.email || "",
-    loginCode: initialData?.owner?.loginCode || generateLoginCode(),
+    loginCode: initialData?.owner?.loginCode || "",
     password: initialData?.owner?.password || "",
+    username: initialData?.owner?.username || (initialData?.owner?.name ? generateUniqueUsername(initialData.owner.name, []) : ""),
   });
+  const [isOwnerUsernameCustom, setIsOwnerUsernameCustom] = useState(Boolean(initialData?.owner?.username));
 
   const [additionalOwners, setAdditionalOwners] = useState<OwnerDetails[]>(initialData?.additionalOwners || []);
+  const [customPartnerUsernames, setCustomPartnerUsernames] = useState<Record<number, boolean>>({});
   const [newOwnerName, setNewOwnerName] = useState("");
   const [newOwnerContact, setNewOwnerContact] = useState("");
   const [newOwnerEmail, setNewOwnerEmail] = useState("");
 
   // Employee State
-  // Employee State
   const [employees, setEmployees] = useState<Partial<Employee>[]>(
     (initialData?.employees && initialData.employees.length > 0)
       ? initialData.employees
-      : [{ name: "", role: "Manager", salary: 0, mobile: "", email: "", govtId: "", color: '#f59e0b', allowedTabs: getRoleDefaults('Manager'), loginCode: generateLoginCode(), password: '' }]
+      : [{ name: "", username: "", role: "Manager", salary: 0, mobile: "", email: "", govtId: "", color: '#f59e0b', allowedTabs: getRoleDefaults('Manager'), loginCode: '', password: '' }]
   );
+  const [customEmpUsernames, setCustomEmpUsernames] = useState<Record<number, boolean>>({});
 
   // Vendor State
   const [vendors, setVendors] = useState<any[]>(
@@ -291,6 +401,24 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
   );
 
   const handleNext = () => {
+    if (step === 2) {
+      if (owner.loginCode && owner.loginCode.length > 0 && owner.loginCode.length < 4) {
+        alert("Please enter a complete 4-digit passcode for the store owner, or clear it.");
+        return;
+      }
+      const incompletePartner = additionalOwners.find(o => o.loginCode && o.loginCode.length > 0 && o.loginCode.length < 4);
+      if (incompletePartner) {
+        alert(`Please enter a complete 4-digit passcode for ${incompletePartner.name || "partner"}, or clear it.`);
+        return;
+      }
+    }
+    if (step === 3) {
+      const incompleteEmp = employees.find(e => e.loginCode && e.loginCode.length > 0 && e.loginCode.length < 4);
+      if (incompleteEmp) {
+        alert(`Please enter a complete 4-digit passcode for ${incompleteEmp.name || "staff member"}, or clear it.`);
+        return;
+      }
+    }
     if (step < 4) setStep(step + 1);
   };
 
@@ -302,20 +430,78 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
     setter((prev: any) => ({ ...prev, [field]: value }));
   };
 
+  // Helper: Collect all currently assigned usernames across owner, partners, and employees
+  const getAllTakenUsernames = (excludeKey?: string) => {
+    const list: string[] = [];
+    if (owner.username && excludeKey !== 'owner') list.push(owner.username);
+    additionalOwners.forEach((o, i) => {
+      if (o.username && excludeKey !== `partner-${i}`) list.push(o.username);
+    });
+    employees.forEach((e, i) => {
+      if (e.username && excludeKey !== `emp-${i}`) list.push(e.username);
+    });
+    return list;
+  };
+
+  const handleOwnerNameChange = (newName: string) => {
+    setOwner(prev => {
+      const taken = getAllTakenUsernames('owner');
+      const nextUsername = !isOwnerUsernameCustom
+        ? (newName.trim() ? generateUniqueUsername(newName, taken) : '')
+        : prev.username;
+      return { ...prev, name: newName, username: nextUsername };
+    });
+  };
+
+  const handleOwnerUsernameChange = (newVal: string) => {
+    const clean = newVal.toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+    setIsOwnerUsernameCustom(true);
+    setOwner(prev => ({ ...prev, username: clean }));
+  };
+
   const addEmployeeCard = () => {
-    setEmployees([...employees, { name: "", role: "Manager", salary: 0, mobile: "", email: "", govtId: "", color: '#f59e0b', allowedTabs: getRoleDefaults('Manager'), loginCode: generateLoginCode(), password: '' }]);
+    setEmployees([
+      ...employees,
+      {
+        name: "",
+        username: "",
+        role: "Manager",
+        salary: 0,
+        mobile: "",
+        email: "",
+        govtId: "",
+        color: '#f59e0b',
+        allowedTabs: getRoleDefaults('Manager'),
+        loginCode: '',
+        password: ''
+      }
+    ]);
   };
 
   const updateEmployee = (index: number, field: keyof Employee, value: any) => {
     const newEmps = [...employees];
-    const updatedEmp = { ...newEmps[index], [field]: value };
+    const current = newEmps[index];
 
-    // Auto-update allowed tabs if role changes
-    if (field === 'role') {
-      updatedEmp.allowedTabs = getRoleDefaults(value);
+    if (field === 'name') {
+      const newName = value as string;
+      const taken = getAllTakenUsernames(`emp-${index}`);
+      const isCustom = customEmpUsernames[index];
+      const nextUsername = !isCustom
+        ? (newName.trim() ? generateUniqueUsername(newName, taken) : '')
+        : current.username;
+      newEmps[index] = { ...current, name: newName, username: nextUsername };
+    } else if (field === 'username') {
+      const clean = (value as string).toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+      setCustomEmpUsernames(prev => ({ ...prev, [index]: true }));
+      newEmps[index] = { ...current, username: clean };
+    } else {
+      const updatedEmp = { ...current, [field]: value };
+      if (field === 'role') {
+        updatedEmp.allowedTabs = getRoleDefaults(value);
+      }
+      newEmps[index] = updatedEmp;
     }
 
-    newEmps[index] = updatedEmp;
     setEmployees(newEmps);
   };
 
@@ -338,7 +524,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
     const newEmps = [...employees];
     if (newEmps.length === 1) {
       // Don't remove the last card, just reset it
-      newEmps[0] = { name: "", role: "Manager", salary: 0, mobile: "", email: "", govtId: "", color: '#f59e0b', allowedTabs: getRoleDefaults('Manager'), loginCode: generateLoginCode(), password: '' };
+      newEmps[0] = { name: "", username: "", role: "Manager", salary: 0, mobile: "", email: "", govtId: "", color: '#f59e0b', allowedTabs: getRoleDefaults('Manager'), loginCode: '', password: '' };
     } else {
       newEmps.splice(index, 1);
     }
@@ -367,12 +553,38 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
   };
 
   const addOwner = () => {
-    setAdditionalOwners([...additionalOwners, { name: "", contactNumber: "", email: "", loginCode: generateLoginCode(), password: "" }]);
+    setAdditionalOwners([
+      ...additionalOwners,
+      {
+        name: "",
+        username: "",
+        contactNumber: "",
+        email: "",
+        loginCode: "",
+        password: ""
+      }
+    ]);
   };
 
   const updateAdditionalOwner = (index: number, field: keyof OwnerDetails, value: string) => {
     const newOwners = [...additionalOwners];
-    newOwners[index] = { ...newOwners[index], [field]: value };
+    const current = newOwners[index];
+
+    if (field === 'name') {
+      const taken = getAllTakenUsernames(`partner-${index}`);
+      const isCustom = customPartnerUsernames[index];
+      const nextUsername = !isCustom
+        ? (value.trim() ? generateUniqueUsername(value, taken) : '')
+        : current.username;
+      newOwners[index] = { ...current, name: value, username: nextUsername };
+    } else if (field === 'username') {
+      const clean = value.toLowerCase().replace(/[^a-z0-9_.-]/g, '');
+      setCustomPartnerUsernames(prev => ({ ...prev, [index]: true }));
+      newOwners[index] = { ...current, username: clean };
+    } else {
+      newOwners[index] = { ...current, [field]: value };
+    }
+
     setAdditionalOwners(newOwners);
   };
 
@@ -383,27 +595,58 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
   };
 
   const handleFinish = () => {
+    if (owner.loginCode && owner.loginCode.length > 0 && owner.loginCode.length < 4) {
+      alert("Please enter a complete 4-digit passcode for the store owner, or clear it.");
+      return;
+    }
+    const incompletePartner = additionalOwners.find(o => o.loginCode && o.loginCode.length > 0 && o.loginCode.length < 4);
+    if (incompletePartner) {
+      alert(`Please enter a complete 4-digit passcode for ${incompletePartner.name || "partner"}, or clear it.`);
+      return;
+    }
+    const incompleteEmp = employees.find(e => e.loginCode && e.loginCode.length > 0 && e.loginCode.length < 4);
+    if (incompleteEmp) {
+      alert(`Please enter a complete 4-digit passcode for ${incompleteEmp.name || "staff member"}, or clear it.`);
+      return;
+    }
+
     const finalCurrency = currency === "custom" || venue.country === "Other" ? customCurrency : currency;
     const finalCountry = venue.country === "Other" ? customCountry : venue.country;
     const fullAddress = venue.address || [venue.street, venue.city, venue.state, venue.zip, finalCountry].filter(Boolean).join(", ");
     const addressToSave = fullAddress || (finalCountry ? `${finalCountry}` : "");
 
-    // Filter out empty entries before saving? Or keep them?
-    // Let's filter out completely empty ones to be clean
-    const validEmployees = employees.filter(e => e.name);
-    const validVendors = vendors.filter(v => v.name);
+    // Compute final collision-free usernames for everyone
+    const assignedUsernames: string[] = [];
 
-    // Check main owner vs additional
-    // We pass owner separately, but additionalOwners are passed too.
-    const validAdditionalOwners = additionalOwners.filter(o => o.name);
+    const finalOwnerUsername = owner.username?.trim() || generateUniqueUsername(owner.name || 'owner', assignedUsernames);
+    assignedUsernames.push(finalOwnerUsername);
+    const finalOwner = { ...owner, username: finalOwnerUsername };
+
+    const validAdditionalOwners = additionalOwners
+      .filter(o => o.name)
+      .map(o => {
+        const u = o.username?.trim() || generateUniqueUsername(o.name, assignedUsernames);
+        assignedUsernames.push(u);
+        return { ...o, username: u };
+      });
+
+    const validEmployees = employees
+      .filter(e => e.name)
+      .map(e => {
+        const u = e.username?.trim() || generateUniqueUsername(e.name!, assignedUsernames);
+        assignedUsernames.push(u);
+        return { ...e, username: u };
+      });
+
+    const validVendors = vendors.filter(v => v.name);
 
     onComplete({
       venue: { ...venue, country: finalCountry, address: addressToSave },
-      owner,
+      owner: finalOwner,
       additionalOwners: validAdditionalOwners,
       employees: validEmployees,
       vendors: validVendors,
-      currency: finalCurrency || "$",
+      currency: finalCurrency || "Rs.",
       language: language
     });
   };
@@ -657,7 +900,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                   <Label className="text-sm font-bold text-muted-foreground">{t('Owner 1 Name')}</Label>
                   <Input
                     value={owner.name}
-                    onChange={(e) => handleBasicChange(setOwner, 'name', e.target.value)}
+                    onChange={(e) => handleOwnerNameChange(e.target.value)}
                     placeholder={t('Full Name')}
                     className="h-10 bg-background border-input text-sm"
                   />
@@ -692,32 +935,43 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                   />
                 </div>
 
-                {/* Auto-generated ID & Password for Owner 1 */}
+                {/* ID & Password for Owner 1 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
-                      <Shield size={13} className="text-orange-400" />
-                      {t('Login ID')} <span className="text-[10px] text-orange-400 font-normal">(auto-generated)</span>
-                    </Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
+                        <Shield size={13} className="text-orange-400" />
+                        {t('Login ID')}
+                      </Label>
+                      <span className="text-[10px] text-orange-400 font-medium">Auto-generated • Editable</span>
+                    </div>
                     <div className="flex items-center gap-2">
-                      <div className="flex-1 h-10 px-3 flex items-center rounded-md bg-background border border-orange-500/30 font-mono text-sm text-orange-500 select-all tracking-wider">
-                        {owner.name
-                          ? buildUsername(venue.name || 'BIZ', owner.name, owner.loginCode || '0000')
-                          : <span className="text-muted-foreground font-sans text-xs">Enter name to generate</span>
-                        }
-                      </div>
-                      {owner.name && (
+                      <Input
+                        value={owner.username || ''}
+                        onChange={(e) => handleOwnerUsernameChange(e.target.value)}
+                        placeholder={owner.name ? generateUniqueUsername(owner.name, getAllTakenUsernames('owner')) : "e.g., amit"}
+                        className="flex-1 h-10 bg-background border-orange-500/30 font-mono text-sm text-orange-500 tracking-wider focus:border-orange-500"
+                      />
+                      {owner.username && (
                         <button
                           type="button"
-                          onClick={() => navigator.clipboard.writeText(buildUsername(venue.name || 'BIZ', owner.name, owner.loginCode || '0000'))}
+                          onClick={() => {
+                            navigator.clipboard.writeText(owner.username || '');
+                            setCopiedId('owner');
+                            setTimeout(() => setCopiedId(null), 1500);
+                          }}
                           className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-md bg-background border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 transition-colors"
                           title="Copy login ID"
                         >
-                          <Copy size={14} />
+                          {copiedId === 'owner' ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                         </button>
                       )}
                     </div>
-                    <p className="text-[10px] text-muted-foreground">Use this ID to log in to the POS</p>
+                    {owner.username && isUsernameTaken(owner.username, getAllTakenUsernames('owner')) ? (
+                      <p className="text-[11px] text-amber-500 font-medium">⚠️ This login ID is already in use by another user.</p>
+                    ) : (
+                      <p className="text-[10px] text-muted-foreground">Auto-generated from name. You can freely edit or type any custom login ID.</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="owner-pin" className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
@@ -729,7 +983,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                       value={owner.loginCode || ''}
                       onChange={(v) => handleBasicChange(setOwner, 'loginCode', v)}
                     />
-                    <p className="text-[10px] text-muted-foreground">Staff will use this 4-digit PIN to log in</p>
+                    <p className="text-[10px] text-muted-foreground">Enter any 4-digit PIN of your choice for quick login (e.g. 1234)</p>
                   </div>
                 </div>
               </div>
@@ -759,32 +1013,43 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                     </div>
                   </div>
 
-                  {/* Auto-generated ID & Password for Partner */}
+                  {/* ID & Password for Partner */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
-                        <Shield size={13} className="text-orange-400" />
-                        {t('Login ID')} <span className="text-[10px] text-orange-400 font-normal">(auto-generated)</span>
-                      </Label>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
+                          <Shield size={13} className="text-orange-400" />
+                          {t('Login ID')}
+                        </Label>
+                        <span className="text-[10px] text-orange-400 font-medium">Auto-generated • Editable</span>
+                      </div>
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-10 px-3 flex items-center rounded-md bg-background border border-orange-500/30 font-mono text-sm text-orange-500 select-all tracking-wider">
-                          {own.name
-                            ? buildUsername(venue.name || 'BIZ', own.name, own.loginCode || '0000')
-                            : <span className="text-muted-foreground font-sans text-xs">Enter name to generate</span>
-                          }
-                        </div>
-                        {own.name && (
+                        <Input
+                          value={own.username || ''}
+                          onChange={(e) => updateAdditionalOwner(idx, 'username', e.target.value)}
+                          placeholder={own.name ? generateUniqueUsername(own.name, getAllTakenUsernames(`partner-${idx}`)) : "e.g., amit1"}
+                          className="flex-1 h-10 bg-background border-orange-500/30 font-mono text-sm text-orange-500 tracking-wider focus:border-orange-500"
+                        />
+                        {own.username && (
                           <button
                             type="button"
-                            onClick={() => navigator.clipboard.writeText(buildUsername(venue.name || 'BIZ', own.name, own.loginCode || '0000'))}
+                            onClick={() => {
+                              navigator.clipboard.writeText(own.username || '');
+                              setCopiedId(`partner-${idx}`);
+                              setTimeout(() => setCopiedId(null), 1500);
+                            }}
                             className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-md bg-background border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 transition-colors"
                             title="Copy login ID"
                           >
-                            <Copy size={14} />
+                            {copiedId === `partner-${idx}` ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                           </button>
                         )}
                       </div>
-                      <p className="text-[10px] text-muted-foreground">Use this ID to log in to the POS</p>
+                      {own.username && isUsernameTaken(own.username, getAllTakenUsernames(`partner-${idx}`)) ? (
+                        <p className="text-[11px] text-amber-500 font-medium">⚠️ This login ID is already in use by another user.</p>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground">Auto-generated from name. You can freely edit or type any custom login ID.</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor={`partner-pin-${idx}`} className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
@@ -796,7 +1061,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                         value={own.loginCode || ''}
                         onChange={(v) => updateAdditionalOwner(idx, 'loginCode', v)}
                       />
-                      <p className="text-[10px] text-muted-foreground">Staff will use this 4-digit PIN to log in</p>
+                      <p className="text-[10px] text-muted-foreground">Enter any 4-digit PIN of your choice for this partner (e.g. 1234)</p>
                     </div>
                   </div>
                 </div>
@@ -830,32 +1095,43 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                     </div>
                   </div>
 
-                  {/* Auto-generated username + password */}
+                  {/* ID & Password for Employee */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
-                        <Shield size={13} className="text-orange-400" />
-                        {t('Login Username')} <span className="text-[10px] text-orange-400 font-normal">(auto-generated)</span>
-                      </Label>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
+                          <Shield size={13} className="text-orange-400" />
+                          {t('Login Username')}
+                        </Label>
+                        <span className="text-[10px] text-orange-400 font-medium">Auto-generated • Editable</span>
+                      </div>
                       <div className="flex items-center gap-2">
-                        <div className="flex-1 h-10 px-3 flex items-center rounded-md bg-background border border-orange-500/30 font-mono text-sm text-orange-500 select-all tracking-wider">
-                          {emp.name
-                            ? buildUsername(venue.name || 'BIZ', emp.name, emp.loginCode || '0000')
-                            : <span className="text-muted-foreground font-sans text-xs">Enter name to generate</span>
-                          }
-                        </div>
-                        {emp.name && (
+                        <Input
+                          value={emp.username || ''}
+                          onChange={(e) => updateEmployee(idx, 'username', e.target.value)}
+                          placeholder={emp.name ? generateUniqueUsername(emp.name, getAllTakenUsernames(`emp-${idx}`)) : "e.g., amit1"}
+                          className="flex-1 h-10 bg-background border-orange-500/30 font-mono text-sm text-orange-500 tracking-wider focus:border-orange-500"
+                        />
+                        {emp.username && (
                           <button
                             type="button"
-                            onClick={() => navigator.clipboard.writeText(buildUsername(venue.name || 'BIZ', emp.name!, emp.loginCode || '0000'))}
+                            onClick={() => {
+                              navigator.clipboard.writeText(emp.username || '');
+                              setCopiedId(`emp-${idx}`);
+                              setTimeout(() => setCopiedId(null), 1500);
+                            }}
                             className="h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-md bg-background border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 transition-colors"
                             title="Copy username"
                           >
-                            <Copy size={14} />
+                            {copiedId === `emp-${idx}` ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
                           </button>
                         )}
                       </div>
-                      <p className="text-[10px] text-muted-foreground">Share this with the employee for login</p>
+                      {emp.username && isUsernameTaken(emp.username, getAllTakenUsernames(`emp-${idx}`)) ? (
+                        <p className="text-[11px] text-amber-500 font-medium">⚠️ This username is already in use by another user.</p>
+                      ) : (
+                        <p className="text-[10px] text-muted-foreground">Share this with the employee for login</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor={`emp-pin-${idx}`} className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
@@ -867,7 +1143,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                         value={emp.loginCode || ''}
                         onChange={(v) => updateEmployee(idx, 'loginCode', v)}
                       />
-                      <p className="text-[10px] text-muted-foreground">Staff will use this 4-digit PIN to log in</p>
+                      <p className="text-[10px] text-muted-foreground">Enter any 4-digit PIN of your choice for staff login (e.g. 1234)</p>
                     </div>
                   </div>
 
@@ -875,7 +1151,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                     <div className="space-y-2">
                       <Label className="text-sm font-bold text-muted-foreground">{t('Role')}</Label>
                       <Select
-                        value={(["Admin", "Manager", "Head Chef", "Chef", "Waiter", "Cleaner", "Helper", "Bar Tender", "Dishwasher", "Delivery Boy", "Other"].includes(emp.role || "") ? emp.role : "Other")}
+                        value={(["Admin", "Store Manager", "Cashier", "Inventory Clerk", "Billing Clerk", "Floor Assistant", "Helper", "Security", "Delivery Person", "Other"].includes(emp.role || "") ? emp.role : "Other")}
                         onValueChange={(val) => updateEmployee(idx, 'role', val)}
                       >
                         <SelectTrigger className="h-10 bg-background border-input text-sm">
@@ -883,14 +1159,14 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Admin">{t('Admin')}</SelectItem>
-                          <SelectItem value="Manager">{t('Manager')}</SelectItem>
-                          <SelectItem value="Head Chef">{t('Head Chef')}</SelectItem>
-                          <SelectItem value="Chef">{t('Chef')}</SelectItem>
+                          <SelectItem value="Store Manager">{t('Store Manager')}</SelectItem>
                           <SelectItem value="Cashier">{t('Cashier')}</SelectItem>
+                          <SelectItem value="Billing Clerk">{t('Billing Clerk')}</SelectItem>
+                          <SelectItem value="Inventory Clerk">{t('Inventory Clerk')}</SelectItem>
+                          <SelectItem value="Floor Assistant">{t('Floor Assistant')}</SelectItem>
                           <SelectItem value="Helper">{t('Helper')}</SelectItem>
-                          <SelectItem value="Cleaner">{t('Cleaner')}</SelectItem>
-                          <SelectItem value="Dishwasher">{t('Dishwasher')}</SelectItem>
-                          <SelectItem value="Delivery Boy">{t('Delivery Boy')}</SelectItem>
+                          <SelectItem value="Security">{t('Security')}</SelectItem>
+                          <SelectItem value="Delivery Person">{t('Delivery Person')}</SelectItem>
                           <SelectItem value="Other">{t('Other')}</SelectItem>
                         </SelectContent>
                       </Select>
@@ -901,13 +1177,13 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                     </div>
                   </div>
 
-                  {(!["Admin", "Manager", "Head Chef", "Chef", "Waiter", "Cleaner", "Helper", "Bar Tender", "Dishwasher", "Delivery Boy"].includes(emp.role || "") || emp.role === "Other") && (
+                  {(!["Admin", "Store Manager", "Cashier", "Inventory Clerk", "Billing Clerk", "Floor Assistant", "Helper", "Security", "Delivery Person"].includes(emp.role || "") || emp.role === "Other") && (
                     <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
                       <Label className="text-sm font-bold text-muted-foreground">{t('Custom Role')}</Label>
                       <Input
                         value={emp.role === "Other" ? "" : emp.role}
                         onChange={(e) => updateEmployee(idx, 'role', e.target.value)}
-                        placeholder="e.g. Singer"
+                        placeholder="e.g. Stock Auditor"
                         className="h-10 bg-background border-input text-sm"
                       />
                     </div>

@@ -1,13 +1,10 @@
-﻿/**
- * Generates a memorable username for a POS employee:
- *   firstname@venueslug
+/**
+ * Generates simple, clean, collision-free usernames for POS staff:
+ *   e.g. "Amit" -> "amit"
+ *   2nd "Amit"  -> "amit1"
+ *   3rd "Amit"  -> "amit2"
  *
- * Examples:
- *   Employee "Rahul Arora" at "Grand Hotel" → "rahul@grandhotel"
- *   Employee "Ali Khan"    at "The Cafe"    → "ali@thecafe"
- *
- * Collision handling: if two employees share the same first name,
- * append a number on the second one (ali2@thecafe).
+ * All usernames are local, memorable, and fully editable by the user.
  */
 
 /** Slugify any string → lowercase, no spaces/special chars */
@@ -15,7 +12,7 @@ export function slugify(text: string): string {
     return text.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/** Extract only the first name from a full name */
+/** Extract only the first name from a full name and slugify it */
 export function getFirstName(fullName: string): string {
     return (fullName.trim().split(/\s+/)[0] || 'user').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -26,22 +23,57 @@ export function generateLoginCode(): string {
 }
 
 /**
- * Build the employee's login handle: firstname@venueslug
- * @param venueName  e.g. "Grand Hotel"
- * @param employeeName  e.g. "Rahul Arora"
- * @param _code  legacy param — no longer used in the handle, kept for API compat
- * @param suffix  optional numeric suffix for collision handling (e.g. 2 → "ali2@venue")
+ * Generates a clean, simple, collision-free username:
+ * 1st Amit -> "amit"
+ * 2nd Amit -> "amit1"
+ * 3rd Amit -> "amit2"
+ */
+export function generateUniqueUsername(
+    name: string,
+    existingUsernames: string[] = []
+): string {
+    const base = getFirstName(name) || 'user';
+    const taken = new Set(existingUsernames.filter(Boolean).map(u => u.trim().toLowerCase()));
+
+    if (!taken.has(base)) {
+        return base;
+    }
+
+    let counter = 1;
+    while (taken.has(`${base}${counter}`)) {
+        counter++;
+    }
+    return `${base}${counter}`;
+}
+
+/**
+ * Check if a username is already taken by someone else
+ */
+export function isUsernameTaken(
+    username: string,
+    existingUsernames: string[] = []
+): boolean {
+    const clean = username.trim().toLowerCase();
+    if (!clean) return false;
+    return existingUsernames.some(u => u && u.trim().toLowerCase() === clean);
+}
+
+/**
+ * Build the employee's login handle (super simple clean slug, without venue clutter)
+ * @param _venueName  kept for backward API compatibility
+ * @param employeeName  e.g. "Rahul Arora" -> "rahul"
+ * @param _code  legacy param — kept for API compat
+ * @param suffix  optional numeric suffix (e.g. 1 -> "rahul1")
  */
 export function buildUsername(
-    venueName: string,
-    employeeName: string,
+    _venueName?: string,
+    employeeName: string = '',
     _code?: string,
     suffix?: number
 ): string {
-    const venue = slugify(venueName) || 'venue';
     const first = getFirstName(employeeName);
-    const name = suffix && suffix > 1 ? `${first}${suffix}` : first;
-    return `${name}@${venue}`;   // e.g. "rahul@grandhotel"
+    if (!first) return '';
+    return suffix && suffix >= 1 ? `${first}${suffix}` : first;
 }
 
 /** Keep legacy initials helper for any components that still use it */

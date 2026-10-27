@@ -47,6 +47,7 @@ import { PlusCircle, Trash2, CalendarIcon, Building, Repeat, List } from 'lucide
 import { Calendar } from "@/components/ui/calendar";
 import { Badge } from "@/components/ui/badge";
 import { format, isSameDay, isSameMonth, isSameYear, isValid } from 'date-fns';
+import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
 
 const safeFormat = (date: any, formatStr: string) => {
   if (!date) return 'N/A';
@@ -419,16 +420,31 @@ export default function ExpensesTracker({
       newExpenses = initialExpenses.map(exp => exp.id === editingExpense.id ? { ...editingExpense, date, category: categoryToSave, description, amount: parseFloat(amount), vendorId: vendorId || null } : exp);
       toast({ title: "Expense updated successfully" });
     } else {
+      const activeShift = getActiveShift();
+      const numAmount = parseFloat(amount);
       const newExpense: Expense = {
         id: generateUniqueId(),
         date,
         category: categoryToSave,
         description,
-        amount: parseFloat(amount),
+        amount: numAmount,
         vendorId: vendorId || null,
+        paymentMethod: 'Cash',
+        shiftId: activeShift?.id,
+        recordedByEmployeeName: activeShift?.employeeName,
+        recordedByEmployeeId: activeShift?.employeeId,
       };
       newExpenses = [...initialExpenses, newExpense];
       toast({ title: "Expense added successfully" });
+
+      logShiftActivity({
+        type: 'expense',
+        title: `Store Expense: ${categoryToSave}`,
+        description: `${description || categoryToSave} (Cash)`,
+        amount: numAmount,
+        paymentMethod: 'Cash',
+        referenceId: newExpense.id,
+      });
     }
     setExpenses(newExpenses);
     resetForm();

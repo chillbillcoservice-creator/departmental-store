@@ -23,6 +23,7 @@ export interface MenuItem {
   ingredients?: IngredientItem[];
   status?: 'available' | 'low' | 'out';
   taxRate?: number;
+  hsnCode?: string;
 }
 
 export interface MenuSubCategory {
@@ -54,11 +55,15 @@ export interface CustomerDetails {
   street?: string;
   landmark?: string;
   email?: string;
+  companyName?: string;
+  gstin?: string;
 }
 
 export interface Customer {
   id: string; // phone number can serve as a unique ID
   name: string;
+  companyName?: string;
+  gstin?: string;
   phone: string;
   email?: string;
   address?: string;
@@ -74,10 +79,123 @@ export interface Customer {
 export interface Order {
   id: string;
   items: OrderItem[];
-  status: 'Pending' | 'In Preparation' | 'Completed';
+  status: 'Pending' | 'Completed' | 'Cancelled';
   orderType: OrderType;
   customerDetails?: CustomerDetails | null;
   createdAt: Date;
+}
+
+export interface PaymentSplit {
+  method: 'Cash' | 'Online';
+  amount: number;
+}
+
+export interface ReturnItem {
+  itemId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  totalRefund: number;
+  reason?: string;
+}
+
+export interface SalesReturn {
+  id: string;
+  originalBillId: string;
+  customerDetails?: CustomerDetails | null;
+  items: ReturnItem[];
+  totalRefundAmount: number;
+  refundMethod: 'Cash' | 'Store-Credit';
+  timestamp: Date;
+  processedBy?: string;
+}
+
+export interface ShiftActivityItem {
+  id: string;
+  timestamp: Date | string;
+  type: 'sale' | 'refund' | 'khata_credit' | 'khata_collection' | 'vendor_po' | 'vendor_delivery' | 'vendor_payment' | 'expense';
+  title: string;
+  description: string;
+  amount: number;
+  paymentMethod?: 'Cash' | 'Online' | 'Split' | 'Credit';
+  referenceId?: string; // Bill ID, PO #, Expense ID, etc.
+}
+
+export interface StaffShiftSession {
+  id: string; // e.g. "shift-emp1-1729584000000"
+  employeeId: string;
+  employeeName: string;
+  employeeRole: string;
+  openedAt: Date | string;
+  closedAt?: Date | string;
+  durationMinutes?: number;
+
+  // Float & Cash Reconciliation
+  openingFloat: number;
+  cashSales: number;
+  onlineSales: number;
+  khataCreditGiven: number; // New udhaar given to customers
+  khataCashRecovered: number; // Customer paid old udhaar in cash
+  khataOnlineRecovered: number; // Customer paid old udhaar via UPI
+  totalSales: number;
+  billsCount: number;
+  itemsSoldCount: number;
+  totalDiscountsGiven: number;
+
+  // Refunds & Returns
+  cashRefunds: number;
+  refundsCount: number;
+
+  // Expenses & Vendor Payments
+  storeExpenses: number;
+  vendorPaymentsCash: number;
+  vendorPaymentsOnline: number;
+  totalOutflow: number;
+
+  // Vendor Supply Chain Activities
+  vendorPOsCreated: Array<{
+    poId: string;
+    referenceNo: string;
+    vendorName: string;
+    totalAmount: number;
+    itemsCount: number;
+    date: Date | string;
+  }>;
+  vendorDeliveriesReceived: Array<{
+    poId: string;
+    referenceNo: string;
+    vendorName: string;
+    receivedValue: number;
+    paidAmount: number;
+    date: Date | string;
+  }>;
+
+  // Expected vs Actual Cash in Till
+  expectedCashInDrawer: number;
+  actualCashCounted?: number;
+  cashDifference?: number; // actual - expected (positive = surplus, negative = shortage)
+  handoverNotes?: string;
+
+  // Full chronological activity audit log
+  activities: ShiftActivityItem[];
+
+  status: 'Active' | 'Completed';
+}
+
+export interface CashDrawerSession {
+  id: string;
+  openedAt: Date;
+  closedAt?: Date;
+  openedBy: string;
+  openingFloat: number;
+  cashSales: number;
+  cashRefunds: number;
+  cashExpenses: number;
+  expectedCash: number;
+  actualCash?: number;
+  difference?: number;
+  notes?: string;
+  status: 'Open' | 'Closed';
 }
 
 export interface Bill {
@@ -88,14 +206,17 @@ export interface Bill {
   vatPercentage: number;
   vatAmount: number;
   total: number;
-  paymentMethod: 'Cash' | 'Online';
+  paymentMethod: 'Cash' | 'Online' | 'Split';
+  splitPayments?: PaymentSplit[];
   receiptPreview: string;
   timestamp: Date; // This is the completion time
   orderType: OrderType;
   customerDetails?: CustomerDetails | null;
   createdAt: Date; // Start time of the order
   completedAt: Date; // End time of the order
-  tableId?: string;
+  cashierId?: string;
+  cashierName?: string;
+  shiftId?: string;
 }
 
 
@@ -149,6 +270,10 @@ export interface Expense {
   description: string;
   amount: number;
   vendorId?: string | null;
+  paymentMethod?: 'Cash' | 'Online';
+  recordedByEmployeeId?: string;
+  recordedByEmployeeName?: string;
+  shiftId?: string;
 }
 
 export interface PurchaseOrderItem {
@@ -168,6 +293,35 @@ export interface PurchaseOrder {
   items: PurchaseOrderItem[];
   totalAmount: number;
   status: 'Draft' | 'Ordered' | 'Received' | 'Cancelled';
+  createdByEmployeeId?: string;
+  createdByEmployeeName?: string;
+  receivedByEmployeeId?: string;
+  receivedByEmployeeName?: string;
+  receivedDate?: Date;
+  paidAmount?: number;
+  shiftId?: string;
+}
+
+export interface ItemBatch {
+  batchNo: string;
+  mrp: number;
+  price: number;
+  costPrice?: number;
+  stock: number;
+  expiryDate?: string;
+}
+
+export interface DamageRecord {
+  id: string;
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  price: number;
+  lossAmount: number;
+  reason: string;
+  date: Date;
+  reportedBy?: string;
 }
 
 export interface InventoryItem {
@@ -187,6 +341,8 @@ export interface InventoryItem {
   taxRate?: number; // e.g. 5, 12, 18
   location?: string; // e.g. 'Aisle 4, Shelf B'
   discount?: number; // Check for percentage or fixed amount
+  batches?: ItemBatch[];
+  hsnCode?: string;
 }
 
 export interface CartItem extends InventoryItem {
@@ -201,7 +357,8 @@ export interface SavedCart {
   timestamp: Date;
   discount: number;
   redeemPoints: number;
-  paymentMethod: 'Cash' | 'Online';
+  paymentMethod: 'Cash' | 'Online' | 'Split';
+  splitPayments?: PaymentSplit[];
 }
 
 export interface ActivityLogEntry {
@@ -346,8 +503,15 @@ export interface VenueDetails {
   receiptHeader?: string;
   receiptFooter?: string;
   customMessage?: string;
+  gstin?: string; // 15-character Indian Goods & Services Tax Identification Number
+  fssaiNumber?: string; // 14-digit Indian Food Safety and Standards Authority License
   loyaltyRate?: number; // points per currency unit
   loyaltyPointValue?: number; // currency value per point
+  upiId?: string; // Store UPI VPA (e.g. storename@icici or 9876543210@paytm)
+  upiMerchantName?: string; // Merchant Display Name in UPI Apps
+  upiSoundboxEnabled?: boolean; // Enable/Disable In-Software Soundbox Audio & Voice
+  upiSoundboxVoice?: 'en' | 'hi'; // Voice language: English or Hindi
+  upiMode?: 'standee' | 'screen'; // 'standee' (default) or 'screen' (dynamic on-screen QR)
 }
 
 export interface OwnerDetails {
@@ -358,6 +522,7 @@ export interface OwnerDetails {
   language?: string;
   loginCode?: string;
   password?: string;
+  username?: string;
 }
 
 export interface SetupData {

@@ -61,7 +61,8 @@ const safeFormat = (date: any, formatStr: string) => {
 const generateUniqueId = () => {
     return `${Date.now()}.${Math.random().toString(36).substr(2, 9)}`;
 };
-import type { Expense, Vendor, PendingBill, PendingBillTransaction, InventoryItem, PurchaseOrder, PurchaseOrderItem } from '@/lib/types';
+import type { Expense, Vendor, PendingBill, PendingBillTransaction, InventoryItem, PurchaseOrder, PurchaseOrderItem, Employee } from '@/lib/types';
+import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
 
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
@@ -80,6 +81,7 @@ interface VendorManagementProps {
     purchaseOrders: PurchaseOrder[];
     setPurchaseOrders: (orders: PurchaseOrder[]) => void;
     setInventory: (inventory: InventoryItem[]) => void;
+    currentUser?: Employee | null;
 }
 
 function AddOrEditVendorDialog({
@@ -327,6 +329,7 @@ export default function VendorManagement({
     purchaseOrders,
     setPurchaseOrders,
     setInventory,
+    currentUser,
 }: VendorManagementProps) {
     const { t } = useLanguage();
     const { toast } = useToast();
@@ -432,6 +435,7 @@ export default function VendorManagement({
         const vendor = vendors.find(v => v.id === newPoVendorId);
         const totalAmount = newPoItems.reduce((sum, item) => sum + item.totalCost, 0);
 
+        const activeShift = getActiveShift();
         const newPo: PurchaseOrder = {
             id: generateUniqueId(),
             vendorId: newPoVendorId,
@@ -441,11 +445,22 @@ export default function VendorManagement({
             items: newPoItems,
             totalAmount,
             status: 'Ordered',
+            createdByEmployeeId: currentUser?.id || activeShift?.employeeId,
+            createdByEmployeeName: currentUser?.name || activeShift?.employeeName,
+            shiftId: activeShift?.id,
         };
 
         setPurchaseOrders([...purchaseOrders, newPo]);
         setNewPoItems([]);
         setNewPoVendorId('');
+
+        logShiftActivity({
+            type: 'vendor_po',
+            title: `Vendor PO Created: #${newPo.referenceNo}`,
+            description: `Ordered ${newPo.items.length} items from ${newPo.vendorName}`,
+            amount: totalAmount,
+            referenceId: newPo.referenceNo,
+        });
         toast({ title: t("Purchase Order Created"), description: `${t('PO')} #${newPo.referenceNo} ${t('created successfully')}.` });
     };
 
@@ -489,9 +504,26 @@ export default function VendorManagement({
         setInventory(updatedInventory);
 
         // Update PO Status
+        const activeShift = getActiveShift();
         if (setPurchaseOrders) {
-            setPurchaseOrders(purchaseOrders.map(p => p.id === poToReceive.id ? { ...p, status: 'Received' } : p));
+            setPurchaseOrders(purchaseOrders.map(p => p.id === poToReceive.id ? {
+                ...p,
+                status: 'Received',
+                receivedByEmployeeId: currentUser?.id || activeShift?.employeeId,
+                receivedByEmployeeName: currentUser?.name || activeShift?.employeeName,
+                receivedDate: new Date(),
+                paidAmount: paid,
+                shiftId: activeShift?.id,
+            } : p));
         }
+
+        logShiftActivity({
+            type: 'vendor_delivery',
+            title: `Delivery Received: PO #${poToReceive.referenceNo}`,
+            description: `Received goods from ${poToReceive.vendorName} into store inventory`,
+            amount: totalReceivedValue,
+            referenceId: poToReceive.referenceNo,
+        });
 
         // Update Vendor Balance
         if (setVendors && poToReceive.vendorId) {
@@ -506,15 +538,28 @@ export default function VendorManagement({
 
         // Add Expense
         if (setExpenses && paid > 0) {
-            const newExpense = {
+            const newExpense: Expense = {
                 id: generateUniqueId(),
                 date: new Date(),
                 category: 'Stock Purchase',
                 description: `Payment for PO ${poToReceive.referenceNo}`,
                 amount: paid,
-                vendorId: poToReceive.vendorId
+                vendorId: poToReceive.vendorId,
+                paymentMethod: 'Cash',
+                recordedByEmployeeId: currentUser?.id || activeShift?.employeeId,
+                recordedByEmployeeName: currentUser?.name || activeShift?.employeeName,
+                shiftId: activeShift?.id,
             };
             setExpenses([...expenses, newExpense]);
+
+            logShiftActivity({
+                type: 'vendor_payment',
+                title: `Vendor Payment: PO #${poToReceive.referenceNo}`,
+                description: `Paid ${currency}${paid.toFixed(2)} to ${poToReceive.vendorName} (Cash from till)`,
+                amount: paid,
+                paymentMethod: 'Cash',
+                referenceId: poToReceive.referenceNo,
+            });
         }
 
         // Add Pending Bill for Balance
@@ -631,6 +676,7 @@ export default function VendorManagement({
         const totalPaid = billToClear.transactions.reduce((sum, tx) => sum + tx.amount, 0);
         const vendor = vendors.find(v => v.name.toLowerCase() === billToClear.name.toLowerCase());
 
+        const activeShift = getActiveShift();
         const newExpense: Expense = {
             id: generateUniqueId(),
             date: new Date(),
@@ -638,10 +684,23 @@ export default function VendorManagement({
             description: `Cleared all pending bills for ${billToClear.name}.`,
             amount: totalPaid,
             vendorId: vendor?.id || null,
+            paymentMethod: 'Cash',
+            recordedByEmployeeId: currentUser?.id || activeShift?.employeeId,
+            recordedByEmployeeName: currentUser?.name || activeShift?.employeeName,
+            shiftId: activeShift?.id,
         };
 
         setExpenses([...expenses, newExpense]);
         setPendingBills(newPendingBills);
+
+        logShiftActivity({
+            type: 'vendor_payment',
+            title: `Cleared Vendor Bills: ${billToClear.name}`,
+            description: `Paid ${currency}${totalPaid.toFixed(2)} to clear pending balance`,
+            amount: totalPaid,
+            paymentMethod: 'Cash',
+            referenceId: billId,
+        });
         toast({ title: t("Bills Cleared"), description: t(`${billToClear.name}'s pending bills have been cleared and recorded as expenses.`) });
     };
 
@@ -652,6 +711,7 @@ export default function VendorManagement({
         const updatedTransactions = billToUpdate.transactions.filter(tx => tx.id !== transactionId);
         const vendor = vendors.find(v => v.name.toLowerCase() === billToUpdate.name.toLowerCase());
 
+        const activeShift = getActiveShift();
         const newExpense: Expense = {
             id: generateUniqueId(),
             date: new Date(),
@@ -659,6 +719,10 @@ export default function VendorManagement({
             description: `Settled transaction for ${billToUpdate.name}.`,
             amount: amount,
             vendorId: vendor?.id || null,
+            paymentMethod: 'Cash',
+            recordedByEmployeeId: currentUser?.id || activeShift?.employeeId,
+            recordedByEmployeeName: currentUser?.name || activeShift?.employeeName,
+            shiftId: activeShift?.id,
         };
 
         let newPendingBills;
@@ -670,6 +734,15 @@ export default function VendorManagement({
 
         setExpenses([...expenses, newExpense]);
         setPendingBills(newPendingBills);
+
+        logShiftActivity({
+            type: 'vendor_payment',
+            title: `Vendor Dues Settled: ${billToUpdate.name}`,
+            description: `Paid ${currency}${amount.toFixed(2)} towards pending balance`,
+            amount: amount,
+            paymentMethod: 'Cash',
+            referenceId: billId,
+        });
         toast({ title: t("Transaction Settled"), description: t(`${billToUpdate.name}'s transaction has been settled and recorded.`) });
     };
 

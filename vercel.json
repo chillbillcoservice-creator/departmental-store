@@ -1,8 +1,9 @@
-
 {
-    "build": {
-      "env": {
-        "NEXT_PUBLIC_VERCEL_URL": "https://restaurant-app-three-lilac.vercel.app"
-      }
+  "framework": "nextjs",
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_VERCEL_URL": "https://chill-bill-pos.vercel.app",
+      "NEXT_PUBLIC_APP_URL": "https://chill-bill-pos.vercel.app"
     }
   }
+}

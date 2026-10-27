@@ -72,11 +72,4 @@ body {
   }
 }
 
-@layer components {
-  .kitchen-tabs .c-PJLV-ifVPEfe-css {
-    background-color: hsl(var(--muted) / 0.5);
-  }
-  .dark .kitchen-tabs .c-PJLV-ifVPEfe-css {
-    background-color: hsl(var(--muted) / 0.5);
-  }
-}
+

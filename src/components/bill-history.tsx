@@ -15,9 +15,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, Printer, Trash2, Calendar as CalendarIcon, X, RotateCcw } from 'lucide-react';
+import { Eye, Printer, Trash2, Calendar as CalendarIcon, X, RotateCcw, MessageSquare } from 'lucide-react';
 import type { Bill, InventoryItem } from '@/lib/types';
 import { format, isSameDay, isSameMonth, isSameYear, isValid } from 'date-fns';
+import { sendWhatsAppBill } from '@/lib/whatsapp-bill';
 
 const safeFormat = (date: any, formatStr: string) => {
   if (!date) return 'N/A';
@@ -60,7 +61,7 @@ export default function BillHistory({ bills, onClearAll, currency = 'Rs.', inven
 
     // Fallback for bills that don't have a preview saved
     return `
-${(venueDetails?.name || 'UP & ABOVE').toUpperCase()}
+${(venueDetails?.name || 'DEPARTMENTAL STORE').toUpperCase()}
 ${venueDetails?.address || ''}
 ${venueDetails?.contactNumber || ''}
 
@@ -76,7 +77,7 @@ Discount:        -${currency}${(bill.discount || 0).toFixed(2)}
 Total Tax:        ${currency}${(bill.vatAmount || 0).toFixed(2)}
 TOTAL AMOUNT:     ${currency}${(bill.total || 0).toFixed(2)}
 --------------------------------
-Payment Method: ${bill.paymentMethod}
+Payment Method: ${bill.paymentMethod === 'Split' && bill.splitPayments ? `Split (Cash: ${currency}${bill.splitPayments[0].amount.toFixed(2)} + Online: ${currency}${bill.splitPayments[1].amount.toFixed(2)})` : bill.paymentMethod}
 ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
 `.trim();
   };
@@ -186,9 +187,8 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
 
   const getBillTitle = (bill: Bill) => {
     switch (bill.orderType) {
-      case 'Dine-In' as any: return `Table ${bill.tableId as any}`;
-      case 'Take-Away' as any: return 'Take Away';
-      case 'Home-Delivery' as any: return bill.customerDetails?.name || 'Home Delivery';
+      case 'Store-Pickup': return 'Counter Checkout';
+      case 'Home-Delivery': return bill.customerDetails?.name ? `Delivery: ${bill.customerDetails.name}` : 'Home Delivery';
       default: return 'Store Order';
     }
   }
@@ -265,6 +265,9 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                   <TableCell className="text-center space-x-1">
                     <Button variant="ghost" size="icon" onClick={() => setSelectedBill(bill)} title="View Bill"><Eye className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => handlePrintBill(bill)} title="Print Bill"><Printer className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="icon" className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" onClick={() => sendWhatsAppBill(bill, venueDetails, undefined, currency)} title="Send via WhatsApp">
+                      <MessageSquare className="h-4 w-4" />
+                    </Button>
                     <Popover>
                       <PopoverTrigger asChild>
                         <Button variant="ghost" size="icon" className="text-orange-500" title="Process Return"><RotateCcw className="h-4 w-4" /></Button>
