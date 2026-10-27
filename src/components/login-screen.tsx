@@ -81,7 +81,7 @@ const FEATURES = {
         stat: "<0.5s", statLabel: "Scan Speed"
     },
     uptime: {
-        title: "99.9% Uptime SLA",
+        title: "100% Uptime SLA",
         tag: "Reliability",
         desc: "We stay up so you never go down. Enterprise-grade cloud infrastructure with redundancy baked in.",
         bullets: [
@@ -90,7 +90,7 @@ const FEATURES = {
             "24/7 system health monitoring",
             "Offline mode — works without internet"
         ],
-        stat: "99.9%", statLabel: "Uptime"
+        stat: "100%", statLabel: "Uptime"
     },
     analytics: {
         title: "Live Revenue Analytics",
@@ -987,7 +987,7 @@ export default function LoginScreen({
                             {/* Proof stats */}
                             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6, duration: 0.8 }}
                                 className="flex items-center gap-8 mt-12 pt-8" style={{ borderTop: `1px solid ${T.border}` }}>
-                                {[["< 1s", "Sync Speed"], ["99.9%", "Uptime"], ["∞", "Venues"]].map(([val, label]) => (
+                                {[["< 1s", "Sync Speed"], ["100%", "Uptime"], ["∞", "Venues"]].map(([val, label]) => (
                                     <div key={label as string}>
                                         <div className="text-2xl font-black tracking-tight" style={{ color: T.text }}>{val}</div>
                                         <div className="text-[10px] font-bold uppercase tracking-widest mt-0.5" style={{ color: T.textMute }}>{label}</div>
@@ -1094,7 +1094,7 @@ export default function LoginScreen({
                         <motion.div animate={{ x: [0, -1200] }} transition={{ repeat: Infinity, duration: 35, ease: "linear" }} className="flex gap-10 items-center">
                             {Array.from({ length: 8 }).map((_, i) => (
                                 <div key={i} className="flex items-center gap-10">
-                                    {[["99.9% Uptime", "✦"], ["< 1s Sync", "✦"], ["Zero Latency", "✦"], ["Multi-Venue", "✦"]].map(([txt, sep]) => (
+                                    {[["100% Uptime", "✦"], ["< 1s Sync", "✦"], ["Zero Latency", "✦"], ["Multi-Venue", "✦"]].map(([txt, sep]) => (
                                         <span key={txt} className="flex items-center gap-10">
                                             <span className="text-xs font-black uppercase tracking-[0.18em]" style={{ color: `rgba(${T.textRgb},${isDark ? 0.5 : 0.45})` }}>{txt}</span>
                                             <span style={{ color: T.coral, fontSize: "10px" }}>{sep}</span>
@@ -1174,7 +1174,7 @@ export default function LoginScreen({
                                         <span className="font-mono text-xs uppercase tracking-[0.25em] font-bold transition-colors duration-300 group-hover:!text-white/80" style={{ color: T.coral }}>Reliability</span>
                                     </div>
                                     <div>
-                                        <div className="text-6xl font-black tracking-[-0.05em] leading-none transition-colors duration-300 group-hover:!text-white" style={{ color: T.text }}>99.9%</div>
+                                        <div className="text-6xl font-black tracking-[-0.05em] leading-none transition-colors duration-300 group-hover:!text-white" style={{ color: T.text }}>100%</div>
                                         <div className="text-sm font-bold mt-2 uppercase tracking-widest transition-colors duration-300 group-hover:!text-white/70" style={{ color: T.textMute }}>Uptime SLA</div>
                                     </div>
                                 </div>
@@ -1241,58 +1241,6 @@ export default function LoginScreen({
                                 </div>
                             </motion.div>
 
-                        </div>
-                    </div>
-                </section>
-
-
-                {/* ══════════════════════════════════════════════════
-                    SECTION: ANIMATED STATS COUNTERS — STATIC GRID
-                    ══════════════════════════════════════════════════ */}
-                <section className="w-full py-24 px-6 relative overflow-hidden" style={{ background: T.bg }}>
-                    <div className="absolute inset-0 pointer-events-none">
-                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] blur-3xl rounded-full opacity-10"
-                            style={{ background: T.grad }} />
-                    </div>
-                    <div className="max-w-5xl mx-auto relative z-10">
-                        <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-                            className="flex items-center gap-4 mb-14">
-                            <div className="h-px flex-1" style={{ background: `linear-gradient(to right, ${T.coral}, transparent)` }} />
-                            <p className="font-mono text-xs uppercase tracking-[0.35em] font-black whitespace-nowrap" style={{ color: T.coral }}>By The Numbers</p>
-                            <div className="h-px flex-1" style={{ background: `linear-gradient(to left, ${T.coral}, transparent)` }} />
-                        </motion.div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                            {[
-                                { stat: "2,400+", label: "Bills per day", Icon: ShoppingCart, delay: 0 },
-                                { stat: "99.9%", label: "System uptime", Icon: ShieldCheck, delay: 0.1 },
-                                { stat: "< 0.5s", label: "Barcode scan speed", Icon: Zap, delay: 0.2 },
-                                { stat: "₹48L+", label: "Monthly GMV tracked", Icon: TrendingUp, delay: 0.3 },
-                            ].map(({ stat, label, Icon, delay }) => (
-                                <motion.div key={label}
-                                    initial={{ opacity: 0, y: 40 }} whileInView={{ opacity: 1, y: 0 }}
-                                    viewport={{ once: true }} transition={{ duration: 0.6, delay, ease: [0.16, 1, 0.3, 1] }}
-                                    whileHover={{ y: -6, scale: 1.03 }}
-                                    className="group relative flex flex-col gap-5 p-7 rounded-2xl overflow-hidden cursor-default"
-                                    style={{
-                                        background: isDark ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.8)",
-                                        border: `1px solid ${T.border}`,
-                                        backdropFilter: "blur(8px)",
-                                        boxShadow: isDark ? "0 0 0 1px rgba(255,255,255,0.03)" : "0 2px 16px rgba(0,0,0,0.06)"
-                                    }}>
-                                    <div className="absolute -top-4 -right-4 w-20 h-20 rounded-full blur-2xl opacity-0 group-hover:opacity-30 transition-opacity duration-500" style={{ background: T.coral }} />
-                                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-2xl pointer-events-none"
-                                        style={{ background: `linear-gradient(135deg, rgba(${T.coralRgb},0.05) 0%, transparent 60%)` }} />
-                                    <div className="relative w-10 h-10 rounded-xl flex items-center justify-center"
-                                        style={{ background: `rgba(${T.coralRgb},0.08)`, border: `1px solid rgba(${T.coralRgb},0.15)` }}>
-                                        <div className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" style={{ background: T.grad }} />
-                                        <Icon size={18} className="relative z-10 transition-colors duration-300 group-hover:!text-white" style={{ color: T.coral }} />
-                                    </div>
-                                    <div className="text-4xl md:text-5xl font-black tracking-[-0.04em] leading-none bg-clip-text text-transparent"
-                                        style={{ backgroundImage: T.grad, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>{stat}</div>
-                                    <div className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: T.textMute }}>{label}</div>
-                                    <div className="absolute bottom-0 left-0 h-[2px] w-0 group-hover:w-full transition-all duration-500 rounded-b-2xl" style={{ background: T.grad }} />
-                                </motion.div>
-                            ))}
                         </div>
                     </div>
                 </section>
