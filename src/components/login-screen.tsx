@@ -369,24 +369,36 @@ export default function LoginScreen({
                 return;
             }
 
-            // 4. Authenticate user into Firebase Auth using their License Key as the secure credential
+            // 4. Authenticate user into Firebase Auth for secure cloud database access
+            // License validity has ALREADY been 100% verified against Cloud Firestore above.
             let userCredential;
+            
+            // Dedicated terminal identity for this licensed store (immune to OAuth conflicts or key changes)
+            const terminalEmail = `${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}@chillbill-terminal.pos`;
+            const terminalPassword = `cbill_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '')}_2026!`;
+
             try {
+                // Attempt primary sign in with email and license key
                 userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanKey);
-            } catch (authErr: any) {
-                if (authErr?.code === 'auth/user-not-found' || authErr?.code === 'auth/invalid-credential') {
-                    // First time activation: create user account with their License Key
-                    try {
-                        userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanKey);
-                    } catch (createErr: any) {
-                        if (createErr?.code === 'auth/email-already-in-use') {
-                            userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanKey);
-                        } else {
-                            throw createErr;
+            } catch (primaryErr: any) {
+                // If the primary email is an existing Google OAuth account or had an older password,
+                // fall back to the dedicated deterministic terminal identity for this store
+                try {
+                    userCredential = await signInWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+                } catch (termErr: any) {
+                    if (termErr?.code === 'auth/user-not-found' || termErr?.code === 'auth/invalid-credential') {
+                        try {
+                            userCredential = await createUserWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+                        } catch (createErr: any) {
+                            if (createErr?.code === 'auth/email-already-in-use') {
+                                userCredential = await signInWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+                            } else {
+                                throw createErr;
+                            }
                         }
+                    } else {
+                        throw termErr;
                     }
-                } else {
-                    throw authErr;
                 }
             }
 
@@ -406,7 +418,7 @@ export default function LoginScreen({
             if (err?.code === 'auth/operation-not-allowed') {
                 userMsg = "Email/Password sign-in is not enabled in Firebase Console. Please enable Email/Password under Authentication -> Sign-in method.";
             } else if (err?.code === 'auth/invalid-credential' || err?.code === 'auth/wrong-password') {
-                userMsg = "Incorrect License Key for this email. Please verify the key sent to you on WhatsApp.";
+                userMsg = "Authentication failed. If this is a Google Account, click 'Continue with Google' above.";
             } else if (err?.code === 'auth/invalid-email') {
                 userMsg = "Please enter a valid email address.";
             } else if (err?.message?.includes('database (default) does not exist') || err?.code === 'unavailable') {
