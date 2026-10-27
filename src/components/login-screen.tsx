@@ -171,10 +171,11 @@ interface LoginScreenProps {
     venueName: string;
     venueId?: string;
     isPosMode?: boolean;
+    isSetupComplete?: boolean;
     onLogin: (employee: Employee) => void;
     onAccessDenied?: (email: string) => void;
     onLicenseExpired?: (result: LicenseCheckResult) => void;
-    onOwnerLogin?: (uid: string) => void;
+    onOwnerLogin?: (uid: string, details?: { storeName?: string; ownerName?: string; email?: string; licenseKey?: string }) => void;
     onOwnerSignup?: (uid: string, initialDetails?: { storeName?: string; ownerName?: string; email?: string; licenseKey?: string }) => void;
     onSwitchLicense?: () => void;
     initialAuthView?: null | "landing" | "signup" | "login" | "owner-login";
@@ -212,19 +213,24 @@ function GoogleIcon({ className }: { className?: string }) {
    COMPONENT
    ═══════════════════════════════════════════════════ */
 export default function LoginScreen({
-    employees, venueName, venueId, isPosMode, onLogin,
+    employees, venueName, venueId, isPosMode, isSetupComplete, onLogin,
     onAccessDenied, onLicenseExpired, onOwnerLogin, onOwnerSignup,
     onSwitchLicense, initialAuthView, onUpdateEmployees
 }: LoginScreenProps) {
 
+    const hasCompletedSetup = Boolean(
+        isSetupComplete ||
+        (typeof window !== "undefined" && (localStorage.getItem("isSetupComplete") === "true" || localStorage.getItem("setupComplete") === "true"))
+    );
+
     /* ── Auth modal state ── */
-    const [authView, setAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(initialAuthView || (isPosMode ? null : "owner-login"));
+    const [authView, setAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(initialAuthView || null);
 
     useEffect(() => {
-        if (!isPosMode) {
-            setAuthView("owner-login");
+        if (initialAuthView) {
+            setAuthView(initialAuthView);
         }
-    }, [isPosMode, initialAuthView]);
+    }, [initialAuthView]);
     const [emailInput, setEmailInput] = useState("");
     const [passwordInput, setPasswordInput] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -618,7 +624,7 @@ export default function LoginScreen({
                                             style={{ background: "rgba(255,107,107,0.08)", border: `1px solid rgba(${T.coralRgb},0.2)` }}>
                                             <User size={24} className="mx-auto mb-3" style={{ color: T.coral }} />
                                             <div className="text-sm font-black" style={{ color: T.text }}>Staff Login</div>
-                                            <div className="text-[10px] mt-1" style={{ color: T.textMute }}>PIN access (0000)</div>
+                                            <div className="text-[10px] mt-1" style={{ color: T.textMute }}>PIN access</div>
                                         </button>
                                         <button onClick={() => setAuthView("owner-login")}
                                             className="p-6 rounded-xl text-center transition-all hover:scale-[1.02] cursor-pointer"
@@ -781,9 +787,11 @@ export default function LoginScreen({
                                     {error && <p className="text-xs text-red-400 text-center">{error}</p>}
                                     {successMsg && <p className="text-xs text-emerald-400 text-center flex items-center justify-center gap-1"><CheckCircle2 size={14} />{successMsg}</p>}
 
-                                    <p className="text-center text-xs" style={{ color: T.textMute }}>
-                                        Already activated? <button onClick={() => setAuthView("owner-login")} className="font-bold underline" style={{ color: T.coral }}>Log In</button>
-                                    </p>
+                                    {hasCompletedSetup && (
+                                        <p className="text-center text-xs" style={{ color: T.textMute }}>
+                                            Already activated? <button onClick={() => setAuthView("owner-login")} className="font-bold underline" style={{ color: T.coral }}>Log In</button>
+                                        </p>
+                                    )}
                                 </div>
                             )}
 
@@ -896,16 +904,19 @@ export default function LoginScreen({
                     </div>
                     <div className="flex items-center gap-2">
                         <ThemeToggle />
-                        <button onClick={() => openAuthModal("landing")}
-                            className="px-4 py-2 text-xs font-bold uppercase tracking-widest transition-colors duration-200"
-                            style={{ color: T.textMute }}
-                            onMouseEnter={e => (e.currentTarget.style.color = T.text)}
-                            onMouseLeave={e => (e.currentTarget.style.color = T.textMute)}>Log In</button>
-                        <button onClick={() => openAuthModal("signup")}
-                            className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all duration-300 hover:opacity-90"
-                            style={{ background: T.grad, color: T.bg }}>
-                            Get Started <ArrowRight size={13} />
-                        </button>
+                        {hasCompletedSetup ? (
+                            <button onClick={() => openAuthModal("owner-login")}
+                                className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all duration-300 hover:opacity-90"
+                                style={{ background: T.grad, color: T.bg }}>
+                                <LogIn size={13} /> Log In
+                            </button>
+                        ) : (
+                            <button onClick={() => openAuthModal("signup")}
+                                className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all duration-300 hover:opacity-90"
+                                style={{ background: T.grad, color: T.bg }}>
+                                Get Started <ArrowRight size={13} />
+                            </button>
+                        )}
                     </div>
                 </div>
             </nav>
@@ -962,18 +973,19 @@ export default function LoginScreen({
 
                             <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.38 }}
                                 className="flex flex-col sm:flex-row items-start gap-3 mt-10">
-                                <button onClick={() => openAuthModal("signup")}
-                                    className="group flex items-center gap-2.5 px-7 py-4 rounded-xl text-[13px] font-black uppercase tracking-widest transition-all duration-300 hover:opacity-90 hover:scale-[1.02]"
-                                    style={{ background: T.grad, color: T.bg }}>
-                                    <Sparkles size={15} /> Setup Your Business <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
-                                </button>
-                                <button onClick={() => openAuthModal("landing")}
-                                    className="flex items-center gap-2.5 px-7 py-4 rounded-xl text-[13px] font-bold uppercase tracking-widest transition-all duration-300"
-                                    style={{ border: `1px solid ${T.borderLt}`, color: T.textMute }}
-                                    onMouseEnter={e => { e.currentTarget.style.borderColor = `rgba(${T.textRgb},0.3)`; e.currentTarget.style.color = T.text; }}
-                                    onMouseLeave={e => { e.currentTarget.style.borderColor = T.borderLt; e.currentTarget.style.color = T.textMute; }}>
-                                    <User size={15} /> Log In
-                                </button>
+                                {hasCompletedSetup ? (
+                                    <button onClick={() => openAuthModal("owner-login")}
+                                        className="group flex items-center gap-2.5 px-7 py-4 rounded-xl text-[13px] font-black uppercase tracking-widest transition-all duration-300 hover:opacity-90 hover:scale-[1.02]"
+                                        style={{ background: T.grad, color: T.bg }}>
+                                        <LogIn size={15} /> Log In <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+                                    </button>
+                                ) : (
+                                    <button onClick={() => openAuthModal("signup")}
+                                        className="group flex items-center gap-2.5 px-7 py-4 rounded-xl text-[13px] font-black uppercase tracking-widest transition-all duration-300 hover:opacity-90 hover:scale-[1.02]"
+                                        style={{ background: T.grad, color: T.bg }}>
+                                        <Sparkles size={15} /> Setup Your Business <ArrowRight size={15} className="group-hover:translate-x-0.5 transition-transform" />
+                                    </button>
+                                )}
                             </motion.div>
 
                             {/* Proof stats */}
@@ -1108,10 +1120,10 @@ export default function LoginScreen({
                                     Built to<br /><span style={{ WebkitTextStroke: `2px rgba(${T.textRgb},${isDark ? 0.15 : 0.3})`, color: "transparent" }}>Scale.</span>
                                 </h2>
                             </div>
-                            <button onClick={() => openAuthModal("signup")}
+                            <button onClick={() => openAuthModal(hasCompletedSetup ? "owner-login" : "signup")}
                                 className="hidden md:flex items-center gap-3 px-6 py-3 rounded-lg text-xs uppercase tracking-widest font-bold transition-all hover:opacity-90"
                                 style={{ background: T.grad, color: T.bg }}>
-                                Get Started <ArrowRight size={14} />
+                                {hasCompletedSetup ? "Log In" : "Get Started"} <ArrowRight size={14} />
                             </button>
                         </div>
                         <p className="text-[10px] mb-4 font-bold uppercase tracking-[0.25em]" style={{ color: T.textMute }}>↓ Click any card to learn more</p>
@@ -1316,14 +1328,16 @@ export default function LoginScreen({
                     <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="max-w-2xl mx-auto relative z-10 text-center">
                         <p className="font-mono text-xs uppercase tracking-[0.3em] font-bold mb-4" style={{ color: T.coral }}>Zero Setup Fees · No Credit Card</p>
                         <h2 className="text-5xl md:text-6xl font-black tracking-[-0.04em] mb-6" style={{ color: T.text }}>
-                            Ready to Chill?<br />
-                            <span style={{ color: T.coral }}>Start billing smarter.</span>
+                            {hasCompletedSetup ? "Welcome Back." : "Ready to Chill?"}<br />
+                            <span style={{ color: T.coral }}>{hasCompletedSetup ? "Continue to your store." : "Start billing smarter."}</span>
                         </h2>
-                        <p className="text-base font-medium mb-10" style={{ color: T.textMute }}>Join hundreds of departmental stores and supermarkets running on ChillBill.</p>
-                        <button onClick={() => openAuthModal("signup")}
+                        <p className="text-base font-medium mb-10" style={{ color: T.textMute }}>
+                            {hasCompletedSetup ? "Access your POS counter, billing, and store operations." : "Join hundreds of departmental stores and supermarkets running on ChillBill."}
+                        </p>
+                        <button onClick={() => openAuthModal(hasCompletedSetup ? "owner-login" : "signup")}
                             className="inline-flex items-center gap-3 px-8 py-4 rounded-full text-sm font-black uppercase tracking-widest transition-all duration-300 hover:scale-105 hover:shadow-2xl"
                             style={{ background: T.grad, color: "#fff", boxShadow: `0 8px 32px rgba(${T.coralRgb},0.35)` }}>
-                            Set Up Your Store <ArrowRight size={16} />
+                            {hasCompletedSetup ? "Log In to Store" : "Set Up Your Store"} <ArrowRight size={16} />
                         </button>
                     </motion.div>
                 </section>
@@ -1350,8 +1364,11 @@ export default function LoginScreen({
                             </div>
                             <div className="flex flex-col gap-4">
                                 <span className="text-xs font-bold uppercase tracking-widest" style={{ color: T.textMute }}>Company</span>
-                                <button onClick={() => openAuthModal("landing")} className="text-sm font-semibold transition-colors text-left" style={{ color: T.textSub }}>Log In</button>
-                                <button onClick={() => openAuthModal("signup")} className="text-sm font-semibold transition-colors text-left" style={{ color: T.textSub }}>Sign Up</button>
+                                {hasCompletedSetup ? (
+                                    <button onClick={() => openAuthModal("owner-login")} className="text-sm font-semibold transition-colors text-left" style={{ color: T.textSub }}>Log In</button>
+                                ) : (
+                                    <button onClick={() => openAuthModal("signup")} className="text-sm font-semibold transition-colors text-left" style={{ color: T.textSub }}>Get Started</button>
+                                )}
                             </div>
                         </div>
                     </div>

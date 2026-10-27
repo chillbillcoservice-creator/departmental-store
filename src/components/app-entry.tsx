@@ -398,6 +398,7 @@ export default function AppEntry({
           employees={employees}
           venueName={venueName}
           venueId={venueId || undefined}
+          isSetupComplete={isSetupComplete}
           initialAuthView={initialAuthView}
           onLogin={(emp) => setCurrentEmployee(emp)}
           onUpdateEmployees={(updated) => setEmployees(updated)}
@@ -444,16 +445,52 @@ export default function AppEntry({
               setInitialAuthView(null);
             }
           }}
-          onOwnerSignup={(uid, details) => {
-            setOwnerUser({ uid } as any);
-            setVenueId(uid);
-            if (details) {
-              setInitialSetupData(details);
-              if (details.storeName) setVenueName(details.storeName);
+          onOwnerSignup={async (uid, details) => {
+            setIsLoadingVenue(true);
+            try {
+              const { fetchVenue, fetchEmployees } = await import("@/lib/db");
+              const [venueData, firestoreEmployees] = await Promise.all([
+                fetchVenue(uid),
+                fetchEmployees(uid),
+              ]);
+              if (venueData) {
+                setVenueName(venueData.name || venueName);
+                if (venueData.currency) setCurrency(venueData.currency === '₹' ? 'Rs.' : venueData.currency);
+                if (venueData.language) setLanguage(venueData.language);
+              }
+              if (firestoreEmployees.length > 0) {
+                setEmployees(firestoreEmployees);
+                setOwnerUser({ uid } as any);
+                setVenueId(uid);
+                setIsSetupComplete(true);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('isSetupComplete', 'true');
+                  localStorage.setItem('setupComplete', 'true');
+                }
+              } else {
+                setOwnerUser({ uid } as any);
+                setVenueId(uid);
+                if (details) {
+                  setInitialSetupData(details);
+                  if (details.storeName) setVenueName(details.storeName);
+                }
+                setIsNewOwner(true);
+                setIsSetupComplete(false);
+              }
+            } catch (e) {
+              console.error("Failed to load venue:", e);
+              setOwnerUser({ uid } as any);
+              setVenueId(uid);
+              if (details) {
+                setInitialSetupData(details);
+                if (details.storeName) setVenueName(details.storeName);
+              }
+              setIsNewOwner(true);
+              setIsSetupComplete(false);
+            } finally {
+              setIsLoadingVenue(false);
+              setInitialAuthView(null);
             }
-            setIsNewOwner(true);
-            setIsSetupComplete(false);
-            setInitialAuthView(null);
           }}
         />
       </LanguageProvider>
