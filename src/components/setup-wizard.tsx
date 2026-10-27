@@ -402,8 +402,8 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
 
   const handleNext = () => {
     if (step === 2) {
-      if (owner.loginCode && owner.loginCode.length > 0 && owner.loginCode.length < 4) {
-        alert("Please enter a complete 4-digit passcode for the store owner, or clear it.");
+      if (!owner.loginCode || owner.loginCode.trim().length !== 4) {
+        alert("Please set a 4-digit passcode for the Store Owner to continue.");
         return;
       }
       const incompletePartner = additionalOwners.find(o => o.loginCode && o.loginCode.length > 0 && o.loginCode.length < 4);
@@ -595,8 +595,9 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
   };
 
   const handleFinish = () => {
-    if (owner.loginCode && owner.loginCode.length > 0 && owner.loginCode.length < 4) {
-      alert("Please enter a complete 4-digit passcode for the store owner, or clear it.");
+    if (!owner.loginCode || owner.loginCode.trim().length !== 4) {
+      alert("Please set a 4-digit passcode for the Store Owner to secure your store.");
+      setStep(2);
       return;
     }
     const incompletePartner = additionalOwners.find(o => o.loginCode && o.loginCode.length > 0 && o.loginCode.length < 4);
@@ -974,16 +975,16 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="owner-pin" className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
-                      <Shield size={13} className="text-orange-400" />
-                      4-Digit Passcode
+                    <Label htmlFor="owner-pin" className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                      <Shield size={14} className="text-orange-500" />
+                      Create 4-Digit Owner Passcode (PIN) <span className="text-destructive">*</span>
                     </Label>
                     <PinInput
                       id="owner-pin"
                       value={owner.loginCode || ''}
                       onChange={(v) => handleBasicChange(setOwner, 'loginCode', v)}
                     />
-                    <p className="text-[10px] text-muted-foreground">Enter any 4-digit PIN of your choice for quick login (e.g. 1234)</p>
+                    <p className="text-xs text-orange-400 font-medium">You will use this 4-digit PIN every day to open your store and access billing & reports.</p>
                   </div>
                 </div>
               </div>

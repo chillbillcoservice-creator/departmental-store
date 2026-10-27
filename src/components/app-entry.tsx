@@ -380,21 +380,10 @@ export default function AppEntry({
           }}
           onUpdateEmployees={(updated) => setEmployees(updated)}
           onSwitchLicense={() => {
-            setIsSetupComplete(false);
-            setOwnerDetails(null);
-            setVenueDetails(null);
-            setOwnerUser(null);
-            setCurrentEmployee(null);
-            setIsNewOwner(false);
             if (typeof window !== 'undefined') {
-              localStorage.removeItem('isSetupComplete');
-              localStorage.removeItem('setupComplete');
-              localStorage.removeItem('chillbill_license_token');
-              localStorage.removeItem('ownerDetails');
-              localStorage.removeItem('venueDetails');
-              localStorage.removeItem('chillbill_active_shift');
+              localStorage.clear();
+              window.location.reload();
             }
-            setInitialAuthView('owner-login');
           }}
         />
       </LanguageProvider>

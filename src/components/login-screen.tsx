@@ -218,7 +218,13 @@ export default function LoginScreen({
 }: LoginScreenProps) {
 
     /* ── Auth modal state ── */
-    const [authView, setAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(initialAuthView || null);
+    const [authView, setAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(initialAuthView || (isPosMode ? null : "owner-login"));
+
+    useEffect(() => {
+        if (!isPosMode) {
+            setAuthView("owner-login");
+        }
+    }, [isPosMode, initialAuthView]);
     const [emailInput, setEmailInput] = useState("");
     const [passwordInput, setPasswordInput] = useState("");
     const [showPassword, setShowPassword] = useState(false);
@@ -284,12 +290,12 @@ export default function LoginScreen({
                     return;
                 }
 
-                const venueSnap = await getDoc(doc(db, "venues", uid));
-                if (venueSnap.exists()) {
-                    onOwnerLogin?.(uid);
-                } else {
-                    onOwnerSignup?.(uid);
-                }
+                const storeDetails = {
+                    storeName: (licResult as any)?.storeName,
+                    ownerName: result.user.displayName || "Store Owner",
+                    email,
+                };
+                onOwnerSignup?.(uid, storeDetails);
             }
         } catch (err: any) {
             console.error("Google Auth error:", err);
@@ -380,18 +386,13 @@ export default function LoginScreen({
 
             if (userCredential?.user) {
                 const uid = userCredential.user.uid;
-                const venueSnap = await getDoc(doc(db, "venues", uid));
                 const storeDetails = {
                     storeName: whiteData?.storeName,
                     ownerName: whiteData?.ownerName,
                     email: cleanEmail,
                     licenseKey: registeredKey,
                 };
-                if (venueSnap.exists()) {
-                    onOwnerLogin?.(uid);
-                } else {
-                    onOwnerSignup?.(uid, storeDetails);
-                }
+                onOwnerSignup?.(uid, storeDetails);
             }
         } catch (err: any) {
             console.error("License auth error:", err);
@@ -545,15 +546,6 @@ export default function LoginScreen({
                                 style={{ background: T.grad }}>
                                 <LogIn size={16} /> Sign In
                             </button>
-
-                            {/* Initial default PIN helper badge */}
-                            {selectedEmp.loginCode === '0000' && (
-                                <div className="mt-3.5 py-2 px-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-center">
-                                    <p className="text-xs text-amber-400 font-medium">
-                                        🔑 Initial default PIN is <span className="font-mono font-bold tracking-widest text-amber-300">0000</span>
-                                    </p>
-                                </div>
-                            )}
                         </div>
                     )}
 
