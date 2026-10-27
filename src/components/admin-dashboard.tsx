@@ -1214,15 +1214,6 @@ export default function AdminDashboard({
               <Button
                 variant="outline"
                 size="lg"
-                className="h-20 text-base flex-col gap-2 bg-gradient-to-br from-indigo-500/10 to-blue-500/10 border-indigo-500/30 hover:border-indigo-500 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all shadow-sm font-semibold"
-                onClick={handleInstallApp}
-              >
-                <Download className="h-6 w-6 text-indigo-600 dark:text-indigo-400" />
-                <span className="font-bold">{t('Install App')}</span>
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
                 className="h-20 text-base flex-col gap-2 bg-gradient-to-br from-indigo-500/10 to-primary/10 border-indigo-500/30 hover:border-indigo-500 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 transition-all shadow-sm font-semibold"
                 onClick={() => setIsUniversalImportOpen(true)}
               >
