@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useLanguage } from '@/contexts/language-context';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Shield, Receipt, Package, Users2, Menu as MenuIcon, HelpCircle, Truck, CreditCard, PanelLeft, PanelTop, AlertTriangle, List, X, Palette, Settings, Headphones, LogOut, Clock } from 'lucide-react';
+import { Users, Shield, Receipt, Package, Users2, Menu as MenuIcon, HelpCircle, Truck, CreditCard, PanelLeft, PanelTop, AlertTriangle, List, X, Palette, Settings, Headphones, LogOut, Clock, Smartphone } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { isSameDay } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -73,6 +73,7 @@ interface MainLayoutProps {
   initialLanguage: string;
   setLanguage: (lang: string) => void;
   setVenueDetails: (details: VenueDetails | null) => void;
+  onSwitchToMobileView?: () => void;
 }
 
 export default function MainLayout({
@@ -104,6 +105,7 @@ export default function MainLayout({
   setVenueDetails,
   ownerDetails,
   initialUser,
+  onSwitchToMobileView,
 }: MainLayoutProps) {
   const { t } = useLanguage();
   const db = useFirestore();
@@ -801,6 +803,19 @@ export default function MainLayout({
 
           {currentUser && (
             <div className="flex items-center gap-1.5">
+              {currentUser.role === 'Owner' && onSwitchToMobileView && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onSwitchToMobileView}
+                  className="h-9 px-2.5 text-xs font-bold rounded-xl gap-1.5 border-orange-500/40 text-orange-500 hover:bg-orange-500/10 shadow-sm"
+                  title="Switch to Owner Mobile Companion"
+                >
+                  <Smartphone className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Mobile Companion</span>
+                </Button>
+              )}
+
               <Button
                 variant="outline"
                 size="sm"

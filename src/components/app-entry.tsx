@@ -1,11 +1,13 @@
 'use client';
 
-import type { MenuCategory, InventoryItem, Employee, Bill, Expense, Customer, Vendor, PendingBill, Attendance, Advance, VenueDetails, OwnerDetails, SetupData } from "@/lib/types";
+import type { MenuCategory, InventoryItem, Employee, Bill, Expense, Customer, Vendor, PendingBill, Attendance, Advance, VenueDetails, OwnerDetails, SetupData, PurchaseOrder } from "@/lib/types";
 import MainLayout from "./main-layout";
 import SetupWizard from "./setup-wizard";
 import LoginScreen from "./login-screen";
 import AccessDeniedScreen from "./access-denied-screen";
 import LicenseExpiredScreen from "./license-expired-screen";
+import { OwnerMobileLayout } from "./mobile/owner-mobile-layout";
+import { useMobileDetection } from "@/lib/mobile-detection";
 import { verifyStoreLicense, LicenseCheckResult } from "@/lib/licensing";
 import { useState, useEffect } from "react";
 import { useFirestore } from '@/firebase';
@@ -141,6 +143,10 @@ export default function AppEntry({
   const [venueName, setVenueName] = useLocalStorageState<string>('venueName', initialVenueName);
   const [attendance, setAttendance] = useLocalStorageState<Attendance[]>('attendance', initialAttendance);
   const [advances, setAdvances] = useLocalStorageState<Advance[]>('advances', initialAdvances);
+  const [purchaseOrders, setPurchaseOrders] = useLocalStorageState<PurchaseOrder[]>('purchaseOrders', []);
+
+  // Viewport & Mobile Detection Hook
+  const { isMobile, viewMode, setViewMode } = useMobileDetection();
 
   // New state for currency and setup status
   const [currency, setCurrency] = useLocalStorageState<string>('currency', 'Rs.');
@@ -163,7 +169,7 @@ export default function AppEntry({
   const [deniedEmail, setDeniedEmail] = useState<string | null>(null);
   const [licenseError, setLicenseError] = useState<LicenseCheckResult | null>(null);
   const [isLoadingVenue, setIsLoadingVenue] = useState(false);
-  const [venueId, setVenueId] = useState<string | null>(null);
+  const [venueId, setVenueId] = useLocalStorageState<string | null>('venueId', null);
   const [initialAuthView, setInitialAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(null);
   const [initialSetupData, setInitialSetupData] = useState<{ storeName?: string; ownerName?: string; email?: string } | null>(null);
 
@@ -422,9 +428,12 @@ export default function AppEntry({
                 setOwnerUser({ uid } as any);
                 setVenueId(uid);
                 setIsSetupComplete(true);
+                const ownerEmp = firestoreEmployees.find(e => e.role === 'Owner') || firestoreEmployees[0];
+                if (ownerEmp) setCurrentEmployee(ownerEmp);
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('isSetupComplete', 'true');
                   localStorage.setItem('setupComplete', 'true');
+                  localStorage.setItem('venueId', uid);
                 }
               } else {
                 setOwnerUser({ uid } as any);
@@ -463,9 +472,12 @@ export default function AppEntry({
                 setOwnerUser({ uid } as any);
                 setVenueId(uid);
                 setIsSetupComplete(true);
+                const ownerEmp = firestoreEmployees.find(e => e.role === 'Owner') || firestoreEmployees[0];
+                if (ownerEmp) setCurrentEmployee(ownerEmp);
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('isSetupComplete', 'true');
                   localStorage.setItem('setupComplete', 'true');
+                  localStorage.setItem('venueId', uid);
                 }
               } else {
                 setOwnerUser({ uid } as any);
@@ -545,7 +557,40 @@ export default function AppEntry({
     );
   }
 
-  // Step 6: Main POS & Departmental Store
+  // Step 6: Store view — If user is Owner and on mobile viewport (or viewMode set to mobile)
+  if (currentEmployee.role === 'Owner' && isMobile) {
+    return (
+      <LanguageProvider key={language} initialLanguage={language}>
+        <OwnerMobileLayout
+          venueName={venueName}
+          venueId={venueId || undefined}
+          currency={(!currency || currency === '$') ? 'Rs.' : currency}
+          initialBills={bills}
+          initialInventory={inventory}
+          initialEmployees={employees}
+          initialVendors={vendors}
+          initialPurchaseOrders={purchaseOrders}
+          venueDetails={venueDetails}
+          ownerDetails={ownerDetails}
+          viewMode={viewMode}
+          onSetViewMode={setViewMode}
+          onUpdateEmployees={(updated) => setEmployees(updated)}
+          onUpdateVendors={(updated) => setVendors(updated)}
+          onSwitchLicense={() => {
+            if (typeof window !== 'undefined') {
+              localStorage.clear();
+              window.location.reload();
+            }
+          }}
+          onSignOut={() => {
+            setCurrentEmployee(null);
+          }}
+        />
+      </LanguageProvider>
+    );
+  }
+
+  // Step 7: Main POS & Departmental Store (Desktop counter view)
   return (
     <LanguageProvider key={language} initialLanguage={language}>
       <MainLayout
@@ -579,6 +624,7 @@ export default function AppEntry({
         setVenueDetails={setVenueDetails}
         ownerDetails={ownerDetails}
         initialUser={currentEmployee}
+        onSwitchToMobileView={() => setViewMode('mobile')}
       />
     </LanguageProvider>
   );

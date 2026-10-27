@@ -26,6 +26,7 @@ import { DEPARTMENTAL_STORE_CATALOG } from '@/lib/departmental-catalog';
 import { subscribeToAmountMatch, simulateCounterStandeePayment } from '@/lib/payment-listener';
 import { triggerSoundboxAlert } from '@/lib/soundbox';
 import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
+import { syncCompletedBillToCloud } from '@/lib/firestore-sync';
 
 interface PaymentSectionProps {
     inventory: InventoryItem[];
@@ -568,6 +569,14 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
 
         // Inventory is already updated in real-time interactions
         setBills([...bills, newBill]);
+
+        // Real-time Cloud Sync for Owner Mobile Companion
+        try {
+            const vId = (typeof window !== 'undefined' ? localStorage.getItem('venueId') : null) || venueDetails?.name;
+            if (vId) {
+                syncCompletedBillToCloud(vId, newBill);
+            }
+        } catch (e) {}
 
         // Log to active shift session
         logShiftActivity({
