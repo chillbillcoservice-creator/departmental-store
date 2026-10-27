@@ -176,6 +176,7 @@ interface LoginScreenProps {
     onLicenseExpired?: (result: LicenseCheckResult) => void;
     onOwnerLogin?: (uid: string) => void;
     onOwnerSignup?: (uid: string) => void;
+    onSwitchLicense?: () => void;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -210,7 +211,8 @@ function GoogleIcon({ className }: { className?: string }) {
    ═══════════════════════════════════════════════════ */
 export default function LoginScreen({
     employees, venueName, venueId, isPosMode, onLogin,
-    onAccessDenied, onLicenseExpired, onOwnerLogin, onOwnerSignup
+    onAccessDenied, onLicenseExpired, onOwnerLogin, onOwnerSignup,
+    onSwitchLicense
 }: LoginScreenProps) {
 
     /* ── Auth modal state ── */
@@ -477,19 +479,27 @@ export default function LoginScreen({
                                 <button key={emp.id}
                                     onClick={() => { setSelectedEmp(emp); setPin(""); setError(""); setTimeout(() => pinRef.current?.focus(), 100); }}
                                     className="group flex flex-col items-center gap-2 p-3 rounded-2xl transition-all duration-200 active:scale-95"
-                                    style={{ background: selectedEmp?.id === emp.id ? "rgba(255,107,107,0.1)" : "transparent" }}
+                                    style={{ background: selectedEmp?.id === emp.id ? "rgba(255,107,107,0.12)" : "transparent" }}
                                 >
-                                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform"
-                                        style={{ background: T.grad }}>
+                                    <div className="w-12 h-12 rounded-xl flex items-center justify-center text-white shadow-md group-hover:scale-110 transition-transform relative"
+                                        style={{ background: emp.role === 'Owner' ? 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' : T.grad }}>
                                         {getRoleIcon(emp.role)}
+                                        {emp.role === 'Owner' && (
+                                            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                                <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                                            </span>
+                                        )}
                                     </div>
-                                    <span className="text-xs font-semibold max-w-[64px] truncate" style={{ color: T.textSub }}>{emp.name.split(" ")[0]}</span>
+                                    <span className="text-xs font-semibold max-w-[70px] truncate" style={{ color: T.textSub }}>
+                                        {emp.name.split(" ")[0]}
+                                    </span>
                                 </button>
                             ))}
                         </div>
                     )}
                     {selectedEmp && (
-                        <div className="mt-8 p-6 rounded-2xl" style={{ background: T.surface, border: `1px solid ${T.border}` }}>
+                        <div className="mt-8 p-6 rounded-2xl shadow-xl" style={{ background: T.surface, border: `1px solid ${T.border}` }}>
                             <p className="text-center text-sm font-bold mb-4" style={{ color: T.textSub }}>
                                 Enter PIN for <span style={{ color: T.coral }}>{selectedEmp.name}</span>
                                 {selectedEmp.username && (
@@ -499,20 +509,54 @@ export default function LoginScreen({
                                 )}
                             </p>
                             <input ref={pinRef} type="password" maxLength={4} value={pin}
-                                onChange={e => { setPin(e.target.value.replace(/\D/g, "")); setError(""); }}
+                                onChange={e => {
+                                    const val = e.target.value.replace(/\D/g, "");
+                                    setPin(val);
+                                    setError("");
+                                    if (val.length === 4) {
+                                        if (val === (selectedEmp.loginCode || "0000")) {
+                                            setIsLoading(true);
+                                            setTimeout(() => onLogin(selectedEmp), 120);
+                                        } else {
+                                            setError("Incorrect PIN. Try again.");
+                                            setPin("");
+                                            setShake(true);
+                                            setTimeout(() => setShake(false), 500);
+                                        }
+                                    }
+                                }}
                                 onKeyDown={e => e.key === "Enter" && handlePinLogin()}
                                 className={cn("w-full h-14 text-center text-3xl font-black tracking-[0.5em] rounded-xl border bg-transparent focus:outline-none transition-all", shake && "animate-shake")}
                                 style={{ color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
                                 placeholder="• • • •"
+                                autoFocus
                             />
-                            {error && <p className="text-sm text-red-400 text-center mt-3">{error}</p>}
+                            {error && <p className="text-sm text-red-400 text-center mt-3 font-semibold">{error}</p>}
                             <button onClick={handlePinLogin}
-                                className="w-full h-11 rounded-xl font-bold text-sm flex items-center justify-center gap-2 mt-4 transition-all text-white"
+                                className="w-full h-11 rounded-xl font-bold text-sm flex items-center justify-center gap-2 mt-4 transition-all text-white shadow-sm"
                                 style={{ background: T.grad }}>
                                 <LogIn size={16} /> Sign In
                             </button>
                         </div>
                     )}
+
+                    {/* Terminal Status & Switch License */}
+                    <div className="mt-10 text-center space-y-2">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-semibold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            <span>Terminal Activated & Licensed</span>
+                        </div>
+                        {onSwitchLicense && (
+                            <div>
+                                <button
+                                    onClick={onSwitchLicense}
+                                    className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-4"
+                                >
+                                    Switch Store / Enter Different License
+                                </button>
+                            </div>
+                        )}
+                    </div>
                 </div>
                 <style>{`@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}.animate-shake{animation:shake .45s ease-in-out}`}</style>
             </div>

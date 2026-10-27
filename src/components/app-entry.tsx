@@ -306,6 +306,7 @@ export default function AppEntry({
     setIsNewOwner(false);
     if (typeof window !== 'undefined') {
       localStorage.setItem('setupComplete', 'true');
+      localStorage.setItem('isSetupComplete', 'true');
     }
 
     saveVenueSetup(data, ownerUser?.uid).then((vId) => {
@@ -355,8 +356,47 @@ export default function AppEntry({
     );
   }
 
-  // Step 3: Not yet authenticated - unified Login/Signup page handles both owner and staff PIN login
-  if (!ownerUser && !currentEmployee) {
+  // Check if terminal is already activated on this device
+  const isTerminalActivated = isSetupComplete || !!ownerDetails || !!venueDetails || (typeof window !== 'undefined' && (
+    localStorage.getItem('isSetupComplete') === 'true' ||
+    localStorage.getItem('setupComplete') === 'true' ||
+    !!localStorage.getItem('chillbill_license_token') ||
+    localStorage.getItem('chillbill_catalog_initialized') === 'true'
+  ));
+
+  // Step 3: If terminal is already activated on this device, go DIRECTLY to SS2 (Staff & Owner PIN Login)
+  if (isTerminalActivated && !currentEmployee) {
+    return (
+      <LanguageProvider key={language} initialLanguage={language}>
+        <LoginScreen
+          employees={employees}
+          venueName={venueName}
+          venueId={venueId || undefined}
+          isPosMode={true}
+          onLogin={(emp) => {
+            setCurrentEmployee(emp);
+            if (emp.role === 'Owner') {
+              setOwnerUser({ uid: emp.id, email: ownerDetails?.email || 'owner@store' } as any);
+            }
+          }}
+          onSwitchLicense={() => {
+            setIsSetupComplete(false);
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('isSetupComplete');
+              localStorage.removeItem('setupComplete');
+              localStorage.removeItem('chillbill_license_token');
+              localStorage.removeItem('ownerDetails');
+            }
+            setOwnerUser(null);
+            setCurrentEmployee(null);
+          }}
+        />
+      </LanguageProvider>
+    );
+  }
+
+  // Step 4: First-time setup / not yet activated machine: show License Activation & Signup screen
+  if (!isTerminalActivated && !ownerUser && !currentEmployee) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
         <LoginScreen
@@ -402,7 +442,7 @@ export default function AppEntry({
     );
   }
 
-  // Step 4: New owner needs to complete Setup Wizard
+  // Step 5: New owner needs to complete Setup Wizard
   if (isNewOwner === true || !isSetupComplete) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
@@ -411,7 +451,7 @@ export default function AppEntry({
     );
   }
 
-  // Step 5: Employee PIN login mode
+  // Step 6: Fallback PIN login mode if currentEmployee is cleared
   if (!currentEmployee) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
@@ -420,7 +460,12 @@ export default function AppEntry({
           venueName={venueName}
           venueId={venueId || undefined}
           isPosMode={true}
-          onLogin={(emp) => setCurrentEmployee(emp)}
+          onLogin={(emp) => {
+            setCurrentEmployee(emp);
+            if (emp.role === 'Owner') {
+              setOwnerUser({ uid: emp.id, email: ownerDetails?.email || 'owner@store' } as any);
+            }
+          }}
         />
       </LanguageProvider>
     );
