@@ -6,7 +6,6 @@ import {
     Users, 
     Building2, 
     Settings, 
-    Monitor, 
     Sparkles, 
     RefreshCw,
     Store
@@ -32,7 +31,6 @@ import {
     syncInventoryToCloud,
     syncVendorsToCloud
 } from '@/lib/firestore-sync';
-import { OwnerViewMode } from '@/lib/mobile-detection';
 import { MobileDashboardTab } from './mobile-dashboard-tab';
 import { MobileStaffTab } from './mobile-staff-tab';
 import { MobileVendorsTab } from './mobile-vendors-tab';
@@ -49,8 +47,6 @@ interface OwnerMobileLayoutProps {
     initialPurchaseOrders?: PurchaseOrder[];
     venueDetails?: VenueDetails | null;
     ownerDetails?: OwnerDetails | null;
-    viewMode: OwnerViewMode;
-    onSetViewMode: (mode: OwnerViewMode) => void;
     onUpdateEmployees: (employees: Employee[]) => void;
     onUpdateVendors: (vendors: Vendor[]) => void;
     onSwitchLicense: () => void;
@@ -68,8 +64,6 @@ export function OwnerMobileLayout({
     initialPurchaseOrders = [],
     venueDetails,
     ownerDetails,
-    viewMode,
-    onSetViewMode,
     onUpdateEmployees,
     onUpdateVendors,
     onSwitchLicense,
@@ -185,18 +179,12 @@ export function OwnerMobileLayout({
                     </div>
                 </div>
 
-                {/* Right Header Actions */}
+                {/* Right Header: Active Cloud Indicator */}
                 <div className="flex items-center gap-1.5 shrink-0">
-                    <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => onSetViewMode('desktop')}
-                        className="h-8 px-2.5 rounded-xl text-xs font-bold text-orange-500 hover:text-orange-600 hover:bg-orange-500/10 flex items-center gap-1"
-                        title="Switch to Full Desktop POS Mode"
-                    >
-                        <Monitor size={14} />
-                        <span className="hidden xs:inline">Desktop</span>
-                    </Button>
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Online
+                    </span>
                 </div>
             </header>
 
@@ -247,8 +235,6 @@ export function OwnerMobileLayout({
                         currency={currency}
                         venueDetails={venueDetails}
                         ownerDetails={ownerDetails}
-                        viewMode={viewMode}
-                        onSetViewMode={onSetViewMode}
                         onSwitchLicense={onSwitchLicense}
                         onSignOut={onSignOut}
                     />

@@ -146,7 +146,7 @@ export default function AppEntry({
   const [purchaseOrders, setPurchaseOrders] = useLocalStorageState<PurchaseOrder[]>('purchaseOrders', []);
 
   // Viewport & Mobile Detection Hook
-  const { isMobile, viewMode, setViewMode } = useMobileDetection();
+  const { isMobile } = useMobileDetection();
 
   // New state for currency and setup status
   const [currency, setCurrency] = useLocalStorageState<string>('currency', 'Rs.');
@@ -557,7 +557,7 @@ export default function AppEntry({
     );
   }
 
-  // Step 6: Store view — If user is Owner and on mobile viewport (or viewMode set to mobile)
+  // Step 6: Store view — If user is Owner and on mobile viewport
   if (currentEmployee.role === 'Owner' && isMobile) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
@@ -572,8 +572,6 @@ export default function AppEntry({
           initialPurchaseOrders={purchaseOrders}
           venueDetails={venueDetails}
           ownerDetails={ownerDetails}
-          viewMode={viewMode}
-          onSetViewMode={setViewMode}
           onUpdateEmployees={(updated) => setEmployees(updated)}
           onUpdateVendors={(updated) => setVendors(updated)}
           onSwitchLicense={() => {
@@ -624,7 +622,6 @@ export default function AppEntry({
         setVenueDetails={setVenueDetails}
         ownerDetails={ownerDetails}
         initialUser={currentEmployee}
-        onSwitchToMobileView={() => setViewMode('mobile')}
       />
     </LanguageProvider>
   );

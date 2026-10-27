@@ -3,13 +3,11 @@
 import { useState } from 'react';
 import { 
     Building2, 
-    Monitor, 
     LogOut, 
     Shield, 
     Moon, 
     Sun, 
     RefreshCw, 
-    Smartphone, 
     Lock, 
     Check, 
     AlertTriangle,
@@ -22,15 +20,12 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { useTheme } from "next-themes";
-import { OwnerViewMode } from '@/lib/mobile-detection';
 
 interface MobileSettingsTabProps {
     venueName: string;
     currency: string;
     venueDetails?: any;
     ownerDetails?: any;
-    viewMode: OwnerViewMode;
-    onSetViewMode: (mode: OwnerViewMode) => void;
     onSwitchLicense: () => void;
     onSignOut: () => void;
 }
@@ -40,8 +35,6 @@ export function MobileSettingsTab({
     currency,
     venueDetails,
     ownerDetails,
-    viewMode,
-    onSetViewMode,
     onSwitchLicense,
     onSignOut
 }: MobileSettingsTabProps) {
@@ -95,37 +88,7 @@ export function MobileSettingsTab({
                 </div>
             </div>
 
-            {/* ════════ VIEWPORT SWITCHER ════════ */}
-            <div className="p-4 rounded-2xl border bg-card/70 shadow-sm space-y-3">
-                <div className="flex items-center gap-2">
-                    <Monitor size={16} className="text-orange-500" />
-                    <h4 className="font-extrabold text-xs text-foreground uppercase tracking-wider">
-                        Display Mode (Desktop vs Mobile)
-                    </h4>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                    You can switch anytime between the touch-first Owner Mobile Companion and the full Desktop Counter POS.
-                </p>
 
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                    <Button 
-                        variant={viewMode === 'mobile' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => onSetViewMode('mobile')}
-                        className={`h-10 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 ${viewMode === 'mobile' ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''}`}
-                    >
-                        <Smartphone size={14} /> Mobile View
-                    </Button>
-                    <Button 
-                        variant={viewMode === 'desktop' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => onSetViewMode('desktop')}
-                        className={`h-10 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 ${viewMode === 'desktop' ? 'bg-orange-500 hover:bg-orange-600 text-white' : ''}`}
-                    >
-                        <Monitor size={14} /> Desktop POS
-                    </Button>
-                </div>
-            </div>
 
             {/* ════════ THEME TOGGLE ════════ */}
             <div className="p-4 rounded-2xl border bg-card/70 shadow-sm flex items-center justify-between">

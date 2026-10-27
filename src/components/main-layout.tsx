@@ -73,7 +73,6 @@ interface MainLayoutProps {
   initialLanguage: string;
   setLanguage: (lang: string) => void;
   setVenueDetails: (details: VenueDetails | null) => void;
-  onSwitchToMobileView?: () => void;
 }
 
 export default function MainLayout({
@@ -105,7 +104,6 @@ export default function MainLayout({
   setVenueDetails,
   ownerDetails,
   initialUser,
-  onSwitchToMobileView,
 }: MainLayoutProps) {
   const { t } = useLanguage();
   const db = useFirestore();
@@ -803,19 +801,6 @@ export default function MainLayout({
 
           {currentUser && (
             <div className="flex items-center gap-1.5">
-              {currentUser.role === 'Owner' && onSwitchToMobileView && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onSwitchToMobileView}
-                  className="h-9 px-2.5 text-xs font-bold rounded-xl gap-1.5 border-orange-500/40 text-orange-500 hover:bg-orange-500/10 shadow-sm"
-                  title="Switch to Owner Mobile Companion"
-                >
-                  <Smartphone className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Mobile Companion</span>
-                </Button>
-              )}
-
               <Button
                 variant="outline"
                 size="sm"
