@@ -164,6 +164,8 @@ export default function AppEntry({
   const [licenseError, setLicenseError] = useState<LicenseCheckResult | null>(null);
   const [isLoadingVenue, setIsLoadingVenue] = useState(false);
   const [venueId, setVenueId] = useState<string | null>(null);
+  const [initialAuthView, setInitialAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(null);
+  const [initialSetupData, setInitialSetupData] = useState<{ storeName?: string; ownerName?: string; email?: string } | null>(null);
 
   // Verify license & 14-day offline grace on mount if store is already setup
   useEffect(() => {
@@ -357,12 +359,9 @@ export default function AppEntry({
   }
 
   // Check if terminal is already activated on this device
-  const isTerminalActivated = isSetupComplete || !!ownerDetails || !!venueDetails || (typeof window !== 'undefined' && (
-    localStorage.getItem('isSetupComplete') === 'true' ||
-    localStorage.getItem('setupComplete') === 'true' ||
-    !!localStorage.getItem('chillbill_license_token') ||
-    localStorage.getItem('chillbill_catalog_initialized') === 'true'
-  ));
+  const isTerminalActivated = isSetupComplete &&
+    (typeof window !== 'undefined' && localStorage.getItem('isSetupComplete') === 'true') &&
+    !initialAuthView;
 
   // Step 3: If terminal is already activated on this device, go DIRECTLY to SS2 (Staff & Owner PIN Login)
   if (isTerminalActivated && !currentEmployee) {
@@ -379,16 +378,23 @@ export default function AppEntry({
               setOwnerUser({ uid: emp.id, email: ownerDetails?.email || 'owner@store' } as any);
             }
           }}
+          onUpdateEmployees={(updated) => setEmployees(updated)}
           onSwitchLicense={() => {
             setIsSetupComplete(false);
+            setOwnerDetails(null);
+            setVenueDetails(null);
+            setOwnerUser(null);
+            setCurrentEmployee(null);
+            setIsNewOwner(false);
             if (typeof window !== 'undefined') {
               localStorage.removeItem('isSetupComplete');
               localStorage.removeItem('setupComplete');
               localStorage.removeItem('chillbill_license_token');
               localStorage.removeItem('ownerDetails');
+              localStorage.removeItem('venueDetails');
+              localStorage.removeItem('chillbill_active_shift');
             }
-            setOwnerUser(null);
-            setCurrentEmployee(null);
+            setInitialAuthView('owner-login');
           }}
         />
       </LanguageProvider>
@@ -403,10 +409,12 @@ export default function AppEntry({
           employees={employees}
           venueName={venueName}
           venueId={venueId || undefined}
+          initialAuthView={initialAuthView}
           onLogin={(emp) => setCurrentEmployee(emp)}
+          onUpdateEmployees={(updated) => setEmployees(updated)}
           onAccessDenied={(email) => setDeniedEmail(email)}
           onLicenseExpired={(lic) => setLicenseError(lic)}
-          onOwnerLogin={async (uid) => {
+          onOwnerLogin={async (uid, details) => {
             setIsLoadingVenue(true);
             try {
               const { fetchVenue, fetchEmployees } = await import("@/lib/db");
@@ -419,34 +427,74 @@ export default function AppEntry({
                 if (venueData.currency) setCurrency(venueData.currency === '₹' ? 'Rs.' : venueData.currency);
                 if (venueData.language) setLanguage(venueData.language);
               }
-              if (firestoreEmployees.length > 0) setEmployees(firestoreEmployees);
-              setOwnerUser({ uid } as any);
-              setVenueId(uid);
-              setIsSetupComplete(true);
+              if (firestoreEmployees.length > 0) {
+                setEmployees(firestoreEmployees);
+                setOwnerUser({ uid } as any);
+                setVenueId(uid);
+                setIsSetupComplete(true);
+                if (typeof window !== 'undefined') {
+                  localStorage.setItem('isSetupComplete', 'true');
+                  localStorage.setItem('setupComplete', 'true');
+                }
+              } else {
+                setOwnerUser({ uid } as any);
+                setVenueId(uid);
+                if (details) setInitialSetupData(details);
+                setIsNewOwner(true);
+                setIsSetupComplete(false);
+              }
             } catch (e) {
               console.error("Failed to load venue:", e);
               setOwnerUser({ uid } as any);
               setVenueId(uid);
-              setIsSetupComplete(true);
+              if (details) setInitialSetupData(details);
+              setIsNewOwner(true);
+              setIsSetupComplete(false);
             } finally {
               setIsLoadingVenue(false);
+              setInitialAuthView(null);
             }
           }}
-          onOwnerSignup={(uid) => {
+          onOwnerSignup={(uid, details) => {
             setOwnerUser({ uid } as any);
             setVenueId(uid);
+            if (details) {
+              setInitialSetupData(details);
+              if (details.storeName) setVenueName(details.storeName);
+            }
             setIsNewOwner(true);
+            setIsSetupComplete(false);
+            setInitialAuthView(null);
           }}
         />
       </LanguageProvider>
     );
   }
 
-  // Step 5: New owner needs to complete Setup Wizard
+  // Step 5: New owner needs to complete Setup Wizard ("Let's Set Up Your Business")
   if (isNewOwner === true || !isSetupComplete) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
-        <SetupWizard onComplete={handleSetupComplete} initialData={{ currency, language, venue: venueDetails || { name: venueName || '', address: '', contactNumber: '', email: '', tagline: '' } }} />
+        <SetupWizard
+          onComplete={handleSetupComplete}
+          initialData={{
+            currency,
+            language,
+            venue: {
+              name: initialSetupData?.storeName || venueDetails?.name || venueName || '',
+              address: venueDetails?.address || '',
+              contactNumber: venueDetails?.contactNumber || '',
+              email: initialSetupData?.email || venueDetails?.email || '',
+              tagline: venueDetails?.tagline || ''
+            },
+            owner: {
+              name: initialSetupData?.ownerName || ownerDetails?.name || '',
+              email: initialSetupData?.email || ownerDetails?.email || '',
+              contactNumber: ownerDetails?.contactNumber || '',
+              loginCode: ownerDetails?.loginCode || '',
+            }
+          }}
+        />
       </LanguageProvider>
     );
   }

@@ -822,15 +822,17 @@ const server = http.createServer(async (req, res) => {
 Namaste ${ownerName}! Your billing software for *${storeName}* is officially activated.
 
 🔑 *License Key:* ${licenseKey}
+📧 *Registered Login:* ${ownerEmail}
+🔐 *Initial Owner PIN:* 0000 (Default)
 📅 *Validity:* Until ${expiryFormatted}
 🖥️ *Counters Allowed:* ${maxCounters} Counter(s)
-📧 *Registered Login:* ${ownerEmail}
 
-📲 *Get Started in 1 Click:*
+📲 *Quick 1-Minute Launch:*
 1. Open this link on your POS computer / tablet:
 👉 ${APP_URL}
-2. Click *"Sign in with Google"* using your registered email: ${ownerEmail}
-3. Click the *"Install App"* icon in the browser address bar for a seamless desktop POS window.
+2. Click *"Owner Login"* and enter your License Key: ${licenseKey}
+3. Complete the *"Let's Set Up Your Business"* window to create your custom Owner PIN and team.
+4. Click the *"Install App"* icon in the browser address bar for a seamless desktop POS window.
 
 For support or setup assistance, reach out to our team at any time. Happy Billing! 🚀`;
 

@@ -123,6 +123,7 @@ export default function MainLayout({
   const [currentTime, setCurrentTime] = useState(new Date());
   const { toast } = useToast();
   const notifiedItemsRef = useRef<Set<string>>(new Set());
+  const isInitialInventoryMountRef = useRef<boolean>(true);
   const notifiedVendorsRef = useRef<Set<string>>(new Set());
   const [layoutMode, setLayoutMode] = useState<'side' | 'top'>('side');
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
@@ -285,9 +286,25 @@ export default function MainLayout({
     return () => clearInterval(timer);
   }, []);
 
-  // Monitor inventory levels and show notifications
+  // Monitor inventory levels and show notifications (suppressed on initial mount)
   useEffect(() => {
     if (!initialInventory || initialInventory.length === 0) return;
+
+    // Suppress popups on initial load by seeding existing low-stock items
+    if (isInitialInventoryMountRef.current) {
+      initialInventory.forEach(item => {
+        if (!item.capacity || item.capacity <= 0) return;
+        const stock = item.stock || 0;
+        const capacity = item.capacity;
+        if (stock <= capacity / 2) notifiedItemsRef.current.add(`${item.id}_50%`);
+        if (stock <= capacity / 4) notifiedItemsRef.current.add(`${item.id}_25%`);
+        if (stock <= 10) notifiedItemsRef.current.add(`${item.id}_10u`);
+        if (stock <= 5) notifiedItemsRef.current.add(`${item.id}_5u`);
+        if (stock <= 0) notifiedItemsRef.current.add(`${item.id}_0u`);
+      });
+      isInitialInventoryMountRef.current = false;
+      return;
+    }
 
     initialInventory.forEach(item => {
       if (!item.capacity || item.capacity <= 0) return;
