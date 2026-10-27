@@ -2,8 +2,8 @@
   "framework": "nextjs",
   "build": {
     "env": {
-      "NEXT_PUBLIC_VERCEL_URL": "https://chill-bill-pos.vercel.app",
-      "NEXT_PUBLIC_APP_URL": "https://chill-bill-pos.vercel.app"
+      "NEXT_PUBLIC_VERCEL_URL": "https://chillbill-store.vercel.app",
+      "NEXT_PUBLIC_APP_URL": "https://chillbill-store.vercel.app"
     }
   }
 }

@@ -35,7 +35,7 @@ async function runDiagnostics() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         providerId: 'google.com',
-        continueUri: 'https://chill-bill-pos.vercel.app'
+        continueUri: 'https://chillbill-store.vercel.app'
       })
     });
     const data = await res.json();

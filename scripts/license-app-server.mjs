@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
 const PORT = 54321;
 const FIREBASE_PROJECT_ID = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || 'chill-bill-ee46b';
 const BASE_FIRESTORE_URL = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents`;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://chill-bill-pos.vercel.app';
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://chillbill-store.vercel.app';
 
 function generateLicenseKey(prefix = 'CBILL') {
   const year = new Date().getFullYear();
