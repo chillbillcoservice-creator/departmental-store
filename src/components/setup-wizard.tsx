@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Building2, CheckCircle2, User, Users, Plus, Trash2, ArrowRight, ArrowLeft, Rocket, ChevronDown, ChevronUp, PlusCircle, Truck, ShoppingCart, Package, Landmark, Receipt, Users2, Shield } from "lucide-react";
+import { Building2, CheckCircle2, User, Users, Plus, Trash2, ArrowRight, ArrowLeft, Rocket, ChevronDown, ChevronUp, PlusCircle, Truck, ShoppingCart, Package, Landmark, Receipt, Users2, Shield, Eye, EyeOff } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SetupData, VenueDetails, OwnerDetails, Employee } from "@/lib/types";
 import { ThemeToggle } from "./theme-toggle";
@@ -92,119 +92,90 @@ function PinInput({
   value = "",
   onChange,
   disabled = false,
+  onEnter,
 }: {
   id?: string;
   value: string;
   onChange: (v: string) => void;
   disabled?: boolean;
+  onEnter?: () => void;
 }) {
-  const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
+  const [showPin, setShowPin] = useState(true);
   const cleanVal = (value || "").replace(/\D/g, "").slice(0, 4);
-  const digits = [cleanVal[0] || "", cleanVal[1] || "", cleanVal[2] || "", cleanVal[3] || ""];
-
-  const handleChange = (idx: number, e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.value.replace(/\D/g, "");
-    if (!raw) return;
-    const char = raw.slice(-1);
-
-    const newDigits = [...digits];
-    newDigits[idx] = char;
-
-    let lastFilled = idx;
-    for (let i = 3; i >= 0; i--) {
-      if (newDigits[i]) {
-        lastFilled = Math.max(lastFilled, i);
-        break;
-      }
-    }
-    const chars: string[] = [];
-    for (let i = 0; i <= lastFilled; i++) {
-      chars.push(newDigits[i] || "0");
-    }
-    const nextVal = chars.join("").slice(0, 4);
-    onChange(nextVal);
-
-    if (idx < 3) {
-      inputsRef.current[idx + 1]?.focus();
-      inputsRef.current[idx + 1]?.select();
-    }
-  };
-
-  const handleKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Backspace") {
-      e.preventDefault();
-      if (digits[idx]) {
-        const chars = cleanVal.split("");
-        chars.splice(idx, 1);
-        onChange(chars.join(""));
-      } else if (idx > 0) {
-        const chars = cleanVal.split("");
-        chars.splice(idx - 1, 1);
-        onChange(chars.join(""));
-        inputsRef.current[idx - 1]?.focus();
-      }
-    } else if (e.key === "ArrowLeft" && idx > 0) {
-      e.preventDefault();
-      inputsRef.current[idx - 1]?.focus();
-      inputsRef.current[idx - 1]?.select();
-    } else if (e.key === "ArrowRight" && idx < 3) {
-      e.preventDefault();
-      inputsRef.current[idx + 1]?.focus();
-      inputsRef.current[idx + 1]?.select();
-    } else if (e.key === "Delete") {
-      e.preventDefault();
-      const chars = cleanVal.split("");
-      chars.splice(idx, 1);
-      onChange(chars.join(""));
-    }
-  };
-
-  const handleFocus = (idx: number, e: React.FocusEvent<HTMLInputElement>) => {
-    const firstEmpty = digits.findIndex((d) => !d);
-    if (firstEmpty !== -1 && firstEmpty < idx) {
-      inputsRef.current[firstEmpty]?.focus();
-      inputsRef.current[firstEmpty]?.select();
-      return;
-    }
-    e.target.select();
-  };
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
-    if (pasted) {
-      onChange(pasted);
-      const targetIdx = Math.min(pasted.length - 1, 3);
-      inputsRef.current[targetIdx]?.focus();
-    }
-  };
 
   return (
     <div className="space-y-1.5">
-      <div id={id} className="flex items-center gap-2" onPaste={handlePaste}>
-        {digits.map((d, idx) => (
+      <div className="flex items-center gap-2">
+        {/* The 4-Box PIN Input Wrapper */}
+        <div
+          id={id}
+          className="relative inline-flex items-center gap-2 cursor-pointer"
+          onClick={() => inputRef.current?.focus()}
+        >
+          {/* Native HTML input overlay strictly covering only the 4 boxes */}
           <input
-            key={idx}
-            ref={(el) => { inputsRef.current[idx] = el; }}
+            ref={inputRef}
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"
-            maxLength={2}
-            value={d}
-            onChange={(e) => handleChange(idx, e)}
-            onKeyDown={(e) => handleKeyDown(idx, e)}
-            onFocus={(e) => handleFocus(idx, e)}
+            maxLength={4}
+            value={cleanVal}
+            onChange={(e) => {
+              const next = e.target.value.replace(/\D/g, "").slice(0, 4);
+              onChange(next);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && cleanVal.length === 4) {
+                onEnter?.();
+              }
+            }}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             disabled={disabled}
-            className={cn(
-              "w-12 h-12 text-center text-xl font-black rounded-lg bg-background border transition-all select-all",
-              d
-                ? "border-orange-500/80 text-foreground ring-1 ring-orange-500/30 bg-orange-500/5 shadow-sm"
-                : "border-input text-muted-foreground hover:border-zinc-500",
-              "focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-            )}
-            placeholder="•"
+            autoComplete="one-time-code"
+            className="absolute inset-0 w-full h-full opacity-0 z-10 cursor-pointer caret-transparent"
+            tabIndex={0}
           />
-        ))}
+
+          {/* 4 Visual Digit Boxes */}
+          {[0, 1, 2, 3].map((idx) => {
+            const char = cleanVal[idx];
+            const isCurrent = isFocused && (cleanVal.length === idx || (cleanVal.length === 4 && idx === 3));
+
+            return (
+              <div
+                key={idx}
+                className={cn(
+                  "w-12 h-12 flex items-center justify-center text-xl font-black rounded-lg border transition-all pointer-events-none select-none",
+                  char
+                    ? "border-orange-500/80 text-foreground ring-1 ring-orange-500/30 bg-orange-500/5 shadow-sm"
+                    : "border-input text-muted-foreground/40 bg-background",
+                  isCurrent && "ring-2 ring-orange-500 border-orange-500 scale-[1.03]"
+                )}
+              >
+                {char ? (showPin ? char : "•") : "•"}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Show/Hide PIN toggle button */}
+        {cleanVal.length > 0 && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowPin(!showPin)}
+            className="h-8 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            title={showPin ? "Hide PIN" : "Show PIN"}
+          >
+            {showPin ? <EyeOff size={14} /> : <Eye size={14} />}
+          </Button>
+        )}
+
+        {/* Clear Button */}
         {cleanVal.length > 0 && (
           <Button
             type="button"
@@ -212,7 +183,7 @@ function PinInput({
             size="sm"
             onClick={() => {
               onChange("");
-              inputsRef.current[0]?.focus();
+              inputRef.current?.focus();
             }}
             className="h-8 px-2 text-xs text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
             title="Clear Passcode"
@@ -221,13 +192,14 @@ function PinInput({
           </Button>
         )}
       </div>
+
       {cleanVal.length > 0 && cleanVal.length < 4 && (
         <p className="text-[11px] font-medium text-amber-500">
           Please enter all 4 digits ({cleanVal.length}/4)
         </p>
       )}
       {cleanVal.length === 4 && (
-        <p className="text-[11px] font-medium text-emerald-500">
+        <p className="text-[11px] font-medium text-emerald-500 flex items-center gap-1">
           ✓ 4-digit PIN ready
         </p>
       )}
@@ -857,6 +829,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                       id="owner-pin"
                       value={owner.loginCode || ''}
                       onChange={(v) => handleBasicChange(setOwner, 'loginCode', v)}
+                      onEnter={handleNext}
                     />
                     <p className="text-xs text-orange-400 font-medium">You will use this 4-digit PIN every day to open your store and access billing & reports.</p>
                   </div>
