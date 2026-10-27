@@ -71,6 +71,21 @@ async function writeFirestoreDoc(collection, docId, data) {
   return res.json();
 }
 
+async function deleteFirestoreDoc(collection, docId) {
+  const url = `${BASE_FIRESTORE_URL}/${collection}/${encodeURIComponent(docId)}`;
+  try {
+    const res = await fetch(url, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) {
+      const txt = await res.text();
+      console.warn(`[Firestore Delete Notice] ${collection}/${docId} (${res.status}): ${txt}`);
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[Firestore Delete Error] ${collection}/${docId}:`, err.message);
+    return false;
+  }
+}
+
 async function getAllLicenses() {
   const url = `${BASE_FIRESTORE_URL}/licenses?pageSize=100`;
   try {
@@ -320,6 +335,44 @@ async function handleRenewLicense(rl) {
   await rl.question('\nPress Enter to return to main menu...');
 }
 
+async function handleDeleteLicense(rl) {
+  printHeader();
+  console.log('\x1b[1;31m🗑️ DELETE STORE & REVOKE LICENSE\x1b[0m\n');
+
+  const licenseKey = (await rl.question('Enter License ID to DELETE: ')).trim();
+  const lic = await getLicenseByKey(licenseKey);
+
+  if (!lic) {
+    console.log('\x1b[31m❌ License not found in cloud database.\x1b[0m');
+    await rl.question('\nPress Enter to return to main menu...');
+    return;
+  }
+
+  console.log(`\n\x1b[33m⚠️ WARNING: This will permanently revoke access for:\x1b[0m`);
+  console.log(`   Store: \x1b[1m${lic.storeName}\x1b[0m`);
+  console.log(`   License: ${lic.licenseKey}`);
+  console.log(`   Owner: ${lic.ownerEmail}`);
+
+  const confirmation = (await rl.question('\nType "DELETE" in capital letters to confirm: ')).trim();
+  if (confirmation !== 'DELETE') {
+    console.log('\x1b[33mDeletion aborted.\x1b[0m');
+    await rl.question('\nPress Enter to return to main menu...');
+    return;
+  }
+
+  try {
+    await Promise.all([
+      deleteFirestoreDoc('licenses', licenseKey),
+      lic.ownerEmail ? deleteFirestoreDoc('whitelist', lic.ownerEmail) : Promise.resolve(),
+    ]);
+    console.log(`\x1b[32m✔ Store "${lic.storeName}" (${licenseKey}) deleted and whitelist revoked!\x1b[0m`);
+  } catch (err) {
+    console.log(`\x1b[31m❌ Failed to delete: ${err.message}\x1b[0m`);
+  }
+
+  await rl.question('\nPress Enter to return to main menu...');
+}
+
 async function main() {
   const rl = readline.createInterface({ input, output });
 
@@ -330,16 +383,18 @@ async function main() {
     console.log('  [2] 📋 View All Stores & License Expirations');
     console.log('  [3] ⏸️  Suspend / Activate Client (Instant Remote Kill-Switch)');
     console.log('  [4] 🔄 Renew Store Subscription (+1 Year / +6 Months)');
-    console.log('  [5] 🚪 Exit');
+    console.log('  [5] 🗑️  Delete Store & Revoke License');
+    console.log('  [6] 🚪 Exit');
     console.log('');
 
-    const choice = (await rl.question('\x1b[1mEnter choice [1-5]: \x1b[0m')).trim();
+    const choice = (await rl.question('\x1b[1mEnter choice [1-6]: \x1b[0m')).trim();
 
     if (choice === '1') await handleOnboardStore(rl);
     else if (choice === '2') await handleListLicenses(rl);
     else if (choice === '3') await handleToggleStatus(rl);
     else if (choice === '4') await handleRenewLicense(rl);
-    else if (choice === '5') {
+    else if (choice === '5') await handleDeleteLicense(rl);
+    else if (choice === '6') {
       console.log('\nExiting Developer Licensing CLI. Happy coding!\n');
       rl.close();
       process.exit(0);

@@ -60,6 +60,21 @@ async function writeFirestoreDoc(collection, docId, data) {
   return res.json();
 }
 
+async function deleteFirestoreDoc(collection, docId) {
+  const url = `${BASE_FIRESTORE_URL}/${collection}/${encodeURIComponent(docId)}`;
+  try {
+    const res = await fetch(url, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) {
+      const txt = await res.text();
+      console.warn(`[Firestore Delete Notice] ${collection}/${docId} (${res.status}): ${txt}`);
+    }
+    return true;
+  } catch (err) {
+    console.warn(`[Firestore Delete Error] ${collection}/${docId}:`, err.message);
+    return false;
+  }
+}
+
 const DB_FILE = path.join(__dirname, '..', 'data', 'licenses-db.json');
 
 function readLocalDb() {
@@ -608,6 +623,10 @@ const HTML_CONTENT = `<!DOCTYPE html>
                 <button onclick="renewStorePrompt('\${lic.licenseKey}', '\${lic.storeName}')" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors">
                   +1 Year
                 </button>
+                <button onclick="deleteStorePrompt('\${lic.licenseKey}', '\${lic.storeName}', '\${lic.ownerEmail}')" class="px-2 py-1 rounded-lg text-[11px] font-bold bg-rose-500/10 hover:bg-rose-500/25 text-rose-400 border border-rose-500/25 hover:border-rose-500/50 transition-colors flex items-center gap-1" title="Delete Store & Revoke License">
+                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  Delete
+                </button>
               </div>
             </td>
           </tr>
@@ -659,6 +678,32 @@ const HTML_CONTENT = `<!DOCTYPE html>
         loadStores();
       } catch (err) {
         alert('Error: ' + err.message);
+      }
+    }
+
+    async function deleteStorePrompt(licenseKey, storeName, ownerEmail) {
+      const confirmed = confirm(
+        \`⚠️ PERMANENTLY DELETE STORE?\\n\\n\` +
+        \`Store: \${storeName}\\n\` +
+        \`License: \${licenseKey}\\n\` +
+        \`Owner: \${ownerEmail || 'N/A'}\\n\\n\` +
+        \`This will permanently remove the license from your directory and revoke whitelist access in Cloud Firestore.\\n\\n\` +
+        \`Are you sure you want to proceed?\`
+      );
+      if (!confirmed) return;
+
+      try {
+        const res = await fetch('/api/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ licenseKey, ownerEmail }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'Delete failed');
+        showToast(\`🗑️ \${storeName} deleted successfully.\`);
+        loadStores();
+      } catch (err) {
+        alert('Delete failed: ' + err.message);
       }
     }
 
@@ -904,6 +949,49 @@ For support or setup assistance, reach out to our team at any time. Happy Billin
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: true, validUntil: newExpiry }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // API: Delete Store & Revoke License
+  if (url.pathname === '/api/delete' && req.method === 'POST') {
+    try {
+      const { licenseKey, ownerEmail } = await readJsonBody();
+      if (!licenseKey) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'License key is required.' }));
+        return;
+      }
+
+      const db = readLocalDb();
+      let emailToDelete = ownerEmail;
+      let storeName = '';
+
+      if (db.licenses && db.licenses[licenseKey]) {
+        emailToDelete = emailToDelete || db.licenses[licenseKey].ownerEmail;
+        storeName = db.licenses[licenseKey].storeName || '';
+        delete db.licenses[licenseKey];
+      }
+      if (emailToDelete && db.whitelist && db.whitelist[emailToDelete]) {
+        delete db.whitelist[emailToDelete];
+      }
+      writeLocalDb(db);
+
+      // Cloud deletion from Firestore
+      try {
+        await Promise.all([
+          deleteFirestoreDoc('licenses', licenseKey),
+          emailToDelete ? deleteFirestoreDoc('whitelist', emailToDelete) : Promise.resolve(),
+        ]);
+      } catch (cloudErr) {
+        console.warn('[Firestore Delete Notice]:', cloudErr.message);
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, licenseKey, storeName }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: err.message }));
