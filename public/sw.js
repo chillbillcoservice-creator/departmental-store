@@ -1,7 +1,7 @@
 // ChillBill Retail POS - Offline Service Worker
 // Provides 100% offline continuity for billing, receipt printing, scanning, and store ERP
 
-const CACHE_NAME = 'chillbill-pos-v4';
+const CACHE_NAME = 'chillbill-pos-v5';
 
 const STATIC_ASSETS = [
   '/',
@@ -12,6 +12,8 @@ const STATIC_ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
   '/icon-maskable-512.png',
+  '/chillbill-app-icon-1024.png',
+  '/chillbill-app-icon-4k.png',
 ];
 
 // Install Event - Pre-cache core app shell
@@ -30,85 +32,70 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            console.log('[Service Worker] Evicting legacy cache:', cache);
+            return caches.delete(cache);
+          }
+        })
       );
     }).then(() => self.clients.claim())
   );
 });
 
-// Fetch Event - Stale-While-Revalidate for static assets, Network-First with Cache Fallback for navigation
+// Fetch Event - Stale-while-revalidate for critical shell & network-first for live data
 self.addEventListener('fetch', (event) => {
   const { request } = event;
+  const url = new URL(request.url);
 
-  // Ignore non-GET requests or chrome-extension URLs
-  if (request.method !== 'GET' || !request.url.startsWith('http')) {
+  // Skip caching for non-GET and chrome-extension schemes
+  if (request.method !== 'GET' || !url.protocol.startsWith('http')) {
     return;
   }
 
-  // Handle page navigation (HTML)
-  if (request.mode === 'navigate') {
+  // API calls & dynamic routes: Network First, fallback to offline response
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/_next/data/')) {
     event.respondWith(
-      fetch(request)
-        .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            const clone = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return networkResponse;
-        })
-        .catch(() => {
-          // Offline fallback - return cached root shell
-          return caches.match(request).then((cachedResponse) => {
-            if (cachedResponse) return cachedResponse;
-            return caches.match('/');
-          });
-        })
-    );
-    return;
-  }
-
-  // Handle static assets (_next/static, images, fonts, styles)
-  const isStaticAsset =
-    request.url.includes('/_next/') ||
-    request.url.includes('/fonts/') ||
-    request.url.includes('/images/') ||
-    request.destination === 'style' ||
-    request.destination === 'script' ||
-    request.destination === 'image' ||
-    request.destination === 'font';
-
-  if (isStaticAsset) {
-    event.respondWith(
-      caches.match(request).then((cachedResponse) => {
-        const fetchPromise = fetch(request)
-          .then((networkResponse) => {
-            if (networkResponse && networkResponse.status === 200) {
-              const clone = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-            }
-            return networkResponse;
-          })
-          .catch(() => cachedResponse);
-
-        // Return cached version immediately if available, otherwise wait for network
-        return cachedResponse || fetchPromise;
+      fetch(request).catch(() => {
+        return new Response(
+          JSON.stringify({ offline: true, error: 'Offline mode active' }),
+          { headers: { 'Content-Type': 'application/json' } }
+        );
       })
     );
     return;
   }
 
-  // Default network-first for other requests
-  event.respondWith(
-    fetch(request)
-      .then((networkResponse) => {
+  // Manifest and icons: Network first to ensure immediate icon updates, falling back to cache
+  if (url.pathname.endsWith('.webmanifest') || url.pathname.endsWith('.json') || url.pathname.includes('icon')) {
+    event.respondWith(
+      fetch(request).then((networkResponse) => {
         if (networkResponse && networkResponse.status === 200) {
-          const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
         }
         return networkResponse;
-      })
-      .catch(() => caches.match(request))
+      }).catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // App shell & static assets: Cache First, update cache in background (Stale While Revalidate)
+  event.respondWith(
+    caches.match(request).then((cachedResponse) => {
+      const fetchPromise = fetch(request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseToCache);
+          });
+        }
+        return networkResponse;
+      }).catch(() => {
+        // Network unavailable - ignore, cachedResponse handles it
+      });
+
+      return cachedResponse || fetchPromise;
+    })
   );
 });
