@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { useLanguage } from "@/contexts/language-context";
 import { buildUsername, generateUniqueUsername, isUsernameTaken } from "@/lib/generate-username";
 import { Copy, Check } from "lucide-react";
+import { useSetupVoiceAssistant, SetupVoiceBar, VoiceFieldButton } from "./setup-voice-bar";
 
 interface SetupWizardProps {
   onComplete: (data: SetupData) => void;
@@ -214,6 +215,18 @@ const COUNTRIES = [
 export default function SetupWizard({ onComplete, initialData }: SetupWizardProps) {
   const [step, setStep] = useState(1);
   const { t, setLanguage: setGlobalLanguage } = useLanguage();
+  const voiceAssistant = useSetupVoiceAssistant("hinglish");
+
+  // Trigger Facebook-style step voice instruction when navigating steps
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (step === 1) voiceAssistant.speak("step1_intro");
+      else if (step === 2) voiceAssistant.speak("step2_intro");
+      else if (step === 3) voiceAssistant.speak("step3_intro");
+      else if (step === 4) voiceAssistant.speak("step4_intro");
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [step]);
 
 
   // State for all form fields
@@ -464,6 +477,7 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
   };
 
   const handleFinish = () => {
+    voiceAssistant.stop();
     if (!owner.loginCode || owner.loginCode.trim().length !== 4) {
       alert("Please set a 4-digit passcode for the Store Owner to secure your store.");
       setStep(2);
@@ -566,6 +580,10 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
               </button>
             ))}
           </div>
+
+          {/* Facebook-Style Audio Sahayak Bar */}
+          <SetupVoiceBar assistant={voiceAssistant} className="mt-1" />
+
           <div className="border-b border-border/80 mt-2" />
         </DialogHeader>
 
@@ -576,9 +594,13 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                 {/* Left Column */}
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-muted-foreground">{t('Business Name')}</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-bold text-muted-foreground">{t('Business Name')}</Label>
+                      <VoiceFieldButton onClick={() => voiceAssistant.speak('store_name', true)} />
+                    </div>
                     <Input
                       value={venue.name}
+                      onFocus={() => voiceAssistant.speak('store_name')}
                       onChange={(e) => handleBasicChange(setVenue, 'name', e.target.value)}
                       placeholder="e.g. The Grand Hotel"
                       className="h-10 bg-background border-input text-sm focus:ring-orange-500/20"
@@ -586,9 +608,13 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-muted-foreground">{t('Tagline (Optional)')}</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-bold text-muted-foreground">{t('Tagline (Optional)')}</Label>
+                      <VoiceFieldButton onClick={() => voiceAssistant.speak('store_tagline', true)} />
+                    </div>
                     <Input
                       value={venue.tagline}
+                      onFocus={() => voiceAssistant.speak('store_tagline')}
                       onChange={(e) => handleBasicChange(setVenue, 'tagline', e.target.value)}
                       placeholder="e.g. Best Brews in Town"
                       className="h-10 bg-background border-input text-sm"
@@ -599,9 +625,13 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-muted-foreground">{t('City')}</Label>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-bold text-muted-foreground">{t('City')}</Label>
+                        <VoiceFieldButton onClick={() => voiceAssistant.speak('store_address', true)} />
+                      </div>
                       <Input
                         value={venue.city}
+                        onFocus={() => voiceAssistant.speak('store_address')}
                         onChange={(e) => handleBasicChange(setVenue, 'city', e.target.value)}
                         placeholder="e.g. Manali"
                         className="h-10 bg-background border-input text-sm"
@@ -644,9 +674,13 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                   </div>
 
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-muted-foreground">{t('Business Mobile (Optional)')}</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-bold text-muted-foreground">{t('Business Mobile (Optional)')}</Label>
+                      <VoiceFieldButton onClick={() => voiceAssistant.speak('store_contact', true)} />
+                    </div>
                     <Input
                       value={venue.contactNumber}
+                      onFocus={() => voiceAssistant.speak('store_contact')}
                       onChange={(e) => handleBasicChange(setVenue, 'contactNumber', e.target.value)}
                       placeholder="e.g. +91 9876543210"
                       className="h-10 bg-background border-input text-sm"
@@ -744,9 +778,13 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
               {/* Owner 1 Card */}
               <div className="bg-card/50 backdrop-blur-sm p-4 rounded-xl border border-border shadow-sm space-y-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-bold text-muted-foreground">{t('Owner 1 Name')}</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-bold text-muted-foreground">{t('Owner 1 Name')}</Label>
+                    <VoiceFieldButton onClick={() => voiceAssistant.speak('owner_name', true)} />
+                  </div>
                   <Input
                     value={owner.name}
+                    onFocus={() => voiceAssistant.speak('owner_name')}
                     onChange={(e) => handleOwnerNameChange(e.target.value)}
                     placeholder={t('Full Name')}
                     className="h-10 bg-background border-input text-sm"
@@ -754,9 +792,13 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-muted-foreground">{t('Mobile (Optional)')}</Label>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm font-bold text-muted-foreground">{t('Mobile (Optional)')}</Label>
+                      <VoiceFieldButton onClick={() => voiceAssistant.speak('owner_mobile', true)} />
+                    </div>
                     <Input
                       value={owner.contactNumber}
+                      onFocus={() => voiceAssistant.speak('owner_mobile')}
                       onChange={(e) => handleBasicChange(setOwner, 'contactNumber', e.target.value)}
                       placeholder="e.g., 9876543210"
                       className="h-10 bg-background border-input text-sm"
@@ -821,16 +863,21 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                     )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="owner-pin" className="text-sm font-bold text-foreground flex items-center gap-1.5">
-                      <Shield size={14} className="text-orange-500" />
-                      Create 4-Digit Owner Passcode (PIN) <span className="text-destructive">*</span>
-                    </Label>
-                    <PinInput
-                      id="owner-pin"
-                      value={owner.loginCode || ''}
-                      onChange={(v) => handleBasicChange(setOwner, 'loginCode', v)}
-                      onEnter={handleNext}
-                    />
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="owner-pin" className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                        <Shield size={14} className="text-orange-500" />
+                        Create 4-Digit Owner Passcode (PIN) <span className="text-destructive">*</span>
+                      </Label>
+                      <VoiceFieldButton onClick={() => voiceAssistant.speak('owner_pin', true)} />
+                    </div>
+                    <div onClick={() => voiceAssistant.speak('owner_pin')}>
+                      <PinInput
+                        id="owner-pin"
+                        value={owner.loginCode || ''}
+                        onChange={(v) => handleBasicChange(setOwner, 'loginCode', v)}
+                        onEnter={handleNext}
+                      />
+                    </div>
                     <p className="text-xs text-orange-400 font-medium">You will use this 4-digit PIN every day to open your store and access billing & reports.</p>
                   </div>
                 </div>
@@ -915,10 +962,11 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                 </div>
               ))}
 
-              <div>
+              <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={addOwner} className="border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200">
                   <PlusCircle size={16} className="mr-2" /> {t('Add Another Owner')}
                 </Button>
+                <VoiceFieldButton onClick={() => voiceAssistant.speak('owner_partner', true)} label="Partner Guide" />
               </div>
             </div>
           )}
@@ -934,8 +982,17 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-muted-foreground">{t('Employee')} {idx + 1} {t('Name')}</Label>
-                      <Input value={emp.name} onChange={(e) => updateEmployee(idx, 'name', e.target.value)} placeholder={t('Full Name')} className="h-10 bg-background border-input text-sm" />
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-bold text-muted-foreground">{t('Employee')} {idx + 1} {t('Name')}</Label>
+                        <VoiceFieldButton onClick={() => voiceAssistant.speak('staff_name', true)} />
+                      </div>
+                      <Input
+                        value={emp.name}
+                        onFocus={() => voiceAssistant.speak('staff_name')}
+                        onChange={(e) => updateEmployee(idx, 'name', e.target.value)}
+                        placeholder={t('Full Name')}
+                        className="h-10 bg-background border-input text-sm"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-sm font-bold text-muted-foreground">{t('Email (Optional)')}</Label>
@@ -982,22 +1039,30 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                       )}
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor={`emp-pin-${idx}`} className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
-                        <Shield size={13} className="text-orange-400" />
-                        4-Digit Passcode
-                      </Label>
-                      <PinInput
-                        id={`emp-pin-${idx}`}
-                        value={emp.loginCode || ''}
-                        onChange={(v) => updateEmployee(idx, 'loginCode', v)}
-                      />
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor={`emp-pin-${idx}`} className="text-sm font-bold text-muted-foreground flex items-center gap-1.5">
+                          <Shield size={13} className="text-orange-400" />
+                          4-Digit Passcode
+                        </Label>
+                        <VoiceFieldButton onClick={() => voiceAssistant.speak('staff_pin', true)} />
+                      </div>
+                      <div onClick={() => voiceAssistant.speak('staff_pin')}>
+                        <PinInput
+                          id={`emp-pin-${idx}`}
+                          value={emp.loginCode || ''}
+                          onChange={(v) => updateEmployee(idx, 'loginCode', v)}
+                        />
+                      </div>
                       <p className="text-[10px] text-muted-foreground">Enter any 4-digit PIN of your choice for staff login (e.g. 1234)</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-muted-foreground">{t('Role')}</Label>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-bold text-muted-foreground">{t('Role')}</Label>
+                        <VoiceFieldButton onClick={() => voiceAssistant.speak('staff_role', true)} />
+                      </div>
                       <Select
                         value={(["Admin", "Store Manager", "Cashier", "Inventory Clerk", "Billing Clerk", "Floor Assistant", "Helper", "Security", "Delivery Person", "Other"].includes(emp.role || "") ? emp.role : "Other")}
                         onValueChange={(val) => updateEmployee(idx, 'role', val)}
@@ -1075,10 +1140,11 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                 </div>
               ))}
 
-              <div>
+              <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={addEmployeeCard} className="border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200">
                   <PlusCircle size={16} className="mr-2" /> {t('Add Another Employee')}
                 </Button>
+                <VoiceFieldButton onClick={() => voiceAssistant.speak('step3_intro', true)} label="Staff Guide" />
               </div>
             </div>
           )}
@@ -1094,16 +1160,34 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-muted-foreground">{t('Vendor Name')}</Label>
-                      <Input value={v.name} onChange={(e) => updateVendor(idx, 'name', e.target.value)} placeholder="e.g. Local Veggies Co." className="h-10 bg-background border-input text-sm" />
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-bold text-muted-foreground">{t('Vendor Name')}</Label>
+                        <VoiceFieldButton onClick={() => voiceAssistant.speak('vendor_name', true)} />
+                      </div>
+                      <Input
+                        value={v.name}
+                        onFocus={() => voiceAssistant.speak('vendor_name')}
+                        onChange={(e) => updateVendor(idx, 'name', e.target.value)}
+                        placeholder="e.g. Local Veggies Co."
+                        className="h-10 bg-background border-input text-sm"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-sm font-bold text-muted-foreground">{t('Category')}</Label>
                       <Input value={v.category} onChange={(e) => updateVendor(idx, 'category', e.target.value)} placeholder={t('e.g., Food & Beverage')} className="h-10 bg-background border-input text-sm" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-sm font-bold text-muted-foreground">{t('Mobile No.')}</Label>
-                      <Input value={v.phone} onChange={(e) => updateVendor(idx, 'phone', e.target.value)} placeholder="e.g., 9876543210" className="h-10 bg-background border-input text-sm" />
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-bold text-muted-foreground">{t('Mobile No.')}</Label>
+                        <VoiceFieldButton onClick={() => voiceAssistant.speak('vendor_contact', true)} />
+                      </div>
+                      <Input
+                        value={v.phone}
+                        onFocus={() => voiceAssistant.speak('vendor_contact')}
+                        onChange={(e) => updateVendor(idx, 'phone', e.target.value)}
+                        placeholder="e.g., 9876543210"
+                        className="h-10 bg-background border-input text-sm"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-sm font-bold text-muted-foreground">{t('Email (Optional)')}</Label>
@@ -1126,10 +1210,11 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
                 </div>
               ))}
 
-              <div>
+              <div className="flex items-center gap-2">
                 <Button variant="outline" onClick={addVendorCard} className="border-dashed border-zinc-700 text-zinc-400 hover:text-zinc-200">
                   <PlusCircle size={16} className="mr-2" /> {t('Add Another Vendor')}
                 </Button>
+                <VoiceFieldButton onClick={() => voiceAssistant.speak('step4_intro', true)} label="Vendor Guide" />
               </div>
             </div>
           )}
