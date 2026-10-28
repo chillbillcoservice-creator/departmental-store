@@ -235,6 +235,8 @@ export default function StaffLogin({ isOpen, onOpenChange, employees, onLogin, i
                                                 ref={el => { inputRefs.current[idx] = el; }}
                                                 type="password"
                                                 inputMode="numeric"
+                                                pattern="[0-9]*"
+                                                autoComplete="one-time-code"
                                                 maxLength={1}
                                                 value={digit}
                                                 onChange={e => handlePinChange(idx, e.target.value)}

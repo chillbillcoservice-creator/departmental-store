@@ -535,7 +535,14 @@ export default function LoginScreen({
                                     </span>
                                 )}
                             </p>
-                            <input ref={pinRef} type="password" maxLength={4} value={pin}
+                            <input
+                                ref={pinRef}
+                                type="password"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                autoComplete="one-time-code"
+                                maxLength={4}
+                                value={pin}
                                 onChange={e => {
                                     const val = e.target.value.replace(/\D/g, "");
                                     setPin(val);
@@ -836,7 +843,14 @@ export default function LoginScreen({
                                                             </span>
                                                         </div>
                                                     )}
-                                                    <input ref={pinRef} type="password" maxLength={4} value={pin}
+                                                    <input
+                                                        ref={pinRef}
+                                                        type="password"
+                                                        inputMode="numeric"
+                                                        pattern="[0-9]*"
+                                                        autoComplete="one-time-code"
+                                                        maxLength={4}
+                                                        value={pin}
                                                         onChange={e => { setPin(e.target.value.replace(/\D/g, "")); setError(""); }}
                                                         onKeyDown={e => e.key === "Enter" && handlePinLogin()}
                                                         className={cn("w-full h-14 text-center text-3xl font-black tracking-[0.5em] rounded-xl border bg-transparent focus:outline-none", shake && "animate-shake")}
