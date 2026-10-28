@@ -1,7 +1,7 @@
 // ChillBill Retail POS - Offline Service Worker
 // Provides 100% offline continuity for billing, receipt printing, scanning, and store ERP
 
-const CACHE_NAME = 'chillbill-pos-v3';
+const CACHE_NAME = 'chillbill-pos-v4';
 
 const STATIC_ASSETS = [
   '/',
