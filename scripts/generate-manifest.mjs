@@ -3,7 +3,8 @@ import path from 'path';
 
 async function generateManifest() {
   const templatePath = path.join(process.cwd(), 'src', 'data', 'manifest.template.json');
-  const outputPath = path.join(process.cwd(), 'public', 'site.webmanifest');
+  const webmanifestPath = path.join(process.cwd(), 'public', 'site.webmanifest');
+  const jsonManifestPath = path.join(process.cwd(), 'public', 'manifest.json');
 
   // Vercel provides this environment variable. Fallback for local development.
   const rawUrl = process.env.NEXT_PUBLIC_VERCEL_URL || '';
@@ -27,9 +28,11 @@ async function generateManifest() {
     }
 
     const finalManifest = JSON.stringify(manifestTemplate, null, 2);
-    await fs.writeFile(outputPath, finalManifest);
+    // Write both site.webmanifest and manifest.json for universal browser compatibility
+    await fs.writeFile(webmanifestPath, finalManifest);
+    await fs.writeFile(jsonManifestPath, finalManifest);
 
-    console.log(`Successfully generated site.webmanifest at ${outputPath}`);
+    console.log(`Successfully generated site.webmanifest and manifest.json`);
   } catch (error) {
     console.error('Failed to generate manifest file:', error);
     process.exit(1);

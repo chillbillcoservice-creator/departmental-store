@@ -1,12 +1,17 @@
 // ChillBill Retail POS - Offline Service Worker
 // Provides 100% offline continuity for billing, receipt printing, scanning, and store ERP
 
-const CACHE_NAME = 'chillbill-pos-v2';
+const CACHE_NAME = 'chillbill-pos-v3';
 
 const STATIC_ASSETS = [
   '/',
+  '/manifest.json',
   '/site.webmanifest',
   '/favicon.ico',
+  '/apple-touch-icon.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-maskable-512.png',
 ];
 
 // Install Event - Pre-cache core app shell
