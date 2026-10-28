@@ -243,25 +243,52 @@ export function MobileDashboardTab({
                     </span>
                 </div>
 
-                {/* Filter Pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                {/* Responsive 3-Column Filter Pills (Zero Horizontal Scrollbar) */}
+                <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-muted/60 border border-border/60">
                     <button 
                         onClick={() => setInvFilter('low')}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 ${invFilter === 'low' ? 'bg-orange-500 text-white shadow-sm' : 'bg-muted text-muted-foreground'}`}
+                        className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            invFilter === 'low' 
+                                ? 'bg-orange-500 text-white shadow-sm' 
+                                : 'text-muted-foreground hover:text-foreground hover:bg-background/40'
+                        }`}
                     >
-                        ⚠️ Low / Out ({outOfStockItems.length + lowStockItems.length})
+                        <span>⚠️ Low</span>
+                        <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
+                            invFilter === 'low' ? 'bg-white/25 text-white' : 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
+                        }`}>
+                            {outOfStockItems.length + lowStockItems.length}
+                        </span>
                     </button>
                     <button 
                         onClick={() => setInvFilter('out')}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 ${invFilter === 'out' ? 'bg-red-500 text-white shadow-sm' : 'bg-muted text-muted-foreground'}`}
+                        className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            invFilter === 'out' 
+                                ? 'bg-red-500 text-white shadow-sm' 
+                                : 'text-muted-foreground hover:text-foreground hover:bg-background/40'
+                        }`}
                     >
-                        🚨 Out of Stock ({outOfStockItems.length})
+                        <span>🚨 Out</span>
+                        <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
+                            invFilter === 'out' ? 'bg-white/25 text-white' : 'bg-red-500/10 text-red-600 dark:text-red-400'
+                        }`}>
+                            {outOfStockItems.length}
+                        </span>
                     </button>
                     <button 
                         onClick={() => setInvFilter('all')}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 ${invFilter === 'all' ? 'bg-foreground text-background shadow-sm' : 'bg-muted text-muted-foreground'}`}
+                        className={`py-2 px-1 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                            invFilter === 'all' 
+                                ? 'bg-foreground text-background shadow-sm' 
+                                : 'text-muted-foreground hover:text-foreground hover:bg-background/40'
+                        }`}
                     >
-                        All Items ({inventory.length})
+                        <span>📦 All</span>
+                        <span className={`text-[10px] font-black px-1.5 py-0.2 rounded-full ${
+                            invFilter === 'all' ? 'bg-background/25 text-background' : 'bg-muted-foreground/15 text-muted-foreground'
+                        }`}>
+                            {inventory.length}
+                        </span>
                     </button>
                 </div>
 

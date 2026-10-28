@@ -1,16 +1,28 @@
 {
   "licenses": {
-    "CBILL-2026-CGL5": {
-      "licenseKey": "CBILL-2026-CGL5",
+    "CBILL-2026-E5SK": {
+      "licenseKey": "CBILL-2026-E5SK",
       "ownerEmail": "chillbill.co.service@gmail.com",
       "storeName": "krishna supermart",
       "ownerName": "KRISHNA MADNANI",
       "phone": "9971509502",
       "plan": "annual",
       "status": "active",
-      "validUntil": "2027-10-27T12:46:27.953Z",
+      "validUntil": "2027-10-28T01:06:14.313Z",
       "maxCounters": 1,
-      "createdAt": "2026-10-27T12:46:27.953Z"
+      "createdAt": "2026-10-28T01:06:14.313Z"
+    },
+    "CBILL-2026-ST2R": {
+      "licenseKey": "CBILL-2026-ST2R",
+      "ownerEmail": "chillbillindia@gmail.com",
+      "storeName": "TEST 01",
+      "ownerName": "ROHIT GAUTAM",
+      "phone": "9230082829",
+      "plan": "annual",
+      "status": "active",
+      "validUntil": "2027-10-28T12:51:21.309Z",
+      "maxCounters": 1,
+      "createdAt": "2026-10-28T12:51:21.310Z"
     }
   },
   "whitelist": {
@@ -19,8 +31,16 @@
       "storeName": "krishna supermart",
       "ownerName": "KRISHNA MADNANI",
       "status": "approved",
-      "licenseKey": "CBILL-2026-CGL5",
-      "createdAt": "2026-10-27T12:46:27.953Z"
+      "licenseKey": "CBILL-2026-E5SK",
+      "createdAt": "2026-10-28T01:06:14.313Z"
+    },
+    "chillbillindia@gmail.com": {
+      "email": "chillbillindia@gmail.com",
+      "storeName": "TEST 01",
+      "ownerName": "ROHIT GAUTAM",
+      "status": "approved",
+      "licenseKey": "CBILL-2026-ST2R",
+      "createdAt": "2026-10-28T12:51:21.310Z"
     }
   }
 }
