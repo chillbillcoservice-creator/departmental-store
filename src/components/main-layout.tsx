@@ -799,6 +799,20 @@ export default function MainLayout({
             <span className="text-lg font-bold">{formattedTime}</span>
           </div>
 
+          {/* Quick Voice Setup Wizard Launcher for Beta Testing */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSetupWizard(true)}
+            className="flex items-center gap-1.5 h-9 px-3 rounded-xl border-orange-500/40 bg-orange-500/10 text-orange-600 dark:text-orange-400 hover:bg-orange-500/20 font-bold text-xs shadow-xs cursor-pointer"
+            title="Test Facebook-style Voice Onboarding Setup Wizard"
+          >
+            <Headphones className="h-4 w-4 text-orange-500 animate-pulse" />
+            <span className="hidden lg:inline">Voice Setup Wizard</span>
+            <span className="lg:hidden">Setup</span>
+          </Button>
+
           {currentUser && (
             <div className="flex items-center gap-1.5">
               <Button

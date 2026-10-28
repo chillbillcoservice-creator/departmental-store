@@ -173,6 +173,42 @@ export default function AppEntry({
   const [initialAuthView, setInitialAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(null);
   const [initialSetupData, setInitialSetupData] = useState<{ storeName?: string; ownerName?: string; email?: string } | null>(null);
 
+  // Beta / Dev mode detection: completely bypass login screens so user can develop & test freely
+  const [isBetaMode, setIsBetaMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const h = window.location.hostname;
+      return h.includes('beta') || h.includes('chillbill-beta') || h.includes('localhost') || h.includes('127.0.0.1');
+    }
+    return true; // Safe default
+  });
+  const [forceSetupWizard, setForceSetupWizard] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const h = window.location.hostname;
+      const beta = h.includes('beta') || h.includes('chillbill-beta') || h.includes('localhost') || h.includes('127.0.0.1');
+      setIsBetaMode(beta);
+
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('wizard') === 'true' || params.get('setup') === 'true') {
+        setForceSetupWizard(true);
+      }
+
+      if (beta) {
+        const ownerEmp = employees.find(e => e.role === 'Owner') || employees[0] || DEFAULT_STAFF[0];
+        if (!currentEmployee) {
+          setCurrentEmployee(ownerEmp);
+        }
+        if (!ownerUser) {
+          setOwnerUser({ uid: ownerEmp.id, email: ownerDetails?.email || 'owner@store' } as any);
+        }
+        if (!isSetupComplete) {
+          setIsSetupComplete(true);
+        }
+      }
+    }
+  }, [employees, currentEmployee, ownerUser, isSetupComplete, ownerDetails]);
+
   // Verify license & 14-day offline grace on mount if store is already setup
   useEffect(() => {
     const checkActiveLicense = async () => {
@@ -324,13 +360,33 @@ export default function AppEntry({
     });
   };
 
+  // Step 0: If ?wizard=true or user requested setup wizard, display it directly
+  if (forceSetupWizard) {
+    return (
+      <LanguageProvider key={language} initialLanguage={language}>
+        <SetupWizard
+          onComplete={(data) => {
+            handleSetupComplete(data);
+            setForceSetupWizard(false);
+          }}
+          initialData={{
+            currency,
+            language,
+            venue: venueDetails || { name: venueName || 'ChillBill Store' },
+            owner: ownerDetails || { name: 'Store Owner' }
+          }}
+        />
+      </LanguageProvider>
+    );
+  }
+
   // Step 1: Access denied - email not on whitelist
-  if (deniedEmail) {
+  if (deniedEmail && !isBetaMode) {
     return <AccessDeniedScreen email={deniedEmail} onSignOut={() => setDeniedEmail(null)} />;
   }
 
   // Step 1.5: Subscription Expired, Suspended, or 14-Day Offline Limit Reached
-  if (licenseError) {
+  if (licenseError && !isBetaMode) {
     return (
       <LicenseExpiredScreen
         status={licenseError.status}
@@ -365,12 +421,12 @@ export default function AppEntry({
   }
 
   // Check if terminal is already activated on this device
-  const isTerminalActivated = isSetupComplete &&
+  const isTerminalActivated = (isSetupComplete &&
     (typeof window !== 'undefined' && localStorage.getItem('isSetupComplete') === 'true') &&
-    !initialAuthView;
+    !initialAuthView) || isBetaMode;
 
   // Step 3: If terminal is already activated on this device, go DIRECTLY to SS2 (Staff & Owner PIN Login)
-  if (isTerminalActivated && !currentEmployee) {
+  if (isTerminalActivated && !currentEmployee && !isBetaMode) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
         <LoginScreen
@@ -397,7 +453,7 @@ export default function AppEntry({
   }
 
   // Step 4: First-time setup / not yet activated machine: show License Activation & Signup screen
-  if (!isTerminalActivated && !ownerUser && !currentEmployee) {
+  if (!isTerminalActivated && !ownerUser && !currentEmployee && !isBetaMode) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
         <LoginScreen
@@ -510,7 +566,7 @@ export default function AppEntry({
   }
 
   // Step 5: New owner needs to complete Setup Wizard ("Let's Set Up Your Business")
-  if (isNewOwner === true || !isSetupComplete) {
+  if ((isNewOwner === true || !isSetupComplete) && !isBetaMode) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
         <SetupWizard
@@ -537,8 +593,11 @@ export default function AppEntry({
     );
   }
 
-  // Step 6: Fallback PIN login mode if currentEmployee is cleared
-  if (!currentEmployee) {
+  // Resolve effective user: if in beta mode, always auto-login as Store Owner
+  const effectiveEmployee = currentEmployee || (isBetaMode ? (employees.find(e => e.role === 'Owner') || employees[0] || DEFAULT_STAFF[0]) : null);
+
+  // Step 6: Fallback PIN login mode if currentEmployee is cleared (non-beta only)
+  if (!effectiveEmployee) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
         <LoginScreen
@@ -558,7 +617,7 @@ export default function AppEntry({
   }
 
   // Step 6: Store view — If user is Owner and on mobile viewport
-  if (currentEmployee.role === 'Owner' && isMobile) {
+  if (effectiveEmployee.role === 'Owner' && isMobile) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
         <OwnerMobileLayout
@@ -621,7 +680,7 @@ export default function AppEntry({
         venueDetails={venueDetails}
         setVenueDetails={setVenueDetails}
         ownerDetails={ownerDetails}
-        initialUser={currentEmployee}
+        initialUser={effectiveEmployee}
       />
     </LanguageProvider>
   );
