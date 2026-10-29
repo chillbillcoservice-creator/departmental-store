@@ -19,6 +19,7 @@ import { useSetupVoiceAssistant, SetupVoiceBar, VoiceFieldButton } from "./setup
 
 interface SetupWizardProps {
   onComplete: (data: SetupData) => void;
+  onSkip?: () => void;
   initialData?: Partial<SetupData>;
 }
 
@@ -212,7 +213,7 @@ const COUNTRIES = [
   { name: "India", code: "IN", currency: "Rs.", currencyName: "INR", languages: ["en", "hi", "ta", "gu", "ml", "pa", "bn", "mr", "ur"] },
 ];
 
-export default function SetupWizard({ onComplete, initialData }: SetupWizardProps) {
+export default function SetupWizard({ onComplete, onSkip, initialData }: SetupWizardProps) {
   const [step, setStep] = useState(1);
   const { t, setLanguage: setGlobalLanguage } = useLanguage();
   const voiceAssistant = useSetupVoiceAssistant("hinglish");
@@ -535,6 +536,44 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
     });
   };
 
+  const handleSkip = () => {
+    voiceAssistant.stop();
+    if (onSkip) {
+      onSkip();
+      return;
+    }
+
+    const finalCurrency = currency === "custom" || venue.country === "Other" ? customCurrency : currency;
+    const finalCountry = venue.country === "Other" ? customCountry : venue.country;
+    const fullAddress = venue.address || [venue.street, venue.city, venue.state, venue.zip, finalCountry].filter(Boolean).join(", ");
+    const addressToSave = fullAddress || (finalCountry ? `${finalCountry}` : "");
+
+    const assignedUsernames: string[] = [];
+    const finalOwnerUsername = owner.username?.trim() || generateUniqueUsername(owner.name || 'owner', assignedUsernames);
+    assignedUsernames.push(finalOwnerUsername);
+    const finalOwner = {
+      ...owner,
+      name: owner.name || 'Store Owner',
+      loginCode: owner.loginCode && owner.loginCode.trim().length === 4 ? owner.loginCode : '0000',
+      username: finalOwnerUsername
+    };
+
+    onComplete({
+      venue: {
+        ...venue,
+        name: venue.name || 'ChillBill Store',
+        country: finalCountry,
+        address: addressToSave
+      },
+      owner: finalOwner,
+      additionalOwners: [],
+      employees: employees.filter(e => e.name),
+      vendors: vendors.filter(v => v.name),
+      currency: finalCurrency || "Rs.",
+      language: language
+    });
+  };
+
   const isStep1Valid = true;
   const isStep2Valid = owner.name && owner.contactNumber;
   const isStep3Valid = true; // Optional to add employees
@@ -546,7 +585,17 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
           <div className="absolute -top-24 -right-24 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl opacity-50" />
           <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl opacity-50" />
         </div>
-        <div className="absolute top-4 right-4 z-50">
+        <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleSkip}
+            className="h-8 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 rounded-lg cursor-pointer"
+            title="Skip Setup Wizard"
+          >
+            {t('Skip')} &times;
+          </Button>
           <ThemeToggle />
         </div>
         <DialogHeader className="mb-6 relative z-10 shrink-0 space-y-4">
@@ -1239,8 +1288,8 @@ export default function SetupWizard({ onComplete, initialData }: SetupWizardProp
             <div className="flex-1 flex justify-center">
               <button
                 type="button"
-                onClick={handleFinish}
-                className="text-xs text-orange-500 hover:text-orange-400 font-medium opacity-80 hover:opacity-100 transition-opacity"
+                onClick={handleSkip}
+                className="text-xs text-orange-500 hover:text-orange-400 font-bold underline underline-offset-4 opacity-90 hover:opacity-100 transition-opacity cursor-pointer py-1 px-3 rounded-lg hover:bg-orange-500/10"
               >
                 {t('Skip for now')}
               </button>

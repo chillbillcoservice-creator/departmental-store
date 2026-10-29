@@ -662,7 +662,7 @@ export default function MainLayout({
   }
 
   if (showSetupWizard) {
-    return <SetupWizard onComplete={handleSetupComplete} />;
+    return <SetupWizard onComplete={handleSetupComplete} onSkip={() => setShowSetupWizard(false)} />;
   }
 
   const navItems = [

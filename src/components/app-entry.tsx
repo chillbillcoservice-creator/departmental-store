@@ -335,6 +335,47 @@ export default function AppEntry({
     });
   };
 
+  const handleSkipSetup = () => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
+    const existingOwner = employees.find(e => e.role === 'Owner') || employees[0];
+    const defaultOwnerEmployee: Employee = existingOwner ? {
+      ...existingOwner,
+      role: 'Owner',
+      allowedTabs: ['all'],
+      name: existingOwner.name || ownerDetails?.name || 'Store Owner',
+      loginCode: existingOwner.loginCode || ownerDetails?.loginCode || '0000',
+    } : {
+      id: 'owner-1',
+      name: ownerDetails?.name || initialSetupData?.ownerName || 'Store Owner',
+      role: 'Owner',
+      salary: 0,
+      color: '#f97316',
+      mobile: ownerDetails?.contactNumber || '',
+      email: ownerDetails?.email || initialSetupData?.email || '',
+      allowedTabs: ['all'],
+      password: '',
+      loginCode: ownerDetails?.loginCode || '0000',
+      username: 'owner',
+    };
+
+    const updatedEmployees = employees.length > 0 ? employees : [defaultOwnerEmployee];
+    setEmployees(updatedEmployees);
+    setCurrentEmployee(defaultOwnerEmployee);
+    setOwnerUser({ uid: defaultOwnerEmployee.id, email: defaultOwnerEmployee.email || 'owner@store' } as any);
+
+    setIsSetupComplete(true);
+    setIsNewOwner(false);
+    setForceSetupWizard(false);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('setupComplete', 'true');
+      localStorage.setItem('isSetupComplete', 'true');
+      localStorage.setItem('venueName', venueName || 'ChillBill Store');
+    }
+  };
+
   // Step 0: If ?wizard=true or user requested setup wizard, display it directly
   if (forceSetupWizard) {
     return (
@@ -344,6 +385,7 @@ export default function AppEntry({
             handleSetupComplete(data);
             setForceSetupWizard(false);
           }}
+          onSkip={handleSkipSetup}
           initialData={{
             currency,
             language,
@@ -546,6 +588,7 @@ export default function AppEntry({
       <LanguageProvider key={language} initialLanguage={language}>
         <SetupWizard
           onComplete={handleSetupComplete}
+          onSkip={handleSkipSetup}
           initialData={{
             currency,
             language,
