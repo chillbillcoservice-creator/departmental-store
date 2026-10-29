@@ -631,8 +631,8 @@ export default function AppEntry({
     );
   }
 
-  // Step 6: Store view — If user is Owner and on mobile viewport
-  if (currentEmployee.role === 'Owner' && isMobile) {
+  // Step 6: Store view — Strictly open Mobile Layout on all mobile devices (S, M, L, XL, XXL)
+  if (isMobile) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
         <OwnerMobileLayout
