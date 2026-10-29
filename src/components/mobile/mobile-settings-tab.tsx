@@ -317,14 +317,20 @@ export function MobileSettingsTab({
                                 <div className="w-5 h-5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-xs">
                                     🤖
                                 </div>
-                                <span>Android (Google Chrome)</span>
+                                <span>Android (Google Chrome / Xiaomi Mi Browser)</span>
                             </div>
                             <ol className="list-decimal pl-5 space-y-1.5 text-muted-foreground text-[11px] leading-relaxed">
                                 <li>Tap the <strong>3 dots (⋮)</strong> in the top-right corner of Chrome.</li>
-                                <li>Tap <strong>&ldquo;Install app&rdquo;</strong> (or <strong>&ldquo;Add to Home screen&rdquo;</strong>).</li>
+                                <li>Scroll down the menu list and tap <strong>&ldquo;Install app&rdquo;</strong> (or <strong>&ldquo;Add to Home screen&rdquo;</strong>).</li>
                                 <li>Tap <strong>&ldquo;Install&rdquo;</strong> on the popup. The app will install directly to your app drawer and home screen!</li>
                             </ol>
-                            <p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
+                                                        <div className="text-[11px] font-bold text-amber-500 bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/30 flex items-start gap-2">
+                                <span className="text-base leading-none">⚠️</span>
+                                <div>
+                                    <span className="text-foreground font-black">DO NOT tap the download arrow (⬇)</span> at the top row of Chrome! That downloads an offline web page copy. Scroll down the menu list to tap <span className="underline">&ldquo;Install app&rdquo;</span>.
+                                </div>
+                            </div>
+<p className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
                                 ✓ Chrome creates a native WebAPK app without downloading raw files.
                             </p>
                         </div>

@@ -438,8 +438,9 @@ export default function AppEntry({
   }
 
   // Check if terminal is already activated on this device
-  const isTerminalActivated = isSetupComplete &&
-    (typeof window !== 'undefined' && localStorage.getItem('isSetupComplete') === 'true') &&
+  // On all mobile devices (S, M, L, XL, XXL, Xiaomi, Samsung, iPhone), terminal is activated by default to strictly show mobile POS
+  const isTerminalActivated = (isSetupComplete || isMobile) &&
+    (typeof window !== 'undefined' && (localStorage.getItem('isSetupComplete') === 'true' || isMobile)) &&
     !initialAuthView;
 
   // Step 3: If terminal is already activated on this device, go DIRECTLY to SS2 (Staff & Owner PIN Login)
@@ -453,16 +454,17 @@ export default function AppEntry({
           isPosMode={true}
           onLogin={(emp) => {
             setCurrentEmployee(emp);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('isSetupComplete', 'true');
+              localStorage.setItem('setupComplete', 'true');
+            }
             if (emp.role === 'Owner') {
               setOwnerUser({ uid: emp.id, email: ownerDetails?.email || 'owner@store' } as any);
             }
           }}
           onUpdateEmployees={(updated) => setEmployees(updated)}
           onSwitchLicense={() => {
-            if (typeof window !== 'undefined') {
-              localStorage.clear();
-              window.location.reload();
-            }
+            setInitialAuthView("owner-login");
           }}
         />
       </LanguageProvider>
@@ -478,7 +480,7 @@ export default function AppEntry({
           venueName={venueName}
           venueId={venueId || undefined}
           isSetupComplete={isSetupComplete}
-          initialAuthView={initialAuthView}
+          initialAuthView={initialAuthView || (isMobile ? "owner-login" : null)}
           onLogin={(emp) => setCurrentEmployee(emp)}
           onUpdateEmployees={(updated) => setEmployees(updated)}
           onAccessDenied={(email) => setDeniedEmail(email)}
@@ -583,7 +585,7 @@ export default function AppEntry({
   }
 
   // Step 5: New owner needs to complete Setup Wizard ("Let's Set Up Your Business")
-  if (isNewOwner === true || !isSetupComplete) {
+  if (isNewOwner === true || (!isSetupComplete && !isMobile)) {
     return (
       <LanguageProvider key={language} initialLanguage={language}>
         <SetupWizard

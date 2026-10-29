@@ -17,6 +17,11 @@ export default function PwaRegister() {
         console.log('[ChillBill PWA] App installed successfully');
       };
 
+      // If beforeinstallprompt was already captured in <head>, notify all listeners immediately
+      if ((window as any).deferredPrompt) {
+        window.dispatchEvent(new CustomEvent('chillbill:caninstall'));
+      }
+
       window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.addEventListener('appinstalled', handleAppInstalled);
 
@@ -43,7 +48,7 @@ export default function PwaRegister() {
             });
           }
         } else {
-          window.addEventListener('load', () => {
+          const registerSW = () => {
             navigator.serviceWorker
               .register('/sw.js')
               .then((registration) => {
@@ -64,7 +69,14 @@ export default function PwaRegister() {
               .catch((error) => {
                 console.warn('[ChillBill PWA] Service Worker registration failed:', error);
               });
-          });
+          };
+
+          // Register immediately if document is already ready, or on load
+          if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            registerSW();
+          } else {
+            window.addEventListener('load', registerSW);
+          }
         }
       }
 
