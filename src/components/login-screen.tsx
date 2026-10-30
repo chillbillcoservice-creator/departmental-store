@@ -180,6 +180,7 @@ interface LoginScreenProps {
     onSwitchLicense?: () => void;
     initialAuthView?: null | "landing" | "signup" | "login" | "owner-login";
     onUpdateEmployees?: (employees: Employee[]) => void;
+    isMobile?: boolean;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -215,7 +216,7 @@ function GoogleIcon({ className }: { className?: string }) {
 export default function LoginScreen({
     employees, venueName, venueId, isPosMode, isSetupComplete, onLogin,
     onAccessDenied, onLicenseExpired, onOwnerLogin, onOwnerSignup,
-    onSwitchLicense, initialAuthView, onUpdateEmployees
+    onSwitchLicense, initialAuthView, onUpdateEmployees, isMobile
 }: LoginScreenProps) {
 
     const hasCompletedSetup = Boolean(
@@ -598,6 +599,120 @@ export default function LoginScreen({
     }
 
     /* ════════════════════════════════════════════════
+       DEDICATED MOBILE STORE TERMINAL ACTIVATION SCREEN
+       (Strictly shown on mobile phones for first-time setup / unactivated device)
+    ════════════════════════════════════════════════ */
+    if (isMobile) {
+        return (
+            <div className="min-h-screen w-full flex flex-col items-center justify-center p-4" style={{ background: T.bg }}>
+                <div className="w-full max-w-sm rounded-2xl p-6 shadow-2xl relative border"
+                    style={{ background: T.surface, borderColor: T.borderLt }}>
+                    
+                    {/* Centered 4K Logo & Brand Header */}
+                    <div className="text-center mb-6">
+                        <div className="w-16 h-16 mx-auto mb-3 rounded-2xl p-2.5 flex items-center justify-center bg-black border border-white/10 shadow-lg">
+                            <img src="/chillbill-app-icon-1024.png" alt="ChillBill POS" className="w-full h-full object-contain" />
+                        </div>
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-orange-400 text-[11px] font-bold tracking-wide uppercase mb-2">
+                            <Sparkles size={12} /> Store Terminal Activation
+                        </div>
+                        <h2 className="text-xl font-black text-foreground">Connect Your Store</h2>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Sign in to sync your inventory, live billing & staff to this phone.
+                        </p>
+                    </div>
+
+                    {/* Google Sign-in */}
+                    <div className="space-y-4">
+                        <button
+                            type="button"
+                            onClick={handleGoogleAuth}
+                            disabled={isLoading}
+                            className="w-full h-12 rounded-xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all hover:opacity-90 shadow-md cursor-pointer border"
+                            style={{ background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", borderColor: T.borderLt, color: T.text }}
+                        >
+                            <GoogleIcon className="w-5 h-5" />
+                            <span>Continue with Google</span>
+                        </button>
+
+                        <div className="relative flex items-center justify-center my-2">
+                            <div className="border-t w-full" style={{ borderColor: T.borderLt }} />
+                            <span className="px-3 text-[10px] font-bold uppercase tracking-widest shrink-0 text-muted-foreground">
+                                or use store license key
+                            </span>
+                            <div className="border-t w-full" style={{ borderColor: T.borderLt }} />
+                        </div>
+
+                        {/* License key input */}
+                        <div className="space-y-3">
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted-foreground">
+                                    <Mail size={16} />
+                                </div>
+                                <input
+                                    type="email"
+                                    value={emailInput}
+                                    onChange={e => { setEmailInput(e.target.value); setError(""); setSuccessMsg(""); }}
+                                    placeholder="Registered store email"
+                                    className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm transition-all focus:outline-none"
+                                    style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
+                                />
+                            </div>
+                            <div className="relative">
+                                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted-foreground">
+                                    <KeyRound size={16} />
+                                </div>
+                                <input
+                                    type="text"
+                                    value={passwordInput}
+                                    onChange={e => { setPasswordInput(e.target.value.toUpperCase()); setError(""); setSuccessMsg(""); }}
+                                    placeholder="License Key (e.g. CBILL-2026-XXXX)"
+                                    className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm font-mono tracking-wider transition-all focus:outline-none uppercase"
+                                    style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
+                                    onKeyDown={e => { if (e.key === "Enter") handleEmailAuth(false); }}
+                                />
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={() => handleEmailAuth(false)}
+                                disabled={isLoading}
+                                className="w-full h-12 rounded-xl font-bold text-sm flex items-center justify-center gap-2 text-white transition-all hover:opacity-90 cursor-pointer shadow-lg"
+                                style={{ background: T.grad }}
+                            >
+                                {isLoading ? (
+                                    <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <>
+                                        Activate & Sync Store <ArrowRight size={16} />
+                                    </>
+                                )}
+                            </button>
+                        </div>
+
+                        {error && (
+                            <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs text-center font-medium">
+                                {error}
+                            </div>
+                        )}
+                        {successMsg && (
+                            <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs text-center font-medium flex items-center justify-center gap-1">
+                                <CheckCircle2 size={14} /> {successMsg}
+                            </div>
+                        )}
+
+                        <div className="pt-2 text-center">
+                            <p className="text-[11px] text-muted-foreground">
+                                License keys are delivered to registered owners on WhatsApp.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+/* ════════════════════════════════════════════════
        LANDING PAGE — CORAL BLAZE THEME
     ════════════════════════════════════════════════ */
     return (

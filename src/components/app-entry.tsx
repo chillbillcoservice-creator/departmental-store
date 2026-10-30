@@ -438,9 +438,10 @@ export default function AppEntry({
   }
 
   // Check if terminal is already activated on this device
-  // On all mobile devices (S, M, L, XL, XXL, Xiaomi, Samsung, iPhone), terminal is activated by default to strictly show mobile POS
-  const isTerminalActivated = (isSetupComplete || isMobile) &&
-    (typeof window !== 'undefined' && (localStorage.getItem('isSetupComplete') === 'true' || isMobile)) &&
+  // Terminal is activated on this device only when setup/activation is complete AND venueId is linked
+  const isTerminalActivated = isSetupComplete &&
+    Boolean(venueId) &&
+    (typeof window !== 'undefined' && (localStorage.getItem('isSetupComplete') === 'true' || localStorage.getItem('setupComplete') === 'true')) &&
     !initialAuthView;
 
   // Step 3: If terminal is already activated on this device, go DIRECTLY to SS2 (Staff & Owner PIN Login)
@@ -481,6 +482,7 @@ export default function AppEntry({
           venueId={venueId || undefined}
           isSetupComplete={isSetupComplete}
           initialAuthView={initialAuthView || (isMobile ? "owner-login" : null)}
+          isMobile={isMobile}
           onLogin={(emp) => setCurrentEmployee(emp)}
           onUpdateEmployees={(updated) => setEmployees(updated)}
           onAccessDenied={(email) => setDeniedEmail(email)}
@@ -503,8 +505,9 @@ export default function AppEntry({
                 setOwnerUser({ uid } as any);
                 setVenueId(uid);
                 setIsSetupComplete(true);
+                // Security & PIN Gate: Require 4-digit passcode entry after activation
                 const ownerEmp = firestoreEmployees.find(e => e.role === 'Owner') || firestoreEmployees[0];
-                if (ownerEmp) setCurrentEmployee(ownerEmp);
+                // Do not auto-login: keep currentEmployee null so PIN screen is presented
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('isSetupComplete', 'true');
                   localStorage.setItem('setupComplete', 'true');
@@ -547,8 +550,9 @@ export default function AppEntry({
                 setOwnerUser({ uid } as any);
                 setVenueId(uid);
                 setIsSetupComplete(true);
+                // Security & PIN Gate: Require 4-digit passcode entry after activation
                 const ownerEmp = firestoreEmployees.find(e => e.role === 'Owner') || firestoreEmployees[0];
-                if (ownerEmp) setCurrentEmployee(ownerEmp);
+                // Do not auto-login: keep currentEmployee null so PIN screen is presented
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('isSetupComplete', 'true');
                   localStorage.setItem('setupComplete', 'true');
