@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Vendor, InventoryItem, PurchaseOrder } from '@/lib/types';
+import { sendWhatsAppPurchaseOrder } from '@/lib/whatsapp-service';
 import { MobilePoDialog } from './mobile-po-dialog';
 import { syncVendorsToCloud } from '@/lib/firestore-sync';
 
@@ -269,10 +270,23 @@ export function MobileVendorsTab({
                                             {po.items?.length || 0} items ordered
                                         </p>
                                     </div>
-                                    <div className="text-right shrink-0">
-                                        <p className="font-black text-sm text-foreground">
-                                            {currency}{Number(po.totalAmount || 0).toLocaleString('en-IN')}
-                                        </p>
+                                    <div className="flex items-center gap-2.5 shrink-0">
+                                        <div className="text-right">
+                                            <p className="font-black text-sm text-foreground">
+                                                {currency}{Number(po.totalAmount || 0).toLocaleString('en-IN')}
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const vendor = vendors.find(v => v.id === po.vendorId) || { id: po.vendorId, name: po.vendorName, category: 'General' } as Vendor;
+                                                sendWhatsAppPurchaseOrder(po, vendor, null, currency);
+                                            }}
+                                            className="w-8 h-8 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95"
+                                            title="Send PO to Vendor via WhatsApp"
+                                        >
+                                            <MessageCircle size={15} />
+                                        </button>
                                     </div>
                                 </div>
                             );

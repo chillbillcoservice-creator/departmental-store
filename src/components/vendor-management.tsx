@@ -422,6 +422,56 @@ export default function VendorManagement({
         setNewPoItems(newItems);
     };
 
+    const handleWhatsAppExistingPO = (po: PurchaseOrder) => {
+        const vendor = vendors.find(v => v.id === po.vendorId) || { id: po.vendorId, name: po.vendorName, category: 'General' } as Vendor;
+        sendWhatsAppPurchaseOrder(po, vendor, venueDetails, currency);
+        toast({ title: t("Purchase Order"), description: `${t("PO")} #${po.referenceNo || po.id} ${t("opened in WhatsApp")}.` });
+    };
+
+    const handleCreateAndSendWhatsAppPO = () => {
+        if (!newPoVendorId) {
+            toast({ title: t("Please select a vendor"), variant: "destructive" });
+            return;
+        }
+        if (newPoItems.length === 0) {
+            toast({ title: t("Please add items to the order"), variant: "destructive" });
+            return;
+        }
+
+        const vendor = vendors.find(v => v.id === newPoVendorId);
+        const totalAmount = newPoItems.reduce((sum, item) => sum + item.totalCost, 0);
+
+        const activeShift = getActiveShift();
+        const newPo: PurchaseOrder = {
+            id: generateUniqueId(),
+            vendorId: newPoVendorId,
+            vendorName: vendor ? vendor.name : 'Unknown',
+            date: new Date(),
+            referenceNo: `PO-${Date.now().toString().slice(-6)}`,
+            items: newPoItems,
+            totalAmount,
+            status: 'Ordered',
+            createdByEmployeeId: currentUser?.id || activeShift?.employeeId,
+            createdByEmployeeName: currentUser?.name || activeShift?.employeeName,
+            shiftId: activeShift?.id,
+        };
+
+        setPurchaseOrders([...purchaseOrders, newPo]);
+        setNewPoItems([]);
+        setNewPoVendorId('');
+
+        logShiftActivity({
+            type: 'vendor_po',
+            title: `Vendor PO Created: #${newPo.referenceNo}`,
+            description: `Ordered ${newPo.items.length} items from ${newPo.vendorName}`,
+            amount: totalAmount,
+            referenceId: newPo.referenceNo,
+        });
+
+        sendWhatsAppPurchaseOrder(newPo, vendor, venueDetails, currency);
+        toast({ title: t("Purchase Order Created"), description: `${t("PO")} #${newPo.referenceNo} ${t("opened in WhatsApp")}.` });
+    };
+
     const handleCreatePurchaseOrder = () => {
         if (!newPoVendorId) {
             toast({ title: t("Please select a vendor"), variant: "destructive" });
@@ -1356,9 +1406,13 @@ export default function VendorManagement({
                                     </div>
                                 )}
                             </CardContent>
-                            <CardFooter className="mt-auto pt-6 border-t">
-                                <Button onClick={handleCreatePurchaseOrder} disabled={!newPoVendorId || newPoItems.length === 0} className="w-full">
-                                    {t('Create Purchase Order')}
+                            <CardFooter className="mt-auto pt-6 border-t flex flex-col sm:flex-row gap-2">
+                                <Button variant="outline" onClick={handleCreatePurchaseOrder} disabled={!newPoVendorId || newPoItems.length === 0} className="w-full sm:w-1/2">
+                                    {t('Create PO Only')}
+                                </Button>
+                                <Button onClick={handleCreateAndSendWhatsAppPO} disabled={!newPoVendorId || newPoItems.length === 0} className="w-full sm:w-1/2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-sm">
+                                    <MessageSquare className="h-4 w-4" />
+                                    {t('Save & WhatsApp Vendor')}
                                 </Button>
                             </CardFooter>
                         </Card>
@@ -1401,7 +1455,16 @@ export default function VendorManagement({
                                                             {t(po.status || 'Ordered')}
                                                         </div>
                                                     </TableCell>
-                                                    <TableCell className="text-right">
+                                                    <TableCell className="text-right space-x-1.5">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            className="h-7 px-2 text-xs text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 font-bold"
+                                                            onClick={() => handleWhatsAppExistingPO(po)}
+                                                            title="Send PO to Vendor via WhatsApp"
+                                                        >
+                                                            <MessageSquare className="h-3.5 w-3.5 mr-1" /> WhatsApp
+                                                        </Button>
                                                         {po.status === 'Ordered' && (
                                                             <Button size="sm" variant="outline" className="h-7 text-xs bg-primary/10 hover:bg-primary/20 text-primary border-primary/20" onClick={() => handleReceiveOrder(po)}>
                                                                 {t('Receive')}

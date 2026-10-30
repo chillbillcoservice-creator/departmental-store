@@ -1101,7 +1101,7 @@ export default function CustomerManagement({
                       </div>
 
                       {customer.balance && customer.balance > 0 && (
-                        <div className="p-3 bg-destructive/10 border-2 border-destructive/20 border-dashed rounded-xl overflow-hidden relative group">
+                        <div className="p-3 bg-destructive/10 border-2 border-destructive/20 border-dashed rounded-xl overflow-hidden relative group space-y-2">
                           <div className="flex items-center justify-between relative z-10">
                             <div className="flex items-center gap-2">
                               <AlertTriangle className="h-4 w-4 text-destructive animate-bounce" />
@@ -1111,7 +1111,15 @@ export default function CustomerManagement({
                               {currency}{customer.balance.toFixed(2)}
                             </span>
                           </div>
-                          <div className="absolute inset-0 bg-destructive/5 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500" />
+                          <Button
+                            size="sm"
+                            onClick={() => sendWhatsAppKhataReminder(customer, customer.balance || 0, venueDetails, currency)}
+                            className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg gap-1.5 shadow-sm"
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            {t('WhatsApp Khata Reminder')}
+                          </Button>
+                          <div className="absolute inset-0 bg-destructive/5 translate-x-[-100%] group-hover:translate-x-0 transition-transform duration-500 pointer-events-none" />
                         </div>
                       )}
 

@@ -19,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Bill, InventoryItem, Vendor, PurchaseOrder } from '@/lib/types';
+import { sendWhatsAppBill } from '@/lib/whatsapp-service';
 import { LiveDailySales } from '@/lib/firestore-sync';
 import { MobilePoDialog } from './mobile-po-dialog';
 
@@ -377,8 +378,8 @@ export function MobileDashboardTab({
                                 : 'Just now';
 
                             return (
-                                <div key={bill.id || idx} className="p-3 rounded-2xl border bg-card/60 flex items-center justify-between text-xs">
-                                    <div className="min-w-0">
+                                <div key={bill.id || idx} className="p-3 rounded-2xl border bg-card/60 flex items-center justify-between text-xs gap-2">
+                                    <div className="min-w-0 flex-1">
                                         <p className="font-bold text-foreground truncate">
                                             Bill #{bill.id?.slice(-5) || idx + 1} · {timeStr}
                                         </p>
@@ -386,13 +387,28 @@ export function MobileDashboardTab({
                                             By {bill.cashierName || 'Staff'} · {bill.itemCount || bill.orderItems?.length || 1} items
                                         </p>
                                     </div>
-                                    <div className="text-right shrink-0">
-                                        <p className="font-black text-sm text-foreground">
-                                            {currency}{Number(bill.total || 0).toLocaleString('en-IN')}
-                                        </p>
-                                        <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${bill.paymentMethod === 'Cash' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-                                            {bill.paymentMethod || 'Online'}
-                                        </span>
+                                    <div className="flex items-center gap-2.5 shrink-0">
+                                        <div className="text-right">
+                                            <p className="font-black text-sm text-foreground">
+                                                {currency}{Number(bill.total || 0).toLocaleString('en-IN')}
+                                            </p>
+                                            <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded ${bill.paymentMethod === 'Cash' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                                                {bill.paymentMethod || 'Online'}
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const phone = bill.customerDetails?.phone || prompt('Enter Customer WhatsApp Number:');
+                                                if (phone) {
+                                                    sendWhatsAppBill(bill, null, phone, currency);
+                                                }
+                                            }}
+                                            className="w-8 h-8 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95"
+                                            title="Send Bill to Customer via WhatsApp"
+                                        >
+                                            <MessageCircle size={15} />
+                                        </button>
                                     </div>
                                 </div>
                             );
