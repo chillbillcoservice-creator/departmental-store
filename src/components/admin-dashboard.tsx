@@ -158,6 +158,31 @@ export default function AdminDashboard({
   const [canInstallNative, setCanInstallNative] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
+  // Helper to safely update venue details even if venueDetails was initially null
+  const updateVenueDetail = (field: keyof VenueDetails, value: any) => {
+    const current: VenueDetails = venueDetails || {
+      name: venueName || 'ChillBill Store',
+      address: '',
+      contactNumber: '',
+      email: '',
+      tagline: '',
+      receiptHeader: '',
+      receiptFooter: '',
+      customMessage: '',
+      gstin: '',
+      state: '',
+      fssaiNumber: '',
+      upiMode: 'standee',
+      upiId: '',
+      upiMerchantName: venueName || '',
+      upiSoundboxEnabled: true,
+      upiSoundboxVoice: 'en',
+      defaultDiscount: 0,
+      vatPercentage: 0,
+    };
+    setVenueDetails({ ...current, [field]: value });
+  };
+
   // App is exclusively tailored for Indian stores - enforce currency lock to 'Rs.'
   useEffect(() => {
     if (currency !== 'Rs.' && currency !== '₹') {
@@ -1265,17 +1290,18 @@ export default function AdminDashboard({
               </div>
 
               <div className="space-y-4 pt-4">
-                <CardTitle className="text-base flex items-center gap-2"><Settings /> {t('Bill Print Settings')}</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base flex items-center gap-2"><Settings /> {t('Bill Print Settings')}</CardTitle>
+                  <span className="text-[10px] bg-emerald-500/10 text-emerald-600 font-bold px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    Auto-saved
+                  </span>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="receipt-header">{t('Receipt Header Message')}</Label>
                   <Input
                     id="receipt-header"
                     value={venueDetails?.receiptHeader || ''}
-                    onChange={(e) => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, receiptHeader: e.target.value });
-                      }
-                    }}
+                    onChange={(e) => updateVenueDetail('receiptHeader', e.target.value)}
                     placeholder={t("e.g., GST: 123456789")}
                   />
                 </div>
@@ -1284,11 +1310,7 @@ export default function AdminDashboard({
                   <Input
                     id="receipt-footer"
                     value={venueDetails?.receiptFooter || ''}
-                    onChange={(e) => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, receiptFooter: e.target.value });
-                      }
-                    }}
+                    onChange={(e) => updateVenueDetail('receiptFooter', e.target.value)}
                     placeholder={t("e.g., Follow us on Instagram!")}
                   />
                 </div>
@@ -1297,11 +1319,7 @@ export default function AdminDashboard({
                   <Input
                     id="custom-message"
                     value={venueDetails?.customMessage || ''}
-                    onChange={(e) => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, customMessage: e.target.value });
-                      }
-                    }}
+                    onChange={(e) => updateVenueDetail('customMessage', e.target.value)}
                     placeholder={t("e.g., SAVE THIS BILL FOR REPLACEMENTS")}
                   />
                 </div>
@@ -1336,11 +1354,7 @@ export default function AdminDashboard({
                   <Input
                     id="store-gstin"
                     value={venueDetails?.gstin || ''}
-                    onChange={(e) => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, gstin: e.target.value.toUpperCase() });
-                      }
-                    }}
+                    onChange={(e) => updateVenueDetail('gstin', e.target.value.toUpperCase())}
                     placeholder="e.g., 07AAAAA0000A1Z5"
                     className="font-mono uppercase text-sm"
                     maxLength={15}
@@ -1351,11 +1365,7 @@ export default function AdminDashboard({
                   <Input
                     id="store-state"
                     value={venueDetails?.state || ''}
-                    onChange={(e) => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, state: e.target.value });
-                      }
-                    }}
+                    onChange={(e) => updateVenueDetail('state', e.target.value)}
                     placeholder="e.g., 07 - Delhi"
                     className="text-sm"
                   />
@@ -1365,11 +1375,7 @@ export default function AdminDashboard({
                   <Input
                     id="store-fssai"
                     value={venueDetails?.fssaiNumber || ''}
-                    onChange={(e) => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, fssaiNumber: e.target.value });
-                      }
-                    }}
+                    onChange={(e) => updateVenueDetail('fssaiNumber', e.target.value)}
                     placeholder="e.g., 10020011000123"
                     className="font-mono text-sm"
                   />
@@ -1378,11 +1384,7 @@ export default function AdminDashboard({
                   <Label className="text-xs font-black uppercase tracking-wider text-muted-foreground">UPI Payment Verification Mode</Label>
                   <RadioGroup
                     value={venueDetails?.upiMode || 'standee'}
-                    onValueChange={(val: 'standee' | 'screen') => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, upiMode: val });
-                      }
-                    }}
+                    onValueChange={(val: 'standee' | 'screen') => updateVenueDetail('upiMode', val)}
                     className="grid grid-cols-1 sm:grid-cols-2 gap-2"
                   >
                     <label
@@ -1419,11 +1421,7 @@ export default function AdminDashboard({
                   <Input
                     id="store-upi-id"
                     value={venueDetails?.upiId || ''}
-                    onChange={(e) => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, upiId: e.target.value.trim() });
-                      }
-                    }}
+                    onChange={(e) => updateVenueDetail('upiId', e.target.value.trim())}
                     placeholder="e.g., storename@icici or 9876543210@paytm"
                     className="font-mono text-sm"
                   />
@@ -1436,11 +1434,7 @@ export default function AdminDashboard({
                   <Input
                     id="store-upi-merchant"
                     value={venueDetails?.upiMerchantName || ''}
-                    onChange={(e) => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, upiMerchantName: e.target.value });
-                      }
-                    }}
+                    onChange={(e) => updateVenueDetail('upiMerchantName', e.target.value)}
                     placeholder={venueName || "e.g., Apna Departmental Store"}
                     className="text-sm"
                   />
@@ -1456,11 +1450,7 @@ export default function AdminDashboard({
                     <Switch
                       id="soundbox-toggle"
                       checked={venueDetails?.upiSoundboxEnabled ?? true}
-                      onCheckedChange={(checked) => {
-                        if (venueDetails) {
-                          setVenueDetails({ ...venueDetails, upiSoundboxEnabled: checked });
-                        }
-                      }}
+                      onCheckedChange={(checked) => updateVenueDetail('upiSoundboxEnabled', checked)}
                     />
                   </div>
                   {(venueDetails?.upiSoundboxEnabled ?? true) && (
@@ -1468,11 +1458,7 @@ export default function AdminDashboard({
                       <Label htmlFor="soundbox-voice" className="text-xs font-semibold">Soundbox Voice Language</Label>
                       <Select
                         value={venueDetails?.upiSoundboxVoice || 'en'}
-                        onValueChange={(val: 'en' | 'hi') => {
-                          if (venueDetails) {
-                            setVenueDetails({ ...venueDetails, upiSoundboxVoice: val });
-                          }
-                        }}
+                        onValueChange={(val: 'en' | 'hi') => updateVenueDetail('upiSoundboxVoice', val)}
                       >
                         <SelectTrigger id="soundbox-voice" className="h-9 text-xs">
                           <SelectValue placeholder="Select Voice Language" />
@@ -1511,11 +1497,7 @@ export default function AdminDashboard({
                     id="default-discount"
                     type="number"
                     value={venueDetails?.defaultDiscount || 0}
-                    onChange={(e) => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, defaultDiscount: Number(e.target.value) });
-                      }
-                    }}
+                    onChange={(e) => updateVenueDetail('defaultDiscount', Number(e.target.value))}
                     placeholder="e.g., 5"
                   />
                 </div>
@@ -1525,11 +1507,7 @@ export default function AdminDashboard({
                     id="vat-percentage"
                     type="number"
                     value={venueDetails?.vatPercentage || 0}
-                    onChange={(e) => {
-                      if (venueDetails) {
-                        setVenueDetails({ ...venueDetails, vatPercentage: Number(e.target.value) });
-                      }
-                    }}
+                    onChange={(e) => updateVenueDetail('vatPercentage', Number(e.target.value))}
                     placeholder="e.g., 15"
                   />
                 </div>
