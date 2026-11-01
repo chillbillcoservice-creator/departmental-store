@@ -14,7 +14,8 @@ import {
     Search,
     PlusCircle,
     CheckCircle2,
-    Sparkles
+    Sparkles,
+    MessageCircle
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

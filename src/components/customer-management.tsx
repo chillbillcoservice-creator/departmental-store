@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter }
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Label } from '@/components/ui/label';
-import { PlusCircle, Edit, Search, Trash2, Eye, Printer, Mail, CalendarDays, ShoppingBag, ArrowUpDown, ChevronDown, ChevronUp, HandCoins, ChevronsUpDown, CalendarIcon, AlertTriangle } from 'lucide-react';
+import { PlusCircle, Edit, Search, Trash2, Eye, Printer, Mail, CalendarDays, ShoppingBag, ArrowUpDown, ChevronDown, ChevronUp, HandCoins, ChevronsUpDown, CalendarIcon, AlertTriangle, MessageSquare } from 'lucide-react';
 import type { Bill, Customer, PendingBill, PendingBillTransaction } from '@/lib/types';
 import { logShiftActivity } from '@/lib/shift-manager';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';

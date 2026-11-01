@@ -45,7 +45,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { PlusCircle, Edit, Trash2, CalendarIcon, Building, List, ChevronsUpDown, AlertTriangle, Landmark, Search, ChevronDown, ChevronUp, Eye, Phone, MapPin, Mail, Check, ShoppingCart, RefreshCcw, PackageCheck, Printer, CalendarDays } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, CalendarIcon, Building, List, ChevronsUpDown, AlertTriangle, Landmark, Search, ChevronDown, ChevronUp, Eye, Phone, MapPin, Mail, Check, ShoppingCart, RefreshCcw, PackageCheck, Printer, CalendarDays, MessageSquare } from 'lucide-react';
 import { Calendar } from "@/components/ui/calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format, isValid } from 'date-fns';
