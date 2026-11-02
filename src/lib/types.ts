@@ -512,6 +512,11 @@ export interface VenueDetails {
   upiSoundboxEnabled?: boolean; // Enable/Disable In-Software Soundbox Audio & Voice
   upiSoundboxVoice?: 'en' | 'hi'; // Voice language: English or Hindi
   upiMode?: 'standee' | 'screen'; // 'standee' (default) or 'screen' (dynamic on-screen QR)
+  autoSendDaily?: boolean; // Scheduled 10:00 PM IST background daily closing email
+  autoSendMonthly?: boolean; // Scheduled monthly closing email
+  resendApiKey?: string; // Optional free Resend API key for background cloud dispatch
+  currency?: string;
+  lastDailyReportSentAt?: string;
 }
 
 export interface OwnerDetails {

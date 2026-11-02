@@ -325,17 +325,25 @@ export default function AdminDashboard({
   };
 
   const [isReportLoading, setIsReportLoading] = useState(false);
-  const [autoSendDaily, setAutoSendDaily] = useState(false);
-  const [autoSendMonthly, setAutoSendMonthly] = useState(false);
+  const autoSendDaily = Boolean(venueDetails?.autoSendDaily);
+  const autoSendMonthly = Boolean(venueDetails?.autoSendMonthly);
   const [reportType, setReportType] = useState<'daily' | 'monthly' | 'yearly'>('daily');
   const [isEditingEmail, setIsEditingEmail] = useState(false);
   const [reportEmailInput, setReportEmailInput] = useState(venueDetails?.email || '');
+  const [isEditingResendKey, setIsEditingResendKey] = useState(false);
+  const [resendKeyInput, setResendKeyInput] = useState(venueDetails?.resendApiKey || '');
 
   useEffect(() => {
     if (!isEditingEmail) {
       setReportEmailInput(venueDetails?.email || '');
     }
   }, [venueDetails?.email, isEditingEmail]);
+
+  useEffect(() => {
+    if (!isEditingResendKey) {
+      setResendKeyInput(venueDetails?.resendApiKey || '');
+    }
+  }, [venueDetails?.resendApiKey, isEditingResendKey]);
 
   const [isStaffManagerOpen, setIsStaffManagerOpen] = useState(false);
   const [isAddEmployeeDialogOpen, setIsAddEmployeeDialogOpen] = useState(false);
@@ -503,6 +511,18 @@ export default function AdminDashboard({
     });
   };
 
+  const handleSaveResendKey = () => {
+    const trimmed = resendKeyInput.trim();
+    updateVenueDetail('resendApiKey', trimmed);
+    setIsEditingResendKey(false);
+    toast({
+      title: trimmed ? 'Resend API Key Saved' : 'Resend Key Removed',
+      description: trimmed
+        ? 'Automatic background emailing is now active via Resend (3,000 free emails/mo).'
+        : 'Background dispatch cleared; sending will use 1-click mail compose.',
+    });
+  };
+
   const handleSendReport = async (reportType: 'daily' | 'monthly' | 'yearly') => {
     const targetEmail = venueDetails?.email?.trim();
     if (!targetEmail) {
@@ -531,16 +551,48 @@ export default function AdminDashboard({
         currency,
       });
 
-      dispatchReportEmail({
-        recipientEmail: targetEmail,
-        subject: report.subject,
-        reportContent: report.reportContent,
-      });
+      // Attempt true background dispatch if a Resend key is set
+      const apiKey = venueDetails?.resendApiKey;
+      let sentInBackground = false;
 
-      toast({
-        title: 'Report Ready & Opened!',
-        description: `${report.periodLabel} opened in email compose for ${targetEmail}. Summary also copied to clipboard.`,
-      });
+      if (apiKey) {
+        try {
+          const res = await fetch('/api/reports/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipientEmail: targetEmail,
+              subject: report.subject,
+              reportContent: report.reportContent,
+              resendApiKey: apiKey,
+            }),
+          });
+          const json = await res.json();
+          if (json.success) {
+            sentInBackground = true;
+            toast({
+              title: 'Report Sent in Background!',
+              description: `${report.periodLabel} delivered directly to ${targetEmail} via Resend cloud.`,
+            });
+          }
+        } catch (apiErr) {
+          console.warn('Background dispatch failed, falling back to 1-click compose:', apiErr);
+        }
+      }
+
+      // If no key or background attempt was skipped, open 1-click mail compose
+      if (!sentInBackground) {
+        dispatchReportEmail({
+          recipientEmail: targetEmail,
+          subject: report.subject,
+          reportContent: report.reportContent,
+        });
+
+        toast({
+          title: 'Report Ready & Opened!',
+          description: `${report.periodLabel} opened in email compose for ${targetEmail}. Summary also copied to clipboard.`,
+        });
+      }
     } catch (e: any) {
       console.error(`Failed to send ${reportType} report:`, e);
       toast({
@@ -1483,10 +1535,16 @@ export default function AdminDashboard({
                           setIsEditingEmail(true);
                           return;
                         }
-                        setAutoSendDaily(checked);
+                        updateVenueDetail('autoSendDaily', checked);
+                        if (checked) {
+                          toast({
+                            title: 'Daily Auto-Send Activated',
+                            description: 'Daily closing report scheduled for 10:00 PM IST every evening.',
+                          });
+                        }
                       }}
                     />
-                    <Label htmlFor="auto-daily">{t('Auto-send Daily Report')}</Label>
+                    <Label htmlFor="auto-daily">{t('Auto-send Daily Report')} (10:00 PM IST)</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Switch
@@ -1502,11 +1560,86 @@ export default function AdminDashboard({
                           setIsEditingEmail(true);
                           return;
                         }
-                        setAutoSendMonthly(checked);
+                        updateVenueDetail('autoSendMonthly', checked);
+                        if (checked) {
+                          toast({
+                            title: 'Monthly Auto-Send Activated',
+                            description: 'Monthly store report scheduled for auto-dispatch.',
+                          });
+                        }
                       }}
                     />
                     <Label htmlFor="auto-monthly">{t('Auto-send Monthly Report')}</Label>
                   </div>
+                </div>
+
+                {/* Background Cloud Dispatch Status & Free Resend Key Setup */}
+                <div className="rounded-lg border bg-background/50 p-3 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 font-medium">
+                      <span className={cn(
+                        "h-2 w-2 rounded-full",
+                        venueDetails?.resendApiKey ? "bg-emerald-500 animate-pulse" : "bg-amber-500"
+                      )} />
+                      <span className="text-foreground">
+                        {venueDetails?.resendApiKey
+                          ? "Cloud Auto-Send Active (10:00 PM IST via Resend)"
+                          : "1-Click Manual Mode (Add free Resend key for silent auto-send)"}
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setIsEditingResendKey(!isEditingResendKey)}
+                      className="h-7 text-[11px] gap-1 px-2 text-muted-foreground hover:text-foreground"
+                    >
+                      <KeyRound className="h-3 w-3" />
+                      {venueDetails?.resendApiKey ? "Change Key" : "Configure Key"}
+                    </Button>
+                  </div>
+
+                  {isEditingResendKey && (
+                    <div className="pt-2 border-t space-y-2">
+                      <Label htmlFor="resend-key-input" className="text-[11px] font-semibold text-muted-foreground flex items-center justify-between">
+                        <span>Resend API Key (re_...)</span>
+                        <a
+                          href="https://resend.com"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-primary hover:underline"
+                        >
+                          Get Free Key (3,000 free emails/mo) &rarr;
+                        </a>
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="resend-key-input"
+                          type="password"
+                          value={resendKeyInput}
+                          onChange={(e) => setResendKeyInput(e.target.value)}
+                          placeholder="re_123456789..."
+                          className="h-8 text-xs font-mono bg-background flex-1"
+                        />
+                        <Button size="sm" onClick={handleSaveResendKey} className="h-8 px-3 text-xs">
+                          Save Key
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setResendKeyInput(venueDetails?.resendApiKey || '');
+                            setIsEditingResendKey(false);
+                          }}
+                          className="h-8 px-2 text-xs"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Resend is 100% free with no credit card required. When saved, the server will email your daily report automatically at 10:00 PM IST even when your POS is closed!
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
               <Separator />
