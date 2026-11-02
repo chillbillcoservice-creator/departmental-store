@@ -524,9 +524,10 @@ export default function SetupWizard({ onComplete, onSkip, initialData }: SetupWi
       });
 
     const validVendors = vendors.filter(v => v.name);
+    const storeEmail = venue.email?.trim() || owner.email?.trim() || "";
 
     onComplete({
-      venue: { ...venue, country: finalCountry, address: addressToSave },
+      venue: { ...venue, email: storeEmail, country: finalCountry, address: addressToSave },
       owner: finalOwner,
       additionalOwners: validAdditionalOwners,
       employees: validEmployees,
@@ -558,9 +559,12 @@ export default function SetupWizard({ onComplete, onSkip, initialData }: SetupWi
       username: finalOwnerUsername
     };
 
+    const storeEmail = venue.email?.trim() || owner.email?.trim() || "";
+
     onComplete({
       venue: {
         ...venue,
+        email: storeEmail,
         name: venue.name || 'ChillBill Store',
         country: finalCountry,
         address: addressToSave
@@ -713,7 +717,7 @@ export default function SetupWizard({ onComplete, onSkip, initialData }: SetupWi
                 {/* Right Column */}
                 <div className="space-y-4 md:pl-8">
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-muted-foreground">{t('Business Email (Optional)')}</Label>
+                    <Label className="text-sm font-bold text-muted-foreground">{t('Business Email (Important for Daily/Monthly Reports)')}</Label>
                     <Input
                       value={venue.email}
                       onChange={(e) => handleBasicChange(setVenue, 'email', e.target.value)}
@@ -854,7 +858,7 @@ export default function SetupWizard({ onComplete, onSkip, initialData }: SetupWi
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-sm font-bold text-muted-foreground">{t('Email (Optional)')}</Label>
+                    <Label className="text-sm font-bold text-muted-foreground">{t('Email (Important for Daily/Monthly Reports)')}</Label>
                     <Input
                       value={owner.email}
                       onChange={(e) => handleBasicChange(setOwner, 'email', e.target.value)}

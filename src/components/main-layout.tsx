@@ -645,6 +645,9 @@ export default function MainLayout({
     try {
       localStorage.setItem('setupComplete', 'true');
       setVenueName(data.venue.name);
+      if (data.venue && setVenueDetails) {
+        setVenueDetails(data.venue);
+      }
       setEmployees(prev => [...(data.employees || [])]);
       if (data.currency) {
         setCurrency(data.currency);

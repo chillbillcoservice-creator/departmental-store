@@ -42,6 +42,8 @@ import {
   Monitor,
   Smartphone,
   FileSpreadsheet,
+  Check,
+  Pencil,
 } from 'lucide-react';
 import { UniversalCatalogImportDialog } from './universal-catalog-import-dialog';
 import { useThemeColor } from '@/contexts/theme-color-context';
@@ -56,6 +58,7 @@ import BillHistory from './bill-history';
 import { Gstr1ReportDialog } from './gstr1-report-dialog';
 import type { Bill, Employee, OrderItem, Expense, Vendor, InventoryItem, MenuCategory, VenueDetails, PurchaseOrder } from '@/lib/types';
 import { generateAndSendReport } from '@/ai/flows/generate-report';
+import { compileStoreReport, dispatchReportEmail } from '@/lib/report-generator';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -325,6 +328,14 @@ export default function AdminDashboard({
   const [autoSendDaily, setAutoSendDaily] = useState(false);
   const [autoSendMonthly, setAutoSendMonthly] = useState(false);
   const [reportType, setReportType] = useState<'daily' | 'monthly' | 'yearly'>('daily');
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [reportEmailInput, setReportEmailInput] = useState(venueDetails?.email || '');
+
+  useEffect(() => {
+    if (!isEditingEmail) {
+      setReportEmailInput(venueDetails?.email || '');
+    }
+  }, [venueDetails?.email, isEditingEmail]);
 
   const [isStaffManagerOpen, setIsStaffManagerOpen] = useState(false);
   const [isAddEmployeeDialogOpen, setIsAddEmployeeDialogOpen] = useState(false);
@@ -472,35 +483,70 @@ export default function AdminDashboard({
     document.body.removeChild(link);
   };
 
+  const handleSaveReportEmail = () => {
+    const trimmed = reportEmailInput.trim();
+    if (trimmed && (!trimmed.includes('@') || !trimmed.includes('.'))) {
+      toast({
+        variant: 'destructive',
+        title: 'Invalid Email Address',
+        description: 'Please enter a valid email address (e.g., owner@yourstore.com).',
+      });
+      return;
+    }
+    updateVenueDetail('email', trimmed);
+    setIsEditingEmail(false);
+    toast({
+      title: trimmed ? 'Report Email Saved' : 'Report Email Removed',
+      description: trimmed
+        ? `Daily and monthly reports will be dispatched to: ${trimmed}`
+        : 'Report recipient email has been cleared.',
+    });
+  };
+
   const handleSendReport = async (reportType: 'daily' | 'monthly' | 'yearly') => {
+    const targetEmail = venueDetails?.email?.trim();
+    if (!targetEmail) {
+      toast({
+        variant: 'destructive',
+        title: 'Email ID Required',
+        description: 'Please add an email ID first to send reports.',
+      });
+      setIsEditingEmail(true);
+      return;
+    }
+
     setIsReportLoading(true);
     toast({
-      title: 'Generating Report...',
-      description: `Please wait while we generate the ${reportType} report. This may take a moment.`,
+      title: 'Compiling Report...',
+      description: `Preparing your ${reportType} store performance summary.`,
     });
 
-    const input = {
-      reportType,
-      recipientEmail: venueDetails?.email || 'store@example.com',
-      currency: currency,
-    };
-
     try {
-      const result = await generateAndSendReport(input);
-      if (result.success) {
-        toast({
-          title: 'Report Sent!',
-          description: `The ${reportType} report has been sent successfully.`,
-        });
-      } else {
-        throw new Error(result.message);
-      }
+      const report = compileStoreReport(reportType, {
+        bills: billHistory,
+        expenses,
+        inventory,
+        venueDetails,
+        venueName,
+        currency,
+      });
+
+      dispatchReportEmail({
+        recipientEmail: targetEmail,
+        subject: report.subject,
+        reportContent: report.reportContent,
+      });
+
+      toast({
+        title: 'Report Ready & Opened!',
+        description: `${report.periodLabel} opened in email compose for ${targetEmail}. Summary also copied to clipboard.`,
+      });
     } catch (e: any) {
       console.error(`Failed to send ${reportType} report:`, e);
       toast({
         variant: 'destructive',
         title: 'Report Failed',
-        description: e.message || `Could not send the ${reportType} report. Please try again.`,
+        description: e.message || `Could not generate the ${reportType} report. Please try again.`,
       });
     } finally {
       setIsReportLoading(false);
@@ -1326,7 +1372,94 @@ export default function AdminDashboard({
               </div>
               <Separator />
               <div className="space-y-4 pt-4">
-                <CardTitle className="text-base flex items-center gap-2"><Mail /> {t('Email Reports')}</CardTitle>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Mail className="h-5 w-5 text-primary" /> {t('Email Reports')}
+                </CardTitle>
+
+                {/* Recipient Email Info Box with Inline Add / Edit */}
+                <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+                  {isEditingEmail ? (
+                    <div className="space-y-2">
+                      <Label htmlFor="report-email-input" className="text-xs font-semibold text-muted-foreground flex items-center justify-between">
+                        <span>{t('Report Recipient Email ID')}</span>
+                        <span className="text-[11px] text-primary">Press Save to confirm</span>
+                      </Label>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Input
+                          id="report-email-input"
+                          type="email"
+                          value={reportEmailInput}
+                          onChange={(e) => setReportEmailInput(e.target.value)}
+                          placeholder="e.g., owner@yourstore.com"
+                          className="h-9 text-sm bg-background flex-1"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveReportEmail();
+                            if (e.key === 'Escape') {
+                              setReportEmailInput(venueDetails?.email || '');
+                              setIsEditingEmail(false);
+                            }
+                          }}
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={handleSaveReportEmail} className="h-9 gap-1 px-3">
+                            <Check className="h-4 w-4" /> Save
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setReportEmailInput(venueDetails?.email || '');
+                              setIsEditingEmail(false);
+                            }}
+                            className="h-9 gap-1 px-3"
+                          >
+                            <X className="h-4 w-4" /> Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                      {venueDetails?.email?.trim() ? (
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-semibold text-muted-foreground shrink-0">
+                            Reports sent to:
+                          </span>
+                          <span className="text-xs font-bold text-foreground bg-primary/10 border border-primary/20 px-2 py-0.5 rounded truncate max-w-[260px] sm:max-w-[340px]">
+                            {venueDetails.email.trim()}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-xs text-amber-500 font-medium">
+                          <AlertTriangle className="h-4 w-4 shrink-0" />
+                          <span>No email configured. Add one below to receive reports.</span>
+                        </div>
+                      )}
+
+                      <Button
+                        size="sm"
+                        variant={venueDetails?.email?.trim() ? "outline" : "default"}
+                        onClick={() => {
+                          setReportEmailInput(venueDetails?.email || '');
+                          setIsEditingEmail(true);
+                        }}
+                        className="h-8 gap-1.5 shrink-0 self-start sm:self-auto text-xs"
+                      >
+                        {venueDetails?.email?.trim() ? (
+                          <>
+                            <Pencil className="h-3.5 w-3.5" /> Edit
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-3.5 w-3.5" /> Add Email ID
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
                 <div className='flex flex-wrap gap-2'>
                   <Button variant="secondary" onClick={() => handleSendReport('daily')} disabled={isReportLoading}>
                     {t('Send Daily')}
@@ -1337,11 +1470,41 @@ export default function AdminDashboard({
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center space-x-2">
-                    <Switch id="auto-daily" checked={autoSendDaily} onCheckedChange={setAutoSendDaily} />
+                    <Switch
+                      id="auto-daily"
+                      checked={autoSendDaily}
+                      onCheckedChange={(checked) => {
+                        if (checked && !venueDetails?.email?.trim()) {
+                          toast({
+                            variant: 'destructive',
+                            title: 'Email Required',
+                            description: 'Please add an email ID first to enable auto-send.',
+                          });
+                          setIsEditingEmail(true);
+                          return;
+                        }
+                        setAutoSendDaily(checked);
+                      }}
+                    />
                     <Label htmlFor="auto-daily">{t('Auto-send Daily Report')}</Label>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <Switch id="auto-monthly" checked={autoSendMonthly} onCheckedChange={setAutoSendMonthly} />
+                    <Switch
+                      id="auto-monthly"
+                      checked={autoSendMonthly}
+                      onCheckedChange={(checked) => {
+                        if (checked && !venueDetails?.email?.trim()) {
+                          toast({
+                            variant: 'destructive',
+                            title: 'Email Required',
+                            description: 'Please add an email ID first to enable auto-send.',
+                          });
+                          setIsEditingEmail(true);
+                          return;
+                        }
+                        setAutoSendMonthly(checked);
+                      }}
+                    />
                     <Label htmlFor="auto-monthly">{t('Auto-send Monthly Report')}</Label>
                   </div>
                 </div>
