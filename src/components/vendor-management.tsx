@@ -63,6 +63,7 @@ const generateUniqueId = () => {
 };
 import type { Expense, Vendor, PendingBill, PendingBillTransaction, InventoryItem, PurchaseOrder, PurchaseOrderItem, Employee, VenueDetails } from '@/lib/types';
 import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
+import { sendWhatsAppPurchaseOrder, sendWhatsAppVendor, sanitizeWhatsAppPhone } from '@/lib/whatsapp-service';
 
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
@@ -424,10 +425,47 @@ export default function VendorManagement({
         setNewPoItems(newItems);
     };
 
+    const handleSendWhatsAppVendor = (vendor: Vendor) => {
+        try {
+            if (!vendor.phone) {
+                toast({
+                    title: t("No Phone Number"),
+                    description: `${vendor.name} ${t("does not have a phone number. Edit vendor to add mobile.")}`,
+                    variant: "destructive"
+                });
+                return;
+            }
+            toast({
+                title: t("Opening WhatsApp"),
+                description: `${t("Connecting to")} ${vendor.name} (${vendor.phone})...`
+            });
+            sendWhatsAppVendor(vendor, venueDetails, currency);
+        } catch (err) {
+            console.error("Failed to open WhatsApp for vendor:", err);
+            toast({
+                title: t("Error"),
+                description: t("Failed to open WhatsApp."),
+                variant: "destructive"
+            });
+        }
+    };
+
     const handleWhatsAppExistingPO = (po: PurchaseOrder) => {
-        const vendor = vendors.find(v => v.id === po.vendorId) || { id: po.vendorId, name: po.vendorName, category: 'General' } as Vendor;
-        sendWhatsAppPurchaseOrder(po, vendor, venueDetails, currency);
-        toast({ title: t("Purchase Order"), description: `${t("PO")} #${po.referenceNo || po.id} ${t("opened in WhatsApp")}.` });
+        try {
+            const vendor = vendors.find(v => v.id === po.vendorId) || { id: po.vendorId, name: po.vendorName, category: 'General' } as Vendor;
+            toast({
+                title: t("Opening WhatsApp"),
+                description: `${t("Sending PO")} #${po.referenceNo || po.id} to ${vendor.name}...`
+            });
+            sendWhatsAppPurchaseOrder(po, vendor, venueDetails, currency);
+        } catch (err) {
+            console.error("Failed to send WhatsApp PO:", err);
+            toast({
+                title: t("Error"),
+                description: t("Failed to open WhatsApp."),
+                variant: "destructive"
+            });
+        }
     };
 
     const handleCreateAndSendWhatsAppPO = () => {
@@ -470,8 +508,15 @@ export default function VendorManagement({
             referenceId: newPo.referenceNo,
         });
 
-        sendWhatsAppPurchaseOrder(newPo, vendor, venueDetails, currency);
-        toast({ title: t("Purchase Order Created"), description: `${t("PO")} #${newPo.referenceNo} ${t("opened in WhatsApp")}.` });
+        try {
+            toast({
+                title: t("Purchase Order Created"),
+                description: `${t("PO")} #${newPo.referenceNo} ${t("opened in WhatsApp")}.`
+            });
+            sendWhatsAppPurchaseOrder(newPo, vendor, venueDetails, currency);
+        } catch (err) {
+            console.error("Failed to send WhatsApp PO:", err);
+        }
     };
 
     const handleCreatePurchaseOrder = () => {
@@ -1048,9 +1093,25 @@ export default function VendorManagement({
 
                                                                 <div className="flex flex-col gap-1.5 mt-2">
                                                                     {vendor.phone && (
-                                                                        <div className="flex items-center gap-2 text-sm text-muted-foreground bg-primary/5 p-1.5 rounded-md px-2">
-                                                                            <Phone className="h-3.5 w-3.5 text-primary shrink-0" />
-                                                                            <span className="font-medium truncate">{vendor.phone}</span>
+                                                                        <div className="flex items-center justify-between text-sm text-muted-foreground bg-primary/5 p-1.5 rounded-md px-2">
+                                                                            <div className="flex items-center gap-2 min-w-0">
+                                                                                <Phone className="h-3.5 w-3.5 text-primary shrink-0" />
+                                                                                <span className="font-medium truncate">{vendor.phone}</span>
+                                                                            </div>
+                                                                            <Button
+                                                                                type="button"
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleSendWhatsAppVendor(vendor);
+                                                                                }}
+                                                                                className="h-6 px-2 text-xs font-bold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-100/50 dark:hover:bg-emerald-950/50 gap-1 rounded shrink-0"
+                                                                                title="Chat or send statement on WhatsApp"
+                                                                            >
+                                                                                <MessageSquare className="h-3 w-3" />
+                                                                                WhatsApp
+                                                                            </Button>
                                                                         </div>
                                                                     )}
                                                                     {vendor.email && (
@@ -1273,6 +1334,15 @@ export default function VendorManagement({
                                                                         <Eye className="mr-2 h-3.5 w-3.5" /> {t('History')}
                                                                     </Button>
                                                                 </div>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="w-full text-xs font-bold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800 h-8 shadow-xs gap-1.5"
+                                                                    onClick={() => handleSendWhatsAppVendor(vendor)}
+                                                                >
+                                                                    <MessageSquare className="h-3.5 w-3.5 text-emerald-600" />
+                                                                    {vendor.balance && vendor.balance > 0 ? t('WhatsApp Statement (Balance Due)') : t('WhatsApp Supplier')}
+                                                                </Button>
                                                                 <div className="flex gap-2 w-full">
                                                                     <Button variant="secondary" size="sm" className="flex-1 text-[11px] font-black h-8 bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground transition-all" onClick={() => {
                                                                         const lastOrder = vendorOrders.filter(po => po.status === 'Received' || po.status === 'Ordered').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];

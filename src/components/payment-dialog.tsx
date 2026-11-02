@@ -83,7 +83,9 @@ export function PaymentDialog({
   const change = cashReceived !== null ? cashReceived - total : null;
 
   const processPayment = (paid: number, split?: { cash: number; online: number }) => {
-    const details = customerName && customerMobile ? { name: customerName, phone: customerMobile } : undefined;
+    const details = customerName.trim() || customerMobile.trim()
+      ? { name: customerName.trim() || 'Valued Customer', phone: customerMobile.trim() || '' }
+      : undefined;
     onPaymentSuccess(paid, details, split);
   };
 

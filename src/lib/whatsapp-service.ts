@@ -271,3 +271,65 @@ export function sendWhatsAppKhataReminder(
 
   openWhatsAppUrl(url, message);
 }
+
+/* ═══════════════════════════════════════════════════════
+   4. VENDOR WHATSAPP CONTACT & PAYABLE STATEMENT
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * Formats a clean, respectful WhatsApp statement for suppliers/vendors.
+ */
+export function formatWhatsAppVendorStatementText(
+  vendor: Vendor,
+  venueDetails?: VenueDetails | null,
+  currency = 'Rs.'
+): string {
+  const storeName = venueDetails?.name || 'CHILLBILL STORE';
+  const helpline = venueDetails?.contactNumber ? `\n📞 Helpline: ${venueDetails.contactNumber}` : '';
+  const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  const balance = vendor.balance || 0;
+
+  if (balance > 0) {
+    return `
+📦 *SUPPLIER STATEMENT — ${storeName.toUpperCase()}*
+📅 Date: ${dateStr}
+Supplier: *${vendor.name}*
+━━━━━━━━━━━━━━━━━━━━
+📊 *PAYABLE LEDGER SUMMARY:*
+💰 Current Store Payable Balance: *${currency}${balance.toFixed(2)}*
+${helpline}
+━━━━━━━━━━━━━━━━━━━━
+This is an automated ledger summary from ${storeName}.
+Please let us know if any invoice reconciliations are needed.
+Thank you!
+`.trim();
+  }
+
+  return `
+🙏 *Greetings from ${storeName.toUpperCase()}!*
+Hello *${vendor.name}*,
+We are reaching out regarding stock replenishment and product inquiries for our store.
+${helpline}
+━━━━━━━━━━━━━━━━━━━━
+Thank you!
+`.trim();
+}
+
+/**
+ * Opens WhatsApp Web (PC) or WhatsApp App (Mobile) with a vendor statement or order inquiry.
+ */
+export function sendWhatsAppVendor(
+  vendor: Vendor,
+  venueDetails?: VenueDetails | null,
+  currency = 'Rs.'
+): void {
+  const cleanPhone = sanitizeWhatsAppPhone(vendor?.phone);
+  const message = formatWhatsAppVendorStatementText(vendor, venueDetails, currency);
+  const encoded = encodeURIComponent(message);
+
+  const url = cleanPhone
+    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`
+    : `https://api.whatsapp.com/send?text=${encoded}`;
+
+  openWhatsAppUrl(url, message);
+}

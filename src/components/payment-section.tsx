@@ -4,7 +4,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Trash2, Plus, Minus, Search, CreditCard, Banknote, ShoppingCart, Percent, Truck, Package, Tag, ScanBarcode, Users2, ChevronsUpDown, XCircle, Layers, RotateCcw, Wallet, Keyboard, QrCode, Store, Zap, ShieldCheck, CheckCircle2, Clock } from 'lucide-react';
+import { Trash2, Plus, Minus, Search, CreditCard, Banknote, ShoppingCart, Percent, Truck, Package, Tag, ScanBarcode, Users2, ChevronsUpDown, XCircle, Layers, RotateCcw, Wallet, Keyboard, QrCode, Store, Zap, ShieldCheck, CheckCircle2, Clock, PlusCircle, UserPlus } from 'lucide-react';
 import { InventoryItem, Bill, OrderItem, Customer, PendingBill, CartItem, SavedCart, Expense, Employee } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/contexts/language-context';
@@ -19,7 +19,7 @@ import { PaymentDialog } from './payment-dialog';
 import { UpiPaymentModal } from './upi-payment-modal';
 import { SalesReturnDialog } from './sales-return-dialog';
 import { CashDrawerDialog } from './cash-drawer-dialog';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sendWhatsAppBill } from '@/lib/whatsapp-bill';
 import { DEPARTMENTAL_STORE_CATALOG } from '@/lib/departmental-catalog';
@@ -123,6 +123,35 @@ export default function PaymentSection({ inventory, setInventory, bills, setBill
     const cartBottomRef = useRef<HTMLDivElement>(null);
     const highlightTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Quick Add Customer modal state
+    const [isQuickAddCustomerOpen, setIsQuickAddCustomerOpen] = useState(false);
+    const [quickAddName, setQuickAddName] = useState('');
+    const [quickAddPhone, setQuickAddPhone] = useState('');
+    const [quickAddCompany, setQuickAddCompany] = useState('');
+    const [quickAddGstin, setQuickAddGstin] = useState('');
+
+    // Standee payment customer state
+    const [standeeCustomerName, setStandeeCustomerName] = useState('');
+    const [standeeCustomerPhone, setStandeeCustomerPhone] = useState('');
+    const standeeCustomerRef = useRef<{ name: string; phone: string } | null>(null);
+
+    // Keep standee customer ref in sync
+    useEffect(() => {
+        if (standeeCustomerName.trim() || standeeCustomerPhone.trim()) {
+            standeeCustomerRef.current = {
+                name: standeeCustomerName.trim() || 'Valued Customer',
+                phone: standeeCustomerPhone.trim() || ''
+            };
+        } else if (selectedCustomer) {
+            standeeCustomerRef.current = {
+                name: selectedCustomer.name,
+                phone: selectedCustomer.phone
+            };
+        } else {
+            standeeCustomerRef.current = null;
+        }
+    }, [standeeCustomerName, standeeCustomerPhone, selectedCustomer]);
+
     // Auto-scroll to recently added item (bottom of the cart)
     const scrollToRecentItem = (itemId: string) => {
         lastAddedItemIdRef.current = itemId;
@@ -199,6 +228,70 @@ export default function PaymentSection({ inventory, setInventory, bills, setBill
             c.phone.toLowerCase().includes(term)
         );
     }, [customers, customerSearch]);
+
+    const handleOpenQuickAdd = (initialQuery?: string) => {
+        const q = (initialQuery || '').trim();
+        const digits = q.replace(/\D/g, '');
+        if (digits.length >= 7) {
+            setQuickAddPhone(digits);
+            setQuickAddName('');
+        } else {
+            setQuickAddName(q);
+            setQuickAddPhone('');
+        }
+        setQuickAddCompany('');
+        setQuickAddGstin('');
+        setIsQuickAddCustomerOpen(true);
+    };
+
+    const handleSaveQuickCustomer = () => {
+        const trimmedName = quickAddName.trim();
+        const trimmedPhone = quickAddPhone.trim();
+
+        if (!trimmedName) {
+            toast({ title: t("Name Required"), description: t("Please enter customer name."), variant: "destructive" });
+            return;
+        }
+        if (!trimmedPhone) {
+            toast({ title: t("Phone Required"), description: t("Please enter customer mobile number."), variant: "destructive" });
+            return;
+        }
+
+        const existing = customers.find(c => c.phone === trimmedPhone);
+        let customerToSelect: Customer;
+
+        if (existing) {
+            customerToSelect = {
+                ...existing,
+                name: trimmedName,
+                companyName: quickAddCompany.trim() || existing.companyName,
+                gstin: quickAddGstin.trim() || existing.gstin,
+                lastSeen: new Date(),
+            };
+            setCustomers(customers.map(c => c.id === existing.id ? customerToSelect : c));
+            toast({ title: t("Customer Updated"), description: `${trimmedName} (${trimmedPhone})` });
+        } else {
+            customerToSelect = {
+                id: trimmedPhone,
+                name: trimmedName,
+                phone: trimmedPhone,
+                companyName: quickAddCompany.trim() || undefined,
+                gstin: quickAddGstin.trim() || undefined,
+                firstSeen: new Date(),
+                lastSeen: new Date(),
+                totalVisits: 0,
+                totalSpent: 0,
+                balance: 0,
+                loyaltyPoints: 0,
+            };
+            setCustomers([...customers, customerToSelect]);
+            toast({ title: t("Customer Added to Database"), description: `${trimmedName} (${trimmedPhone})` });
+        }
+
+        setSelectedCustomer(customerToSelect);
+        setIsQuickAddCustomerOpen(false);
+        setCustomerSearch('');
+    };
 
     // Auto-apply default discount from settings
     React.useEffect(() => {
@@ -593,17 +686,24 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
         }
 
         // Update customer loyalty points and history
-        if (currentCustomer) {
+        if (currentCustomer && (currentCustomer.name || currentCustomer.phone)) {
             const pointsEarned = Math.floor(paid * (venueDetails?.loyaltyRate || 0.01));
-            const existing = customers.find(c => c.phone === currentCustomer.phone);
+            const cleanPhone = (currentCustomer.phone || '').trim();
+            const cleanName = (currentCustomer.name || '').trim();
+
+            const existing = cleanPhone && cleanPhone !== 'N/A'
+                ? customers.find(c => c.phone === cleanPhone)
+                : (cleanName ? customers.find(c => c.name.toLowerCase() === cleanName.toLowerCase()) : null);
 
             if (existing) {
                 const newCustomers = customers.map(c => {
                     if (c.id === existing.id) {
                         return {
                             ...c,
-                            totalSpent: c.totalSpent + paid,
-                            totalVisits: c.totalVisits + 1,
+                            name: cleanName || c.name,
+                            phone: cleanPhone || c.phone,
+                            totalSpent: (c.totalSpent || 0) + paid,
+                            totalVisits: (c.totalVisits || 0) + 1,
                             lastSeen: new Date(),
                             balance: Number(((c.balance || 0) + (balance > 0 ? balance : 0)).toFixed(2)),
                             loyaltyPoints: (c.loyaltyPoints || 0) - redeemPoints + pointsEarned
@@ -612,11 +712,11 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                     return c;
                 });
                 setCustomers(newCustomers);
-            } else {
+            } else if (cleanName || (cleanPhone && cleanPhone !== 'N/A')) {
                 const newCustomer: Customer = {
-                    id: currentCustomer.phone,
-                    name: currentCustomer.name,
-                    phone: currentCustomer.phone,
+                    id: cleanPhone || `cust_${Date.now()}`,
+                    name: cleanName || 'Valued Customer',
+                    phone: cleanPhone || '',
                     firstSeen: new Date(),
                     lastSeen: new Date(),
                     totalVisits: 1,
@@ -663,7 +763,8 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
             } catch {}
 
             counterTimerRef.current = setTimeout(() => {
-                processPayment(pendingPrintAfterUpi, total, selectedCustomer ? { name: selectedCustomer.name, phone: selectedCustomer.phone } : undefined);
+                const cust = standeeCustomerRef.current || (selectedCustomer ? { name: selectedCustomer.name, phone: selectedCustomer.phone } : undefined);
+                processPayment(pendingPrintAfterUpi, total, cust);
                 setIsCounterStandeeListening(false);
             }, 1400);
         });
@@ -1239,92 +1340,170 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                             </div>
                             <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted rounded border border-border text-muted-foreground">F2</kbd>
                         </div>
-                        <Popover open={isCustomerPopoverOpen} onOpenChange={(open) => {
-                            setIsCustomerPopoverOpen(open);
-                            if (open) setTimeout(() => customerSearchInputRef.current?.focus(), 60);
-                        }}>
-                            <PopoverTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    role="combobox"
-                                    aria-expanded={isCustomerPopoverOpen}
-                                    className="w-full justify-between bg-background border border-border/50 rounded-xl h-10 px-3 font-bold text-sm"
-                                >
-                                    {selectedCustomer
-                                        ? `${selectedCustomer.name} (${selectedCustomer.phone})`
-                                        : t("Select / Search Customer")}
-                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 rounded-2xl shadow-2xl border-border/50">
-                                <div className="p-2 border-b border-border/50 bg-muted/30">
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                        <Input
-                                            ref={customerSearchInputRef}
-                                            placeholder={t("Search by name or phone...")}
-                                            className="pl-9 h-10 bg-background border-none shadow-none focus-visible:ring-1 focus-visible:ring-primary/20 rounded-xl font-bold"
-                                            value={customerSearch}
-                                            onChange={(e) => setCustomerSearch(e.target.value)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    if (filteredCustomers.length > 0) {
-                                                        setSelectedCustomer(filteredCustomers[0]);
-                                                        setIsCustomerPopoverOpen(false);
-                                                        setCustomerSearch("");
-                                                        toast({ title: t("Customer Selected"), description: filteredCustomers[0].name });
+                        <div className="flex items-center gap-1.5 w-full">
+                            <Popover open={isCustomerPopoverOpen} onOpenChange={(open) => {
+                                setIsCustomerPopoverOpen(open);
+                                if (open) setTimeout(() => customerSearchInputRef.current?.focus(), 60);
+                            }}>
+                                <PopoverTrigger asChild>
+                                    <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        aria-expanded={isCustomerPopoverOpen}
+                                        className="w-full justify-between bg-background border border-border/50 rounded-xl h-10 px-3 font-bold text-sm truncate"
+                                    >
+                                        <span className="truncate">
+                                            {selectedCustomer
+                                                ? `${selectedCustomer.name} (${selectedCustomer.phone})`
+                                                : t("Select / Search Customer")}
+                                        </span>
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[280px] p-0 rounded-2xl shadow-2xl border-border/50">
+                                    <div className="p-2 border-b border-border/50 bg-muted/30 flex items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                            <Input
+                                                ref={customerSearchInputRef}
+                                                placeholder={t("Search by name or phone...")}
+                                                className="pl-9 h-10 bg-background border-none shadow-none focus-visible:ring-1 focus-visible:ring-primary/20 rounded-xl font-bold text-xs"
+                                                value={customerSearch}
+                                                onChange={(e) => setCustomerSearch(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        if (filteredCustomers.length > 0) {
+                                                            setSelectedCustomer(filteredCustomers[0]);
+                                                            setIsCustomerPopoverOpen(false);
+                                                            setCustomerSearch("");
+                                                            toast({ title: t("Customer Selected"), description: filteredCustomers[0].name });
+                                                        } else if (customerSearch.trim()) {
+                                                            setIsCustomerPopoverOpen(false);
+                                                            handleOpenQuickAdd(customerSearch);
+                                                        }
                                                     }
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                                <ScrollArea className="h-[250px]">
-                                    <div className="p-1">
-                                        <button
-                                            className="w-full text-left px-3 py-2 rounded-xl text-sm font-bold hover:bg-primary/5 transition-colors flex items-center gap-2"
+                                                }}
+                                            />
+                                        </div>
+                                        <Button
+                                            type="button"
+                                            size="sm"
                                             onClick={() => {
-                                                setSelectedCustomer(null);
                                                 setIsCustomerPopoverOpen(false);
-                                                setCustomerSearch("");
+                                                handleOpenQuickAdd(customerSearch);
                                             }}
+                                            className="h-10 px-2.5 bg-primary hover:bg-primary/90 text-white font-bold text-xs rounded-xl shadow-xs shrink-0 flex items-center gap-1"
+                                            title="Add new customer"
                                         >
-                                            <div className={cn("flex-shrink-0 w-4 h-4 rounded-full border border-border flex items-center justify-center", !selectedCustomer && "bg-primary border-primary")}>
-                                                {!selectedCustomer && <Check className="h-3 w-3 text-white" />}
-                                            </div>
-                                            {t("Walk-in Customer")}
-                                        </button>
-                                        <Separator className="my-1 opacity-50" />
-                                        {filteredCustomers.length > 0 ? (
-                                            filteredCustomers.map((c) => (
+                                            <Plus className="h-3.5 w-3.5" />
+                                            <span>{t("New")}</span>
+                                        </Button>
+                                    </div>
+                                    <ScrollArea className="h-[260px]">
+                                        <div className="p-1.5 space-y-1">
+                                            {/* Direct Add Button when searching */}
+                                            {customerSearch.trim() && (
                                                 <button
-                                                    key={c.id}
-                                                    className="w-full text-left px-3 py-2 rounded-xl text-sm font-bold hover:bg-primary/10 transition-colors flex items-center gap-2 group"
+                                                    type="button"
+                                                    className="w-full text-left p-2.5 rounded-xl text-xs font-bold bg-primary/10 hover:bg-primary/20 text-primary transition-colors flex items-center justify-between border border-primary/20 shadow-xs mb-1"
                                                     onClick={() => {
-                                                        setSelectedCustomer(c);
                                                         setIsCustomerPopoverOpen(false);
-                                                        setCustomerSearch("");
+                                                        handleOpenQuickAdd(customerSearch);
                                                     }}
                                                 >
-                                                    <div className={cn("flex-shrink-0 w-4 h-4 rounded-full border border-border flex items-center justify-center transition-all", selectedCustomer?.id === c.id && "bg-primary border-primary")}>
-                                                        {selectedCustomer?.id === c.id && <Check className="h-3 w-3 text-white" />}
+                                                    <div className="flex items-center gap-2 truncate">
+                                                        <Plus className="h-4 w-4 text-primary shrink-0" />
+                                                        <span className="truncate">{t("Add")} "<strong>{customerSearch}</strong>"</span>
                                                     </div>
-                                                    <div className="flex flex-col">
-                                                        <span>{c.name}</span>
-                                                        <span className="text-[10px] text-muted-foreground font-medium group-hover:text-primary/70">{c.phone}</span>
-                                                    </div>
+                                                    <Badge variant="outline" className="text-[10px] bg-background border-primary/30 uppercase font-black shrink-0">
+                                                        + Add
+                                                    </Badge>
                                                 </button>
-                                            ))
-                                        ) : (
-                                            <div className="p-4 text-center text-sm text-muted-foreground font-medium">
-                                                {t("No customers found")}
-                                            </div>
-                                        )}
-                                    </div>
-                                </ScrollArea>
-                            </PopoverContent>
-                        </Popover>
+                                            )}
+
+                                            <button
+                                                className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold hover:bg-primary/5 transition-colors flex items-center gap-2"
+                                                onClick={() => {
+                                                    setSelectedCustomer(null);
+                                                    setIsCustomerPopoverOpen(false);
+                                                    setCustomerSearch("");
+                                                }}
+                                            >
+                                                <div className={cn("flex-shrink-0 w-4 h-4 rounded-full border border-border flex items-center justify-center", !selectedCustomer && "bg-primary border-primary")}>
+                                                    {!selectedCustomer && <Check className="h-3 w-3 text-white" />}
+                                                </div>
+                                                {t("Walk-in Customer")}
+                                            </button>
+                                            <Separator className="my-1 opacity-50" />
+                                            {filteredCustomers.length > 0 ? (
+                                                filteredCustomers.map((c) => (
+                                                    <button
+                                                        key={c.id}
+                                                        className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold hover:bg-primary/10 transition-colors flex items-center gap-2 group"
+                                                        onClick={() => {
+                                                            setSelectedCustomer(c);
+                                                            setIsCustomerPopoverOpen(false);
+                                                            setCustomerSearch("");
+                                                        }}
+                                                    >
+                                                        <div className={cn("flex-shrink-0 w-4 h-4 rounded-full border border-border flex items-center justify-center transition-all", selectedCustomer?.id === c.id && "bg-primary border-primary")}>
+                                                            {selectedCustomer?.id === c.id && <Check className="h-3 w-3 text-white" />}
+                                                        </div>
+                                                        <div className="flex flex-col truncate">
+                                                            <span className="truncate">{c.name}</span>
+                                                            <span className="text-[10px] text-muted-foreground font-medium group-hover:text-primary/70">{c.phone}</span>
+                                                        </div>
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <div className="p-4 text-center space-y-2">
+                                                    <p className="text-xs text-muted-foreground font-medium">{t("No customer found for")} "{customerSearch}"</p>
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        onClick={() => {
+                                                            setIsCustomerPopoverOpen(false);
+                                                            handleOpenQuickAdd(customerSearch);
+                                                        }}
+                                                        className="bg-primary hover:bg-primary/90 text-white font-bold text-xs rounded-xl h-8 px-3"
+                                                    >
+                                                        <Plus className="h-3.5 w-3.5 mr-1" />
+                                                        {t("Add as New Customer")}
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </ScrollArea>
+                                </PopoverContent>
+                            </Popover>
+                            {selectedCustomer ? (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                        setSelectedCustomer(null);
+                                        toast({ title: t("Cleared"), description: t("Switched to Walk-in Customer") });
+                                    }}
+                                    className="h-10 w-10 shrink-0 text-muted-foreground hover:text-destructive rounded-xl"
+                                    title="Clear / switch to Walk-in"
+                                >
+                                    <XCircle className="h-4 w-4" />
+                                </Button>
+                            ) : (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={() => handleOpenQuickAdd()}
+                                    className="h-10 w-10 shrink-0 border-border/50 hover:border-primary hover:bg-primary/5 text-primary rounded-xl"
+                                    title="Quick add new customer"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                </Button>
+                            )}
+                        </div>
                         {selectedCustomer && (
                             <div className="flex justify-between items-center bg-primary/5 p-2 rounded-xl border border-primary/10 animate-in fade-in zoom-in-95 mt-1">
                                 <div className="flex flex-col">
@@ -1814,7 +1993,8 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                             <Button
                                 onClick={() => {
                                     if (counterTimerRef.current) clearTimeout(counterTimerRef.current);
-                                    processPayment(pendingPrintAfterUpi, total, selectedCustomer ? { name: selectedCustomer.name, phone: selectedCustomer.phone } : undefined);
+                                    const cust = standeeCustomerRef.current || (selectedCustomer ? { name: selectedCustomer.name, phone: selectedCustomer.phone } : undefined);
+                                    processPayment(pendingPrintAfterUpi, total, cust);
                                     setIsCounterStandeeListening(false);
                                 }}
                                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black h-12 rounded-xl text-sm shadow-md"
@@ -1833,6 +2013,43 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                 <p className="text-4xl font-black text-primary pt-1">
                                     {activeCurrency} {total.toFixed(2)}
                                 </p>
+                            </div>
+
+                            {/* Customer Information (Optional - saves to Customer Database) */}
+                            <div className="p-3 bg-muted/40 rounded-2xl border border-border/60 space-y-2 text-left">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
+                                        <Users2 className="h-3.5 w-3.5 text-primary" />
+                                        <span>{t("Customer Info (Optional)")}</span>
+                                    </div>
+                                    <span className="text-[10px] text-muted-foreground font-medium">
+                                        {t("Adds to Customer Database & WhatsApp bill")}
+                                    </span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Input
+                                        placeholder={t("Customer Name (e.g. Bunty)")}
+                                        value={standeeCustomerName}
+                                        onChange={(e) => setStandeeCustomerName(e.target.value)}
+                                        className="h-9 text-xs font-bold bg-background rounded-xl"
+                                    />
+                                    <Input
+                                        placeholder={t("Mobile No. (e.g. 9876545432)")}
+                                        value={standeeCustomerPhone}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setStandeeCustomerPhone(val);
+                                            if (val.length >= 10) {
+                                                const match = customers.find(c => c.phone.endsWith(val.slice(-10)));
+                                                if (match && !standeeCustomerName) {
+                                                    setStandeeCustomerName(match.name);
+                                                }
+                                            }
+                                        }}
+                                        className="h-9 text-xs font-bold bg-background rounded-xl font-mono"
+                                        maxLength={13}
+                                    />
+                                </div>
                             </div>
 
                             {/* Live Radar Listening Indicator */}
@@ -1881,7 +2098,8 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                         size="sm"
                                         onClick={() => {
                                             setIsCounterStandeeListening(false);
-                                            processPayment(pendingPrintAfterUpi, total, selectedCustomer ? { name: selectedCustomer.name, phone: selectedCustomer.phone } : undefined);
+                                            const cust = standeeCustomerRef.current || (selectedCustomer ? { name: selectedCustomer.name, phone: selectedCustomer.phone } : undefined);
+                                            processPayment(pendingPrintAfterUpi, total, cust);
                                         }}
                                         className="text-xs font-bold text-muted-foreground hover:text-foreground h-8"
                                     >
@@ -2087,6 +2305,22 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                     onClick={() => {
                                         if (lastCompletedBill) {
                                             sendWhatsAppBill(lastCompletedBill, venueDetails, whatsAppMobile, activeCurrency);
+                                            const cleanMobile = whatsAppMobile.trim();
+                                            if (cleanMobile && cleanMobile.length >= 10 && !customers.some(c => c.phone.endsWith(cleanMobile.slice(-10)))) {
+                                                const customerName = lastCompletedBill.customerDetails?.name || 'Customer';
+                                                const newCust: Customer = {
+                                                    id: cleanMobile,
+                                                    name: customerName,
+                                                    phone: cleanMobile,
+                                                    firstSeen: new Date(),
+                                                    lastSeen: new Date(),
+                                                    totalVisits: 1,
+                                                    totalSpent: lastCompletedBill.total || 0,
+                                                    balance: 0,
+                                                    loyaltyPoints: 0,
+                                                };
+                                                setCustomers(prev => [...prev, newCust]);
+                                            }
                                             setIsBillSuccessOpen(false);
                                         }
                                     }}
@@ -2118,6 +2352,86 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                             className="h-12 rounded-xl font-black text-sm bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20"
                         >
                             Next Customer
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Quick Add Customer Modal */}
+            <Dialog open={isQuickAddCustomerOpen} onOpenChange={setIsQuickAddCustomerOpen}>
+                <DialogContent className="sm:max-w-md rounded-3xl p-6 border-none shadow-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-xl font-black flex items-center gap-2">
+                            <Users2 className="h-5 w-5 text-primary" />
+                            {t("Quick Add Customer")}
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-muted-foreground font-medium">
+                            {t("Adds customer to Customer Database and selects them for this bill.")}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-3 py-2">
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-muted-foreground">{t("Customer Name")} *</label>
+                            <Input
+                                placeholder={t("e.g. Bunty / Rahul")}
+                                value={quickAddName}
+                                onChange={(e) => setQuickAddName(e.target.value)}
+                                className="h-10 font-bold rounded-xl"
+                                autoFocus
+                            />
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-xs font-bold text-muted-foreground">{t("Mobile Number")} *</label>
+                            <Input
+                                placeholder={t("e.g. 9876545432")}
+                                value={quickAddPhone}
+                                onChange={(e) => setQuickAddPhone(e.target.value)}
+                                className="h-10 font-bold rounded-xl font-mono"
+                                maxLength={13}
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-bold text-muted-foreground">{t("Shop/Company (Optional)")}</label>
+                                <Input
+                                    placeholder={t("e.g. Bunty Traders")}
+                                    value={quickAddCompany}
+                                    onChange={(e) => setQuickAddCompany(e.target.value)}
+                                    className="h-9 text-xs rounded-xl"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[11px] font-bold text-muted-foreground">{t("GSTIN (Optional)")}</label>
+                                <Input
+                                    placeholder={t("15-digit GSTIN")}
+                                    value={quickAddGstin}
+                                    onChange={(e) => setQuickAddGstin(e.target.value.toUpperCase())}
+                                    maxLength={15}
+                                    className="h-9 text-xs font-mono rounded-xl uppercase"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2 pt-2 border-t">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIsQuickAddCustomerOpen(false)}
+                            className="flex-1 h-11 rounded-xl font-bold text-xs"
+                        >
+                            {t("Cancel")}
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleSaveQuickCustomer}
+                            className="flex-1 h-11 rounded-xl font-black text-xs bg-primary hover:bg-primary/90 text-white shadow-md shadow-primary/20"
+                        >
+                            <Check className="mr-1.5 h-4 w-4" />
+                            {t("Save & Select for Bill")}
                         </Button>
                     </div>
                 </DialogContent>
