@@ -86,6 +86,43 @@ ${venueDetails?.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! VISIT AGAIN.'}
 }
 
 /**
+ * Reliably dispatches a WhatsApp URL across Mobile apps, Desktop WhatsApp Web, and PWAs.
+ * Bypasses browser popup blockers using a synthesized trusted anchor click and copies the text as fallback.
+ */
+export function openWhatsAppUrl(url: string, message: string): void {
+  // Always copy text to clipboard as a reliable backup
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(message).catch(() => {});
+  }
+
+  const isMobile =
+    typeof navigator !== 'undefined' &&
+    /android|iphone|ipad|ipod/i.test(navigator.userAgent || '');
+
+  if (isMobile) {
+    // On mobile devices, window.location.href seamlessly opens the native WhatsApp app without popup blockers
+    window.location.href = url;
+  } else {
+    // On desktop / PC, simulate a trusted user anchor click with target="_blank"
+    try {
+      const link = document.createElement('a');
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+      }, 500);
+    } catch (e) {
+      window.location.href = url;
+    }
+  }
+}
+
+/**
  * Opens WhatsApp Web (PC) or WhatsApp App (Mobile/Tablet) with the formatted bill.
  * If customer's phone number is missing, opens WhatsApp with the bill text ready to select any contact.
  */
@@ -100,10 +137,10 @@ export function sendWhatsAppBill(
   const encoded = encodeURIComponent(message);
 
   const url = cleanPhone
-    ? `https://wa.me/${cleanPhone}?text=${encoded}`
-    : `https://wa.me/?text=${encoded}`;
+    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`
+    : `https://api.whatsapp.com/send?text=${encoded}`;
 
-  window.open(url, '_blank');
+  openWhatsAppUrl(url, message);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -173,10 +210,10 @@ export function sendWhatsAppPurchaseOrder(
   const encoded = encodeURIComponent(message);
 
   const url = cleanPhone
-    ? `https://wa.me/${cleanPhone}?text=${encoded}`
-    : `https://wa.me/?text=${encoded}`;
+    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`
+    : `https://api.whatsapp.com/send?text=${encoded}`;
 
-  window.open(url, '_blank');
+  openWhatsAppUrl(url, message);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -193,11 +230,12 @@ export function formatWhatsAppKhataReminderText(
   currency = 'Rs.'
 ): string {
   const storeName = venueDetails?.name || 'CHILLBILL STORE';
+  const customerName = customer?.name || 'Customer';
   const helpline = venueDetails?.contactNumber ? `\n📞 Helpline: ${venueDetails.contactNumber}` : '';
   const dateStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
   const message = `
-🙏 *NAMASTE ${customer.name.toUpperCase()}!*
+🙏 *NAMASTE ${customerName.toUpperCase()}!*
 Greetings from *${storeName.toUpperCase()}*.
 ━━━━━━━━━━━━━━━━━━━━
 🧾 *KHATA STATEMENT / PENDING BALANCE*
@@ -223,13 +261,13 @@ export function sendWhatsAppKhataReminder(
   venueDetails?: VenueDetails | null,
   currency = 'Rs.'
 ): void {
-  const cleanPhone = sanitizeWhatsAppPhone(customer.phone);
+  const cleanPhone = sanitizeWhatsAppPhone(customer?.phone);
   const message = formatWhatsAppKhataReminderText(customer, balance, venueDetails, currency);
   const encoded = encodeURIComponent(message);
 
   const url = cleanPhone
-    ? `https://wa.me/${cleanPhone}?text=${encoded}`
-    : `https://wa.me/?text=${encoded}`;
+    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`
+    : `https://api.whatsapp.com/send?text=${encoded}`;
 
-  window.open(url, '_blank');
+  openWhatsAppUrl(url, message);
 }

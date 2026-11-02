@@ -906,6 +906,7 @@ export default function MainLayout({
                 setPendingBills={setPendingBills}
                 customerCreditLimit={customerCreditLimit}
                 currency={effectiveCurrency}
+                venueDetails={venueDetails}
               />
             </TabsContent>
             <TabsContent value="vendors" className="m-0 p-0 h-full">
@@ -923,6 +924,7 @@ export default function MainLayout({
                 purchaseOrders={purchaseOrders}
                 setPurchaseOrders={setPurchaseOrders}
                 currentUser={currentUser}
+                venueDetails={venueDetails}
               />
             </TabsContent>
             <TabsContent value="expenses" className="m-0 p-0 h-full">

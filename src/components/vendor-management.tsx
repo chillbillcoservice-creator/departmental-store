@@ -61,7 +61,7 @@ const safeFormat = (date: any, formatStr: string) => {
 const generateUniqueId = () => {
     return `${Date.now()}.${Math.random().toString(36).substr(2, 9)}`;
 };
-import type { Expense, Vendor, PendingBill, PendingBillTransaction, InventoryItem, PurchaseOrder, PurchaseOrderItem, Employee } from '@/lib/types';
+import type { Expense, Vendor, PendingBill, PendingBillTransaction, InventoryItem, PurchaseOrder, PurchaseOrderItem, Employee, VenueDetails } from '@/lib/types';
 import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
 
 import { cn } from '@/lib/utils';
@@ -82,6 +82,7 @@ interface VendorManagementProps {
     setPurchaseOrders: (orders: PurchaseOrder[]) => void;
     setInventory: (inventory: InventoryItem[]) => void;
     currentUser?: Employee | null;
+    venueDetails?: VenueDetails | null;
 }
 
 function AddOrEditVendorDialog({
@@ -330,6 +331,7 @@ export default function VendorManagement({
     setPurchaseOrders,
     setInventory,
     currentUser,
+    venueDetails = null,
 }: VendorManagementProps) {
     const { t } = useLanguage();
     const { toast } = useToast();

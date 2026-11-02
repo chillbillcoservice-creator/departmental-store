@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Label } from '@/components/ui/label';
 import { PlusCircle, Edit, Search, Trash2, Eye, Printer, Mail, CalendarDays, ShoppingBag, ArrowUpDown, ChevronDown, ChevronUp, HandCoins, ChevronsUpDown, CalendarIcon, AlertTriangle, MessageSquare } from 'lucide-react';
-import type { Bill, Customer, PendingBill, PendingBillTransaction } from '@/lib/types';
+import type { Bill, Customer, PendingBill, PendingBillTransaction, VenueDetails } from '@/lib/types';
 import { logShiftActivity } from '@/lib/shift-manager';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, isValid } from 'date-fns';
@@ -43,6 +43,7 @@ interface CustomerManagementProps {
   setPendingBills: (bills: PendingBill[]) => void;
   customerCreditLimit: number;
   currency: string;
+  venueDetails?: VenueDetails | null;
 }
 
 function AddOrEditCustomerDialog({
@@ -600,10 +601,28 @@ export default function CustomerManagement({
   pendingBills,
   setPendingBills,
   customerCreditLimit,
-  currency = 'Rs.'
+  currency = 'Rs.',
+  venueDetails = null,
 }: CustomerManagementProps) {
   const { t } = useLanguage();
   const { toast } = useToast();
+
+  const handleSendKhataReminder = (cust: Customer) => {
+    try {
+      sendWhatsAppKhataReminder(cust, cust.balance || 0, venueDetails, currency);
+      toast({
+        title: t('WhatsApp Khata Reminder'),
+        description: `Opening WhatsApp reminder for ${cust.name}...`,
+      });
+    } catch (err: any) {
+      console.error('Failed to open WhatsApp reminder:', err);
+      toast({
+        variant: 'destructive',
+        title: t('WhatsApp Error'),
+        description: err.message || 'Could not open WhatsApp.',
+      });
+    }
+  };
 
   const [isAddOrEditDialogOpen, setIsAddOrEditDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
@@ -1113,7 +1132,7 @@ export default function CustomerManagement({
                           </div>
                           <Button
                             size="sm"
-                            onClick={() => sendWhatsAppKhataReminder(customer, customer.balance || 0, venueDetails, currency)}
+                            onClick={() => handleSendKhataReminder(customer)}
                             className="w-full h-8 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg gap-1.5 shadow-sm"
                           >
                             <MessageSquare className="h-3.5 w-3.5" />
