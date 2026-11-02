@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, collection, getDocs, updateDoc } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { firebaseConfig } from '@/firebase/config';
 import { compileStoreReport } from '@/lib/report-generator';
 import type { Bill, Expense, InventoryItem, VenueDetails } from '@/lib/types';
@@ -8,14 +9,28 @@ import { Resend } from 'resend';
 
 export const dynamic = 'force-dynamic';
 
-function getServerFirestore() {
+async function getServerFirestore() {
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+  if (process.env.FIREBASE_SYSTEM_EMAIL && process.env.FIREBASE_SYSTEM_PASSWORD && !auth.currentUser) {
+    try {
+      await signInWithEmailAndPassword(
+        auth,
+        process.env.FIREBASE_SYSTEM_EMAIL,
+        process.env.FIREBASE_SYSTEM_PASSWORD
+      );
+    } catch (authErr) {
+      console.warn('Firebase system auth failed in cron route:', authErr);
+    }
+  }
+
   return getFirestore(app);
 }
 
 export async function GET(request: Request) {
   try {
-    const db = getServerFirestore();
+    const db = await getServerFirestore();
 
     // 1. Fetch venue settings
     const venueDocRef = doc(db, 'settings', 'venue');
