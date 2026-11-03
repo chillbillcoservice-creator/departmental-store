@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { PlusCircle, Edit, Trash2, Plus, Minus, Server, Search, FilePlus, Truck, AlertTriangle, ScanBarcode, Info, Tag, Package2, DollarSign, MapPin, Calendar, List, Check, Sparkles, FileSpreadsheet, Upload, Download } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { format } from 'date-fns';
 import type { InventoryItem, MenuCategory, Vendor, PurchaseOrder, DamageRecord } from '@/lib/types';
 import { DEPARTMENTAL_STORE_CATALOG } from '@/lib/departmental-catalog';
@@ -66,6 +67,14 @@ function AddOrEditItemDialog({
 }) {
   const { t } = useLanguage();
   const { toast } = useToast();
+  const safeVendors = useMemo(() => {
+    return (vendors || []).map((v, i) => ({
+      ...v,
+      id: (v.id && typeof v.id === 'string' && v.id.trim() !== '') ? v.id : `vendor-${i + 1}`,
+      name: v.name || `Vendor ${i + 1}`,
+      category: v.category || 'General',
+    }));
+  }, [vendors]);
   const [id, setId] = useState('');
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -269,7 +278,7 @@ function AddOrEditItemDialog({
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">None / Miscellaneous</SelectItem>
-                        {vendors.map((v: Vendor) => (
+                        {safeVendors.filter(v => v.id && v.id.trim() !== '').map((v: Vendor) => (
                           <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
                         ))}
                       </SelectContent>
@@ -504,6 +513,125 @@ export default function InventoryManagement({
 }: InventoryManagementProps) {
   const { t } = useLanguage();
   const { toast } = useToast();
+
+  const safeVendors = useMemo(() => {
+    return (vendors || []).map((v, i) => ({
+      ...v,
+      id: (v.id && typeof v.id === 'string' && v.id.trim() !== '') ? v.id : `vendor-${i + 1}`,
+      name: v.name || `Vendor ${i + 1}`,
+      category: v.category || 'General',
+      phone: v.phone || '',
+      location: v.location || '',
+      balance: Number(v.balance || 0),
+    }));
+  }, [vendors]);
+
+  // Quick Assign Vendor Dialog State
+  const [isQuickAssignOpen, setIsQuickAssignOpen] = useState(false);
+  const [quickAssignItem, setQuickAssignItem] = useState<InventoryItem | null>(null);
+  const [quickAssignIsImmediate, setQuickAssignIsImmediate] = useState(false);
+  const [quickAssignVendorId, setQuickAssignVendorId] = useState<string>('none');
+  const [isCreatingNewVendor, setIsCreatingNewVendor] = useState(false);
+  const [quickNewVendorName, setQuickNewVendorName] = useState('');
+  const [quickNewVendorPhone, setQuickNewVendorPhone] = useState('');
+  const [quickNewVendorCategory, setQuickNewVendorCategory] = useState('');
+  const [quickCostPrice, setQuickCostPrice] = useState('');
+
+  const handleOpenQuickAssignVendor = (item: InventoryItem, isImmediate: boolean = false) => {
+    setQuickAssignItem(item);
+    setQuickAssignIsImmediate(isImmediate);
+    const validFirstVendor = safeVendors.find(v => v.id && v.id.trim() !== '');
+    const defaultVendorId = item.vendorId || (validFirstVendor ? validFirstVendor.id : 'new');
+    setQuickAssignVendorId(defaultVendorId);
+    setIsCreatingNewVendor(safeVendors.length === 0);
+    setQuickNewVendorName('');
+    setQuickNewVendorPhone('');
+    setQuickNewVendorCategory(item.category || 'General');
+    setQuickCostPrice(item.costPrice ? String(item.costPrice) : '');
+    setIsQuickAssignOpen(true);
+  };
+
+  const handleConfirmVendorAssignment = (actionType: 'save' | 'order' | 'list') => {
+    if (!quickAssignItem) return;
+
+    let targetVendorId = quickAssignVendorId;
+    let targetVendorName = '';
+
+    if (isCreatingNewVendor) {
+      const trimmedName = quickNewVendorName.trim();
+      if (!trimmedName) {
+        toast({
+          title: t("Vendor Name Required"),
+          description: t("Please enter a name for the new vendor."),
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const newVendorId = `vendor-${Date.now()}`;
+      const newVendor: Vendor = {
+        id: newVendorId,
+        name: trimmedName,
+        category: quickNewVendorCategory.trim() || quickAssignItem.category || 'General',
+        phone: quickNewVendorPhone.trim() || undefined,
+        balance: 0,
+      };
+
+      targetVendorId = newVendorId;
+      targetVendorName = trimmedName;
+
+      const updatedVendors = [...safeVendors, newVendor];
+      if (setVendors) {
+        setVendors(updatedVendors);
+      }
+      try {
+        localStorage.setItem('vendors', JSON.stringify(updatedVendors));
+      } catch (e) {}
+    } else {
+      if (!targetVendorId || targetVendorId === 'none' || targetVendorId === 'new') {
+        toast({
+          title: t("Select a Vendor"),
+          description: t("Please choose an existing vendor or create a new one."),
+          variant: "destructive"
+        });
+        return;
+      }
+      const matched = safeVendors.find(v => v.id === targetVendorId);
+      targetVendorName = matched ? matched.name : 'Vendor';
+    }
+
+    // Update item in inventory
+    const parsedCost = parseFloat(quickCostPrice);
+    const updatedItem: InventoryItem = {
+      ...quickAssignItem,
+      vendorId: targetVendorId,
+      ...(parsedCost > 0 ? { costPrice: parsedCost } : {}),
+    };
+
+    const newInventory = inventory.map(i => i.id === updatedItem.id ? updatedItem : i);
+    setInventory(newInventory);
+    try {
+      localStorage.setItem('inventory', JSON.stringify(newInventory));
+    } catch (e) {}
+
+    toast({
+      title: t("Vendor Assigned Successfully"),
+      description: `${targetVendorName} ${t("is now assigned to")} ${updatedItem.name}.`,
+    });
+
+    setIsQuickAssignOpen(false);
+
+    // If user chose to immediately order or add to list
+    if (actionType === 'order') {
+      setOrderItem(updatedItem);
+      const needed = Math.max(1, updatedItem.capacity - updatedItem.stock);
+      setOrderQty(String(needed));
+      setIsOrderNowOpen(true);
+    } else if (actionType === 'list') {
+      handleQuickOrder(updatedItem, false);
+    }
+  };
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isProfitDialogOpen, setIsProfitDialogOpen] = useState(false);
   const [isBarcodeStudioOpen, setIsBarcodeStudioOpen] = useState(false);
@@ -731,12 +859,21 @@ export default function InventoryManagement({
       toast({
         title: t("No Vendor Assigned"),
         description: t("Please assign a vendor to this item first."),
-        variant: "destructive"
+        variant: "destructive",
+        action: (
+          <ToastAction
+            altText={t("Assign Now")}
+            className="bg-white text-destructive font-black hover:bg-neutral-100 border-0 shadow-md text-xs px-3.5 py-1.5 h-8 rounded-lg shrink-0 cursor-pointer transition-transform active:scale-95"
+            onClick={() => handleOpenQuickAssignVendor(item, isImmediate)}
+          >
+            {t("Assign Now")}
+          </ToastAction>
+        ),
       });
       return;
     }
 
-    const vendor = vendors.find(v => v.id === item.vendorId);
+    const vendor = safeVendors.find(v => v.id === item.vendorId) || (vendors || []).find(v => v.id === item.vendorId);
     if (!vendor) return;
 
     // Check if capacity is reached
@@ -870,12 +1007,16 @@ export default function InventoryManagement({
       return;
     }
 
-    const vendor = vendors.find(v => v.id === orderItem.vendorId);
-    if (!vendor) return; // Should be handled by handleQuickOrder check, but safety first.
+    const vendor = safeVendors.find(v => v.id === orderItem.vendorId) || (vendors || []).find(v => v.id === orderItem.vendorId) || {
+      id: orderItem.vendorId || 'vendor-unknown',
+      name: 'Supplier',
+      category: orderItem.category || 'General',
+      balance: 0,
+    };
 
     const newPO: PurchaseOrder = {
       id: `PO-${Date.now()}`,
-      vendorId: vendor.id,
+      vendorId: vendor.id || 'vendor-unknown',
       vendorName: vendor.name,
       date: new Date(),
       referenceNo: `NOW-${orderItem.id}`,
@@ -1036,8 +1177,8 @@ export default function InventoryManagement({
                         <div className="flex flex-col gap-1.5 mt-1.5">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs font-bold text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-full border border-border/40 uppercase tracking-wider">{item.category}</span>
-                            {item.vendorId && (() => {
-                              const v = vendors.find(ven => ven.id === item.vendorId);
+                            {item.vendorId ? (() => {
+                              const v = safeVendors.find(ven => ven.id === item.vendorId);
                               return v ? (
                                 <Popover>
                                   <PopoverTrigger asChild>
@@ -1070,15 +1211,35 @@ export default function InventoryManagement({
                                           <span>{v.location || 'No location'}</span>
                                         </div>
                                       </div>
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="w-full text-xs font-bold"
+                                        onClick={() => handleOpenQuickAssignVendor(item, false)}
+                                      >
+                                        <Edit className="h-3.5 w-3.5 mr-1" /> {t('Change Vendor')}
+                                      </Button>
                                     </div>
                                   </PopoverContent>
                                 </Popover>
                               ) : (
-                                <span className="text-xs text-muted-foreground font-black flex items-center gap-1 bg-muted/20 px-2 py-0.5 rounded-full cursor-not-allowed">
-                                  <Truck className="h-3 w-3" /> N/A
-                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenQuickAssignVendor(item, false)}
+                                  className="text-xs text-amber-500 font-bold flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/20 transition-colors cursor-pointer outline-none"
+                                >
+                                  <PlusCircle className="h-3 w-3" /> {t('Assign Vendor')}
+                                </button>
                               );
-                            })()}
+                            })() : (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuickAssignVendor(item, false)}
+                                className="text-xs text-amber-500 font-bold flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/20 transition-colors cursor-pointer outline-none active:scale-95"
+                              >
+                                <PlusCircle className="h-3 w-3" /> {t('Assign Vendor')}
+                              </button>
+                            )}
                             <span onClick={() => handleOpenDialog(item, 'edit-tax-rate')} className="text-[10px] font-black text-green-600 bg-green-500/10 px-2 py-0.5 rounded-full border border-green-500/10 uppercase cursor-pointer hover:bg-green-500/20 transition-colors">Tax: {item.taxRate || 0}%</span>
                             {item.hsnCode && (
                               <span className="text-[10px] font-mono font-bold text-indigo-600 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
@@ -1396,7 +1557,7 @@ export default function InventoryManagement({
                   <Select onValueChange={(v) => setSelectedPOVendor(v)}>
                     <SelectTrigger><SelectValue placeholder="Chose Supplier" /></SelectTrigger>
                     <SelectContent>
-                      {vendors.map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
+                      {safeVendors.filter(v => v.id && v.id.trim() !== '').map(v => <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1884,6 +2045,179 @@ export default function InventoryManagement({
         setMenu={setMenu}
         currency={currency || '₹'}
       />
+
+      {/* Quick Assign Vendor Dialog */}
+      <Dialog open={isQuickAssignOpen} onOpenChange={setIsQuickAssignOpen}>
+        <DialogContent className="max-w-md rounded-2xl p-6 bg-card border-border/60 shadow-2xl">
+          <DialogHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 bg-primary/10 rounded-xl text-primary">
+                <Truck className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg font-black">{t('Assign Vendor')}</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  {quickAssignItem?.name}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {quickAssignItem && (
+            <div className="space-y-4 py-2">
+              {/* Product Info Summary Box */}
+              <div className="p-3 bg-muted/30 border border-border/40 rounded-xl flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">{t('Category')}</span>
+                  <span className="font-bold text-foreground">{quickAssignItem.category}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">{t('Current Stock')}</span>
+                  <span className="font-bold text-foreground">{quickAssignItem.stock} / {quickAssignItem.capacity} {quickAssignItem.unit}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground block text-[10px] uppercase font-bold tracking-wider">{t('Sale Price')}</span>
+                  <span className="font-bold text-primary">{currency}{(quickAssignItem.price || 0).toFixed(2)}</span>
+                </div>
+              </div>
+
+              {/* Vendor Selection Mode Toggle */}
+              {safeVendors.length > 0 && (
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    {isCreatingNewVendor ? t('Create New Supplier') : t('Choose Supplier')}
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs font-bold text-primary hover:text-primary hover:bg-primary/10"
+                    onClick={() => setIsCreatingNewVendor(!isCreatingNewVendor)}
+                  >
+                    {isCreatingNewVendor ? t('← Select Existing') : t('+ Add New Vendor')}
+                  </Button>
+                </div>
+              )}
+
+              {/* Existing Vendor Dropdown */}
+              {!isCreatingNewVendor && safeVendors.length > 0 ? (
+                <div className="space-y-2">
+                  <Select value={quickAssignVendorId} onValueChange={setQuickAssignVendorId}>
+                    <SelectTrigger className="h-11 bg-muted/20 border-border/40 rounded-xl font-bold">
+                      <SelectValue placeholder={t('Select a vendor...')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {safeVendors
+                        .filter(v => v.id && v.id.trim() !== '')
+                        .map(v => (
+                          <SelectItem key={v.id} value={v.id} className="font-medium">
+                            <span className="font-bold">{v.name}</span>
+                            {v.phone ? ` • ${v.phone}` : ''}
+                            {v.category ? ` (${v.category})` : ''}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                /* New Vendor Form */
+                <div className="space-y-3 p-3.5 bg-muted/20 border border-border/40 rounded-xl">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-bold">{t('Vendor / Supplier Name')} <span className="text-destructive">*</span></Label>
+                    <Input
+                      placeholder="e.g. Adani Wilmar, Local Wholesaler..."
+                      value={quickNewVendorName}
+                      onChange={e => setQuickNewVendorName(e.target.value)}
+                      className="h-10 rounded-lg font-medium"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold">{t('Phone / WhatsApp')}</Label>
+                      <Input
+                        placeholder="e.g. 9876543210"
+                        value={quickNewVendorPhone}
+                        onChange={e => setQuickNewVendorPhone(e.target.value)}
+                        className="h-10 rounded-lg"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-bold">{t('Category')}</Label>
+                      <Input
+                        placeholder="e.g. FMCG / Staples"
+                        value={quickNewVendorCategory}
+                        onChange={e => setQuickNewVendorCategory(e.target.value)}
+                        className="h-10 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Purchase Cost (Optional) */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-bold text-muted-foreground">
+                  {t('Purchase / Cost Price')} <span className="text-[10px] font-normal opacity-70">({t('Optional')})</span>
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2.5 text-xs font-bold text-muted-foreground">{currency}</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={quickCostPrice}
+                    onChange={e => setQuickCostPrice(e.target.value)}
+                    className="h-10 pl-9 rounded-lg font-bold"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex-col sm:flex-row gap-2 pt-2 border-t border-border/30">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsQuickAssignOpen(false)}
+              className="rounded-xl font-bold"
+            >
+              {t('Cancel')}
+            </Button>
+
+            <div className="flex gap-2 w-full sm:w-auto">
+              {quickAssignIsImmediate ? (
+                <Button
+                  type="button"
+                  onClick={() => handleConfirmVendorAssignment('order')}
+                  className="flex-1 sm:flex-initial rounded-xl bg-primary hover:bg-primary/90 font-black shadow-lg shadow-primary/20 text-white"
+                >
+                  <Truck className="h-4 w-4 mr-1.5" />
+                  {t('Assign & Order Now')}
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={() => handleConfirmVendorAssignment('list')}
+                  className="flex-1 sm:flex-initial rounded-xl bg-orange-600 hover:bg-orange-700 font-black text-white"
+                >
+                  <List className="h-4 w-4 mr-1.5" />
+                  {t('Assign & Add to List')}
+                </Button>
+              )}
+
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => handleConfirmVendorAssignment('save')}
+                className="rounded-xl font-bold"
+              >
+                {t('Save Only')}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Clear All Inventory Confirmation Modal */}
       <AlertDialog open={isClearAllDialogOpen} onOpenChange={setIsClearAllDialogOpen}>

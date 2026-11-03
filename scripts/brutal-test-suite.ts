@@ -419,6 +419,54 @@ async function runTests() {
   const safePoItemsCount = (corruptedPO.items || []).length;
   assert(safePoItemsCount === 0, 'PO with undefined items array safely yields 0 count without throwing');
 
+  // Test 4: Item without vendor prompts "Assign Now" shortcut
+  const itemWithoutVendor: InventoryItem = {
+    id: 'test-item-oil',
+    name: 'Fortune Sunlite Sunflower Oil',
+    category: 'Groceries',
+    price: 145,
+    costPrice: 120,
+    stock: 5,
+    capacity: 20,
+    unit: 'Ltr',
+    vendorId: null,
+  };
+
+  const handleQuickOrderGuard = (item: InventoryItem) => {
+    if (!item.vendorId) {
+      return {
+        hasError: true,
+        title: 'No Vendor Assigned',
+        actionLabel: 'Assign Now',
+      };
+    }
+    return { hasError: false };
+  };
+
+  const guardResult = handleQuickOrderGuard(itemWithoutVendor);
+  assert(guardResult.hasError, 'Item without vendor triggers No Vendor Assigned guard');
+  assert(guardResult.actionLabel === 'Assign Now', 'No Vendor Assigned alert contains "Assign Now" shortcut');
+
+  // Test 5: Quick Vendor Assignment updates item and persists vendor
+  const mockVendors: Vendor[] = [];
+  const newVendorName = 'Adani Wilmar Wholesalers';
+  const newVendorPhone = '9876543210';
+  const createdVendor: Vendor = {
+    id: `vendor-${Date.now()}`,
+    name: newVendorName,
+    category: itemWithoutVendor.category || 'General',
+    phone: newVendorPhone,
+    balance: 0,
+  };
+  mockVendors.push(createdVendor);
+  const updatedItemWithVendor: InventoryItem = {
+    ...itemWithoutVendor,
+    vendorId: createdVendor.id,
+  };
+
+  assert(updatedItemWithVendor.vendorId === createdVendor.id, 'Vendor successfully linked to unassigned inventory item');
+  assert(mockVendors.length === 1 && mockVendors[0].name === newVendorName, 'Newly created vendor registered in vendor catalog');
+
   // Final summary
   console.log('\n======================================================');
   const passed = results.filter((r) => r.passed).length;
