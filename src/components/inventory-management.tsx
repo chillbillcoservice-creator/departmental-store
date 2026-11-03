@@ -10,12 +10,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Label } from '@/components/ui/label';
-import { PlusCircle, Edit, Trash2, Plus, Minus, Server, Search, FilePlus, Truck, AlertTriangle, ScanBarcode, Info, Tag, Package2, DollarSign, MapPin, Calendar, List, Check, Sparkles, FileSpreadsheet, Upload, Download } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, MessageSquare, Plus, Minus, Server, Search, FilePlus, Truck, AlertTriangle, ScanBarcode, Info, Tag, Package2, DollarSign, MapPin, Calendar, List, Check, Sparkles, FileSpreadsheet, Upload, Download } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { format } from 'date-fns';
-import type { InventoryItem, MenuCategory, Vendor, PurchaseOrder, DamageRecord } from '@/lib/types';
+import { sendWhatsAppPurchaseOrder, sanitizeWhatsAppPhone } from '@/lib/whatsapp-service';
+import type { InventoryItem, MenuCategory, Vendor, PurchaseOrder, DamageRecord, VenueDetails } from '@/lib/types';
 import { DEPARTMENTAL_STORE_CATALOG } from '@/lib/departmental-catalog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -46,6 +47,7 @@ interface InventoryManagementProps {
   expenses?: any[];
   setExpenses?: (expenses: any[]) => void;
   setVendors?: (vendors: Vendor[]) => void;
+  venueDetails?: VenueDetails | null;
 }
 
 function AddOrEditItemDialog({
@@ -510,6 +512,7 @@ export default function InventoryManagement({
   expenses = [],
   setExpenses,
   setVendors,
+  venueDetails,
 }: InventoryManagementProps) {
   const { t } = useLanguage();
   const { toast } = useToast();
@@ -527,6 +530,8 @@ export default function InventoryManagement({
   }, [vendors]);
 
   // Quick Assign Vendor Dialog State
+  const [lastCreatedVendor, setLastCreatedVendor] = useState<Vendor | null>(null);
+
   const [isQuickAssignOpen, setIsQuickAssignOpen] = useState(false);
   const [quickAssignItem, setQuickAssignItem] = useState<InventoryItem | null>(null);
   const [quickAssignIsImmediate, setQuickAssignIsImmediate] = useState(false);
@@ -579,6 +584,7 @@ export default function InventoryManagement({
 
       targetVendorId = newVendorId;
       targetVendorName = trimmedName;
+      setLastCreatedVendor(newVendor);
 
       const updatedVendors = [...safeVendors, newVendor];
       if (setVendors) {
@@ -676,6 +682,14 @@ export default function InventoryManagement({
   const [isOrderNowOpen, setIsOrderNowOpen] = useState(false);
   const [orderItem, setOrderItem] = useState<InventoryItem | null>(null);
   const [orderQty, setOrderQty] = useState('');
+
+  const currentOrderVendor = useMemo(() => {
+    if (!orderItem) return null;
+    return (lastCreatedVendor && lastCreatedVendor.id === orderItem.vendorId)
+      ? lastCreatedVendor
+      : safeVendors.find(v => v.id === orderItem.vendorId) ||
+        (vendors || []).find(v => v.id === orderItem.vendorId) || null;
+  }, [orderItem, lastCreatedVendor, safeVendors, vendors]);
   const [focusField, setFocusField] = useState<string | null>(null);
 
   // CSV / PDF Import & Wipe States
@@ -1007,12 +1021,16 @@ export default function InventoryManagement({
       return;
     }
 
-    const vendor = safeVendors.find(v => v.id === orderItem.vendorId) || (vendors || []).find(v => v.id === orderItem.vendorId) || {
-      id: orderItem.vendorId || 'vendor-unknown',
-      name: 'Supplier',
-      category: orderItem.category || 'General',
-      balance: 0,
-    };
+    const vendor = (lastCreatedVendor && lastCreatedVendor.id === orderItem.vendorId)
+      ? lastCreatedVendor
+      : safeVendors.find(v => v.id === orderItem.vendorId) ||
+        (vendors || []).find(v => v.id === orderItem.vendorId) || {
+          id: orderItem.vendorId || 'vendor-unknown',
+          name: 'Supplier',
+          category: orderItem.category || 'General',
+          phone: '',
+          balance: 0,
+        };
 
     const newPO: PurchaseOrder = {
       id: `PO-${Date.now()}`,
@@ -1030,11 +1048,29 @@ export default function InventoryManagement({
       totalAmount: qty * (orderItem.costPrice || 0),
       status: 'Ordered'
     };
-    setPurchaseOrders([...(purchaseOrders || []), newPO]);
 
+    const updatedPOs = [...(purchaseOrders || []), newPO];
+    setPurchaseOrders(updatedPOs);
+    try {
+      localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
+    } catch (e) {}
+
+    // Dispatch directly to WhatsApp
+    sendWhatsAppPurchaseOrder(newPO, vendor, venueDetails, currency);
+
+    const cleanPhone = sanitizeWhatsAppPhone(vendor?.phone);
     toast({
-      title: t("Order Sent Successfully"),
-      description: `${t("Order for")} ${qty} ${orderItem.unit} ${t("of")} ${orderItem.name} ${t("sent to")} ${vendor.name}.`,
+      title: t("Order Dispatched to WhatsApp"),
+      description: `${t("Order for")} ${qty} ${orderItem.unit} ${t("of")} ${orderItem.name} ${t("sent to")} ${vendor.name}${cleanPhone ? ` (${cleanPhone})` : ''}.`,
+      action: (
+        <ToastAction
+          altText="Open WhatsApp"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white font-black border-0 shadow text-xs px-3.5 py-1.5 h-8 rounded-lg shrink-0 cursor-pointer"
+          onClick={() => sendWhatsAppPurchaseOrder(newPO, vendor, venueDetails, currency)}
+        >
+          WhatsApp
+        </ToastAction>
+      ),
     });
     setIsOrderNowOpen(false);
   };
@@ -1297,6 +1333,25 @@ export default function InventoryManagement({
                                   <Button
                                     size="sm"
                                     variant="outline"
+                                    className="h-10 px-3 text-emerald-600 border-emerald-500/30 hover:bg-emerald-500/10 hover:text-emerald-700 rounded-xl font-bold transition-all shadow-sm"
+                                    onClick={() => {
+                                      const matchedVendor = (lastCreatedVendor && lastCreatedVendor.id === activePO.vendorId)
+                                        ? lastCreatedVendor
+                                        : safeVendors.find(v => v.id === activePO.vendorId) ||
+                                          (vendors || []).find(v => v.id === activePO.vendorId);
+                                      sendWhatsAppPurchaseOrder(activePO, matchedVendor, venueDetails, currency);
+                                      toast({
+                                        title: t("WhatsApp Dispatched"),
+                                        description: `${t("Order text opened for")} ${matchedVendor?.name || activePO.vendorName}.`,
+                                      });
+                                    }}
+                                  >
+                                    <MessageSquare className="h-4 w-4 mr-1.5" />
+                                    {t('WhatsApp')}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
                                     className="h-10 px-3 text-destructive border-destructive/20 hover:bg-destructive/10 hover:text-destructive rounded-xl font-bold transition-all shadow-sm"
                                     onClick={() => {
                                       if (setPurchaseOrders) {
@@ -1532,10 +1587,42 @@ export default function InventoryManagement({
                 }
               }}>{t('Full Fill')}</Button>
             </div>
+
+            {/* Vendor & WhatsApp Target Info */}
+            <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground font-semibold">{t('Supplier')}:</span>
+                <span className="font-bold text-foreground flex items-center gap-1">
+                  <Truck className="h-3.5 w-3.5 text-primary" />
+                  {currentOrderVendor?.name || orderItem?.vendorId || 'Vendor'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-muted-foreground font-semibold">{t('WhatsApp Target')}:</span>
+                <span className="font-mono font-bold text-foreground">
+                  {currentOrderVendor?.phone ? (
+                    <span className="text-emerald-500 font-bold flex items-center gap-1">
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      {currentOrderVendor.phone}
+                    </span>
+                  ) : (
+                    <span className="text-amber-500 font-medium">
+                      {t('No phone saved (WhatsApp contact selector will open)')}
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setIsOrderNowOpen(false)}>{t('Cancel')}</Button>
-            <Button onClick={handleConfirmOrder}>{t('Confirm Order')}</Button>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" onClick={() => setIsOrderNowOpen(false)} className="rounded-xl">{t('Cancel')}</Button>
+            <Button
+              onClick={handleConfirmOrder}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-600/20 rounded-xl px-5"
+            >
+              <MessageSquare className="mr-2 h-4 w-4" />
+              {t('Send Order via WhatsApp')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1991,11 +2078,34 @@ export default function InventoryManagement({
                           if (setPurchaseOrders) setPurchaseOrders(purchaseOrders.filter(p => p.id !== po.id));
                           toast({ title: t('Draft Deleted') });
                         }}>{t('Dismiss')}</Button>
-                        <Button className="h-11 px-6 rounded-xl bg-primary hover:bg-primary/90 font-black shadow-lg shadow-primary/20 transition-all active:scale-95" onClick={() => {
-                          if (setPurchaseOrders) setPurchaseOrders(purchaseOrders.map(p => p.id === po.id ? { ...p, status: 'Ordered', date: new Date() } : p));
-                          toast({ title: t('Order Placed'), description: `${t('Order sent to')} ${po.vendorName}` });
-                        }}>
-                          <Truck className="mr-2 h-4 w-4" /> {t('Order Now')}
+                        <Button
+                          className="h-11 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black shadow-lg shadow-emerald-600/20 transition-all active:scale-95"
+                          onClick={() => {
+                            const orderedPO = { ...po, status: 'Ordered' as const, date: new Date() };
+                            if (setPurchaseOrders) {
+                              setPurchaseOrders(purchaseOrders.map(p => p.id === po.id ? orderedPO : p));
+                            }
+                            const matchedVendor = (lastCreatedVendor && lastCreatedVendor.id === po.vendorId)
+                              ? lastCreatedVendor
+                              : safeVendors.find(v => v.id === po.vendorId) ||
+                                (vendors || []).find(v => v.id === po.vendorId);
+                            sendWhatsAppPurchaseOrder(orderedPO, matchedVendor, venueDetails, currency);
+                            toast({
+                              title: t('Order Sent via WhatsApp'),
+                              description: `${t('Order sent to')} ${po.vendorName}`,
+                              action: (
+                                <ToastAction
+                                  altText="WhatsApp"
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-3 py-1.5 h-8 rounded-lg"
+                                  onClick={() => sendWhatsAppPurchaseOrder(orderedPO, matchedVendor, venueDetails, currency)}
+                                >
+                                  WhatsApp
+                                </ToastAction>
+                              ),
+                            });
+                          }}
+                        >
+                          <MessageSquare className="mr-2 h-4 w-4" /> {t('Send via WhatsApp')}
                         </Button>
                       </div>
                     </div>

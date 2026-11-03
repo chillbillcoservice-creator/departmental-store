@@ -895,6 +895,7 @@ export default function MainLayout({
                 expenses={initialExpenses}
                 setExpenses={setExpenses}
                 setVendors={setVendors}
+                venueDetails={venueDetails}
               />
             </TabsContent>
             <TabsContent value="customers" className="m-0 p-0 h-full">
