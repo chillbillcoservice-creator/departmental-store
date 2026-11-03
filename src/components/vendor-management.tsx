@@ -270,12 +270,12 @@ function AddOrEditPendingBillDialog({
                                 onChange={e => setNewName(e.target.value)}
                             />
                         ) : (
-                            <Select onValueChange={setSelectedName} value={selectedName}>
+                            <Select onValueChange={setSelectedName} value={selectedName || undefined}>
                                 <SelectTrigger>
                                     <SelectValue placeholder={`${t('Select existing')} ${t(type)}`} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {existingNames.map(name => (
+                                    {existingNames.filter(name => typeof name === 'string' && name.trim() !== '').map(name => (
                                         <SelectItem key={name} value={name}>{name}</SelectItem>
                                     ))}
                                 </SelectContent>
@@ -356,16 +356,26 @@ export default function VendorManagement({
     const [paymentAmount, setPaymentAmount] = useState('');
     const [receivedQuantities, setReceivedQuantities] = useState<Record<string, number>>({});
 
+    const safeVendors = useMemo(() => {
+        return (vendors || []).map((v, i) => ({
+            ...v,
+            id: v && v.id && v.id.trim() !== '' ? v.id : `vendor-${i + 1}`,
+            name: (v && v.name) || `Vendor #${i + 1}`,
+            category: (v && v.category) || 'General',
+            balance: Number(v?.balance) || 0,
+        }));
+    }, [vendors]);
+
     const filteredVendors = useMemo(() => {
-        if (!vendorSearchQuery) return vendors;
+        if (!vendorSearchQuery) return safeVendors;
         const lower = vendorSearchQuery.toLowerCase();
-        return vendors.filter(v =>
-            v.name.toLowerCase().includes(lower) ||
-            v.phone?.includes(lower) ||
-            v.email?.toLowerCase().includes(lower) ||
-            v.location?.toLowerCase().includes(lower)
+        return safeVendors.filter(v =>
+            (v.name && v.name.toLowerCase().includes(lower)) ||
+            (v.phone && v.phone.includes(lower)) ||
+            (v.email && v.email.toLowerCase().includes(lower)) ||
+            (v.location && v.location.toLowerCase().includes(lower))
         );
-    }, [vendors, vendorSearchQuery]);
+    }, [safeVendors, vendorSearchQuery]);
 
     // Purchase Order State
     const [newPoVendorId, setNewPoVendorId] = useState('');
@@ -380,7 +390,8 @@ export default function VendorManagement({
             return;
         }
         // Try to match with existing inventory item
-        const matchedItem = inventory.find(i => i.name.toLowerCase() === newItemName.trim().toLowerCase());
+        const safeInventory = inventory || [];
+        const matchedItem = safeInventory.find(i => i.name && i.name.toLowerCase() === newItemName.trim().toLowerCase());
 
         let invItemId = generateUniqueId();
         let capacity = 0;
@@ -452,7 +463,7 @@ export default function VendorManagement({
 
     const handleWhatsAppExistingPO = (po: PurchaseOrder) => {
         try {
-            const vendor = vendors.find(v => v.id === po.vendorId) || { id: po.vendorId, name: po.vendorName, category: 'General' } as Vendor;
+            const vendor = safeVendors.find(v => v.id === po.vendorId) || { id: po.vendorId || generateUniqueId(), name: po.vendorName || 'Supplier', category: 'General' } as Vendor;
             toast({
                 title: t("Opening WhatsApp"),
                 description: `${t("Sending PO")} #${po.referenceNo || po.id} to ${vendor.name}...`
@@ -478,8 +489,8 @@ export default function VendorManagement({
             return;
         }
 
-        const vendor = vendors.find(v => v.id === newPoVendorId);
-        const totalAmount = newPoItems.reduce((sum, item) => sum + item.totalCost, 0);
+        const vendor = safeVendors.find(v => v.id === newPoVendorId);
+        const totalAmount = newPoItems.reduce((sum, item) => sum + (Number(item.totalCost) || 0), 0);
 
         const activeShift = getActiveShift();
         const newPo: PurchaseOrder = {
@@ -529,7 +540,7 @@ export default function VendorManagement({
             return;
         }
 
-        const vendor = vendors.find(v => v.id === newPoVendorId);
+        const vendor = safeVendors.find(v => v.id === newPoVendorId);
         const totalAmount = newPoItems.reduce((sum, item) => sum + item.totalCost, 0);
 
         const activeShift = getActiveShift();
@@ -694,21 +705,21 @@ export default function VendorManagement({
     };
 
     const vendorBills = useMemo(() => {
-        let bills = pendingBills.filter(b => b.type === 'vendor');
+        let bills = (pendingBills || []).filter(b => b && b.type === 'vendor');
         if (pendingBillsSearchTerm) {
             const lower = pendingBillsSearchTerm.toLowerCase();
-            bills = bills.filter(b => b.name.toLowerCase().includes(lower) || b.mobile?.includes(lower));
+            bills = bills.filter(b => (b.name && b.name.toLowerCase().includes(lower)) || b.mobile?.includes(lower));
         }
         return bills;
     }, [pendingBills, pendingBillsSearchTerm]);
 
     const totalPending = useMemo(() => vendorBills.reduce((total, bill) => {
-        return total + bill.transactions.reduce((sum, t) => sum + t.amount, 0);
+        return total + (bill.transactions || []).reduce((sum, t) => sum + (Number(t?.amount) || 0), 0);
     }, 0), [vendorBills]);
 
-    const totalProgress = vendorCreditLimit > 0 ? (totalPending / vendorCreditLimit) * 100 : 0;
+    const totalProgress = (Number(vendorCreditLimit) || 0) > 0 ? (totalPending / Number(vendorCreditLimit)) * 100 : 0;
 
-    const existingVendorNames = useMemo(() => vendors.map(v => v.name), [vendors]);
+    const existingVendorNames = useMemo(() => safeVendors.map(v => v.name).filter(Boolean), [safeVendors]);
 
     const handleSaveVendor = async (vendor: Omit<Vendor, 'id'> & { id?: string }) => {
         const { id, ...vendorData } = vendor;
@@ -890,9 +901,9 @@ export default function VendorManagement({
                                     <div className="space-y-1">
                                         <div className="flex justify-between items-center text-sm">
                                             <span className="font-bold text-red-600">
-                                                {currency}{totalPending.toFixed(2)}
+                                                {currency}{Number(totalPending || 0).toFixed(2)}
                                             </span>
-                                            <span className="text-muted-foreground">{t('Overall Limit')}: {currency}{vendorCreditLimit.toLocaleString()}</span>
+                                            <span className="text-muted-foreground">{t('Overall Limit')}: {currency}{Number(vendorCreditLimit || 0).toLocaleString()}</span>
                                         </div>
                                         <Progress value={totalProgress} indicatorClassName={totalProgress > 100 ? "bg-red-500" : "bg-red-500"} />
                                     </div>
@@ -902,7 +913,7 @@ export default function VendorManagement({
                                 <CardContent>
                                     <div className="max-h-96 overflow-y-auto space-y-2">
                                         {vendorBills.length > 0 ? vendorBills.map((bill, index) => {
-                                            const totalForName = bill.transactions.reduce((sum, t) => sum + t.amount, 0);
+                                            const totalForName = (bill.transactions || []).reduce((sum, t) => sum + (Number(t?.amount) || 0), 0);
                                             return (
                                                 <Collapsible key={`${bill.id}-${index}`} className="p-2 border rounded-lg">
                                                     <div className="flex items-center justify-between">
@@ -910,7 +921,7 @@ export default function VendorManagement({
                                                             <ChevronsUpDown className="h-4 w-4" />
                                                             <span className="font-medium">{bill.name}</span>
                                                             <span className="font-semibold text-sm text-red-600">
-                                                                ({currency}{totalForName.toFixed(2)})
+                                                                ({currency}{Number(totalForName || 0).toFixed(2)})
                                                             </span>
                                                         </CollapsibleTrigger>
                                                         <AlertDialog>
@@ -931,11 +942,11 @@ export default function VendorManagement({
                                                     </div>
 
                                                     <CollapsibleContent className="mt-2 space-y-1 pr-2 max-h-48 overflow-y-auto">
-                                                        {bill.transactions.map((tx, txIndex) => (
+                                                        {(bill.transactions || []).map((tx, txIndex) => (
                                                             <div key={`${tx.id}-${txIndex}`} className="flex justify-between items-center p-1.5 bg-muted/50 rounded-md text-sm group">
                                                                 <div>
                                                                     <span>{safeFormat(tx.date, 'PPP')}</span>
-                                                                    <span className="font-semibold ml-4 text-red-700">{currency}{tx.amount.toFixed(2)}</span>
+                                                                    <span className="font-semibold ml-4 text-red-700">{currency}{Number(tx.amount || 0).toFixed(2)}</span>
                                                                 </div>
                                                                 <div className="flex gap-2">
                                                                     <Button variant="outline" size="sm" className="h-7" onClick={() => {
@@ -966,7 +977,7 @@ export default function VendorManagement({
                                                                                    <p>Pending Bill Transaction</p>
                                                                                    <hr/>
                                                                                    <p><strong>Date:</strong> ${new Date(tx.date).toLocaleString()}</p>
-                                                                                   <p><strong>Amount:</strong> ${currency}${tx.amount.toFixed(2)}</p>
+                                                                                   <p><strong>Amount:</strong> ${currency}${Number(tx.amount || 0).toFixed(2)}</p>
                                                                                    <p><strong>ID:</strong> ${tx.id}</p>
                                                                                    <hr/>
                                                                                    <script>window.onload = function() { window.print(); window.close(); }</script>
@@ -985,7 +996,7 @@ export default function VendorManagement({
                                                                             <AlertDialogHeader>
                                                                                 <AlertDialogTitle>{t('Settle this transaction?')}</AlertDialogTitle>
                                                                                 <AlertDialogDescription>
-                                                                                    {t('This will settle the transaction of')} {currency}{tx.amount.toFixed(2)} {t('for')} {bill.name}. {t('This cannot be undone.')}
+                                                                                    {t('This will settle the transaction of')} {currency}{Number(tx.amount || 0).toFixed(2)} {t('for')} {bill.name}. {t('This cannot be undone.')}
                                                                                 </AlertDialogDescription>
                                                                             </AlertDialogHeader>
                                                                             <AlertDialogFooter>
@@ -1044,13 +1055,17 @@ export default function VendorManagement({
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                             {filteredVendors.length > 0 ? (
                                                 filteredVendors.map((vendor, index) => {
-                                                    const vendorBill = vendorBills.find(b => b.name.toLowerCase() === vendor.name.toLowerCase());
-                                                    const pendingAmount = vendorBill ? vendorBill.transactions.reduce((sum, t) => sum + t.amount, 0) : 0;
-                                                    const suppliedItems = inventory.filter(item => item.vendorId === vendor.id);
-                                                    const vendorOrders = purchaseOrders.filter(po => po.vendorId === vendor.id);
+                                                    const vendorBill = vendorBills.find(b => b.name && vendor.name && b.name.toLowerCase() === vendor.name.toLowerCase());
+                                                    const pendingAmount = vendorBill ? (vendorBill.transactions || []).reduce((sum, t) => sum + (Number(t?.amount) || 0), 0) : 0;
+                                                    const suppliedItems = (inventory || []).filter(item => item && item.vendorId === vendor.id);
+                                                    const vendorOrders = (purchaseOrders || []).filter(po => po && po.vendorId === vendor.id);
                                                     const activeOrders = vendorOrders.filter(po => po.status === 'Ordered');
                                                     const draftPO = vendorOrders.find(po => po.status === 'Draft');
-                                                    const placedOrders = vendorOrders.filter(po => po.status !== 'Draft').sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                                                    const placedOrders = vendorOrders.filter(po => po.status !== 'Draft').sort((a, b) => {
+                                                        const timeA = a.date ? new Date(a.date).getTime() : 0;
+                                                        const timeB = b.date ? new Date(b.date).getTime() : 0;
+                                                        return timeB - timeA;
+                                                    });
                                                     const lastPlacedOrder = placedOrders.length > 0 ? placedOrders[0] : null;
 
                                                     return (
@@ -1074,7 +1089,7 @@ export default function VendorManagement({
                                                                     <div className="p-2 bg-muted/50 rounded-md border">
                                                                         <p className="text-xs text-muted-foreground mb-1">{t('Pending Bill')}</p>
                                                                         <p className={cn("text-lg font-bold font-mono", pendingAmount > 0 ? "text-red-600" : "text-muted-foreground")}>
-                                                                            {currency}{pendingAmount.toFixed(2)}
+                                                                            {currency}{Number(pendingAmount || 0).toFixed(2)}
                                                                         </p>
                                                                     </div>
                                                                     <div className="p-2 bg-muted/50 rounded-md border">
@@ -1086,7 +1101,7 @@ export default function VendorManagement({
                                                                     <div className="p-2 bg-muted/50 rounded-md border">
                                                                         <p className="text-xs text-muted-foreground mb-1 text-red-600 font-bold">Payables</p>
                                                                         <p className={cn("text-lg font-bold font-mono", (vendor.balance || 0) > 0 ? "text-red-600" : "text-green-600")}>
-                                                                            {currency}{(vendor.balance || 0).toFixed(2)}
+                                                                            {currency}{Number(vendor.balance || 0).toFixed(2)}
                                                                         </p>
                                                                     </div>
                                                                 </div>
@@ -1205,12 +1220,12 @@ export default function VendorManagement({
                                                                         <div className="flex justify-between items-end">
                                                                             <div className="space-y-0.5">
                                                                                 <p className="text-[11px] font-bold text-emerald-900 dark:text-emerald-100">{safeFormat(lastPlacedOrder.date, 'PP')}</p>
-                                                                                <p className="text-[9px] text-muted-foreground">{lastPlacedOrder.items.length} {t('items')} • {lastPlacedOrder.referenceNo}</p>
+                                                                                <p className="text-[9px] text-muted-foreground">{(lastPlacedOrder.items || []).length} {t('items')} • {lastPlacedOrder.referenceNo}</p>
                                                                                 <p className="text-[10px] text-muted-foreground/80 font-medium truncate max-w-[150px]">
-                                                                                    {lastPlacedOrder.items.map(i => i.name).join(', ')}
+                                                                                    {(lastPlacedOrder.items || []).map(i => i.name).join(', ')}
                                                                                 </p>
                                                                             </div>
-                                                                            <p className="text-xs font-black text-emerald-700 dark:text-emerald-400">{currency}{lastPlacedOrder.totalAmount.toFixed(2)}</p>
+                                                                            <p className="text-xs font-black text-emerald-700 dark:text-emerald-400">{currency}{Number(lastPlacedOrder.totalAmount || 0).toFixed(2)}</p>
                                                                         </div>
                                                                     </div>
                                                                 )}
@@ -1223,15 +1238,15 @@ export default function VendorManagement({
                                                                                 {t('Current Order List')}
                                                                             </p>
                                                                             <Badge variant="outline" className="bg-white/80 dark:bg-black/40 text-orange-700 dark:text-orange-400 border-orange-200 text-[10px] px-2 h-4 font-black">
-                                                                                {draftPO.items.length}
+                                                                                {(draftPO.items || []).length}
                                                                             </Badge>
                                                                         </div>
                                                                         <div className="max-h-32 overflow-y-auto space-y-1 pr-1 custom-scrollbar">
-                                                                            {draftPO.items.map((item, idx) => (
+                                                                            {(draftPO.items || []).map((item, idx) => (
                                                                                 <div key={idx} className="flex justify-between items-center text-[11px] bg-white/90 dark:bg-black/30 p-2 rounded-lg border border-orange-100/80 shadow-sm">
                                                                                     <div className="flex flex-col">
                                                                                         <span className="font-bold text-orange-900 dark:text-orange-100 truncate max-w-[110px]">{item.name}</span>
-                                                                                        <span className="text-[9px] text-muted-foreground">{currency}{item.unitCost.toFixed(2)} / unit</span>
+                                                                                        <span className="text-[9px] text-muted-foreground">{currency}{Number(item.unitCost || 0).toFixed(2)} / unit</span>
                                                                                     </div>
                                                                                     <div className="flex items-center gap-2">
                                                                                         <Input
@@ -1295,7 +1310,7 @@ export default function VendorManagement({
                                                                         <div className="flex flex-col gap-2 pt-2 border-t border-orange-200/50 mt-1">
                                                                             <div className="flex justify-between items-center px-1">
                                                                                 <span className="text-[10px] font-bold text-muted-foreground uppercase">{t('Total')}:</span>
-                                                                                <span className="font-black text-orange-800 dark:text-orange-300 text-sm">{currency}{draftPO.totalAmount.toFixed(2)}</span>
+                                                                                <span className="font-black text-orange-800 dark:text-orange-300 text-sm">{currency}{Number(draftPO.totalAmount || 0).toFixed(2)}</span>
                                                                             </div>
                                                                             <Button
                                                                                 size="sm"
@@ -1409,13 +1424,13 @@ export default function VendorManagement({
                             <CardContent className="space-y-6 flex-grow">
                                 <div className="space-y-2">
                                     <Label>{t('Select Vendor')}</Label>
-                                    <Select value={newPoVendorId} onValueChange={setNewPoVendorId}>
+                                    <Select value={newPoVendorId || undefined} onValueChange={setNewPoVendorId}>
                                         <SelectTrigger>
                                             <SelectValue placeholder={t('Select a vendor')} />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {vendors.map(vendor => (
-                                                <SelectItem key={vendor.id} value={vendor.id}>{vendor.name}</SelectItem>
+                                            {safeVendors.filter(v => v.id && v.id.trim() !== '').map(vendor => (
+                                                <SelectItem key={vendor.id} value={vendor.id}>{vendor.name || 'Unnamed Vendor'}</SelectItem>
                                             ))}
                                         </SelectContent>
                                     </Select>
@@ -1507,7 +1522,7 @@ export default function VendorManagement({
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {purchaseOrders.length > 0 ? purchaseOrders.map((po) => (
+                                            {(purchaseOrders || []).length > 0 ? (purchaseOrders || []).map((po) => (
                                                 <TableRow key={po.id}>
                                                     <TableCell className="whitespace-nowrap">
                                                         <div className="flex flex-col">
@@ -1516,7 +1531,7 @@ export default function VendorManagement({
                                                         </div>
                                                     </TableCell>
                                                     <TableCell>{po.vendorName}</TableCell>
-                                                    <TableCell>{currency}{po.totalAmount.toFixed(2)}</TableCell>
+                                                    <TableCell>{currency}{Number(po.totalAmount || 0).toFixed(2)}</TableCell>
                                                     <TableCell>
                                                         <div className={cn(
                                                             "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide",
@@ -1618,14 +1633,14 @@ export default function VendorManagement({
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {viewOrdersVendor && purchaseOrders.filter(po => po.vendorId === viewOrdersVendor.id).length > 0 ? (
-                                    purchaseOrders.filter(po => po.vendorId === viewOrdersVendor.id).map(po => (
+                                {viewOrdersVendor && (purchaseOrders || []).filter(po => po && po.vendorId === viewOrdersVendor.id).length > 0 ? (
+                                    (purchaseOrders || []).filter(po => po && po.vendorId === viewOrdersVendor.id).map(po => (
                                         <TableRow key={po.id}>
                                             <TableCell>{po.date ? new Date(po.date).toLocaleDateString() : 'N/A'}</TableCell>
                                             <TableCell className="font-mono text-xs">{po.referenceNo}</TableCell>
                                             <TableCell>
                                                 <div className="flex flex-wrap gap-1">
-                                                    {po.items.map((item, idx) => (
+                                                    {(po.items || []).map((item, idx) => (
                                                         <Badge key={idx} variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-muted/50">
                                                             {item.quantity}x {item.name}
                                                         </Badge>
@@ -1640,7 +1655,7 @@ export default function VendorManagement({
                                                     {po.status}
                                                 </span>
                                             </TableCell>
-                                            <TableCell className="text-right font-bold">{currency}{po.totalAmount.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right font-bold">{currency}{Number(po.totalAmount || 0).toFixed(2)}</TableCell>
                                             <TableCell className="text-right">
                                                 <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => {
                                                     const printWindow = window.open('', '_blank');
@@ -1721,7 +1736,7 @@ export default function VendorManagement({
                             <div className="space-y-1">
                                 <p className="text-xs text-muted-foreground uppercase font-bold tracking-tight">{t('Expected Total')}</p>
                                 <p className="text-2xl font-black text-primary">
-                                    {currency}{poToReceive?.items.reduce((s, i) => s + (receivedQuantities[i.inventoryItemId] ?? i.quantity) * i.unitCost, 0).toFixed(2)}
+                                    {currency}{(poToReceive?.items || []).reduce((s, i) => s + (receivedQuantities[i.inventoryItemId] ?? i.quantity) * i.unitCost, 0).toFixed(2)}
                                 </p>
                             </div>
                             <div className="space-y-1">
@@ -1739,7 +1754,7 @@ export default function VendorManagement({
                         <div className="flex justify-between items-center bg-destructive/10 p-3 rounded-lg border border-destructive/20 text-destructive">
                             <span className="text-xs font-bold uppercase">{t('Remaining Balance (To Credit)')}</span>
                             <span className="text-lg font-black">
-                                {currency}{Math.max(0, (poToReceive?.items.reduce((s, i) => s + (receivedQuantities[i.inventoryItemId] ?? i.quantity) * i.unitCost, 0) || 0) - (parseFloat(paymentAmount) || 0)).toFixed(2)}
+                                {currency}{Math.max(0, ((poToReceive?.items || []).reduce((s, i) => s + (receivedQuantities[i.inventoryItemId] ?? i.quantity) * i.unitCost, 0) || 0) - (parseFloat(paymentAmount) || 0)).toFixed(2)}
                             </span>
                         </div>
                     </div>
@@ -1768,7 +1783,7 @@ export default function VendorManagement({
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {viewTransactionPO?.items.map((item, idx) => (
+                                {(viewTransactionPO?.items || []).map((item, idx) => (
                                     <TableRow key={idx}>
                                         <TableCell>{item.name}</TableCell>
                                         <TableCell className="text-right font-mono">{item.quantity}</TableCell>
@@ -1777,7 +1792,7 @@ export default function VendorManagement({
                                 ))}
                                 <TableRow className="font-bold">
                                     <TableCell colSpan={2} className="text-right">{t('Total')}</TableCell>
-                                    <TableCell className="text-right">{currency}{viewTransactionPO?.totalAmount.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right">{currency}{Number(viewTransactionPO?.totalAmount || 0).toFixed(2)}</TableCell>
                                 </TableRow>
                             </TableBody>
                         </Table>
@@ -1824,7 +1839,7 @@ export default function VendorManagement({
                         </div>
                         <div className="flex justify-between items-center bg-red-50 dark:bg-red-950/20 p-4 rounded-xl border border-red-100 dark:border-red-900/30">
                             <span className="text-sm font-bold text-red-700 dark:text-red-400 uppercase">{t('Amount')}</span>
-                            <span className="font-black text-2xl text-red-600 dark:text-red-400">{currency}{viewSimpleTransaction?.amount.toFixed(2)}</span>
+                            <span className="font-black text-2xl text-red-600 dark:text-red-400">{currency}{Number(viewSimpleTransaction?.amount || 0).toFixed(2)}</span>
                         </div>
                         {viewSimpleTransaction?.description && (
                             <div className="space-y-1.5 px-1">

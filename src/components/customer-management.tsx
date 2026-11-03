@@ -268,7 +268,7 @@ function CustomerHistoryDialog({
                   <div className="p-4 bg-destructive/5 border-2 border-destructive/20 border-dashed rounded-2xl text-center">
                     <p className="text-xs font-black text-destructive uppercase tracking-widest mb-1">{t('Total Outstanding Balance')}</p>
                     <p className="text-4xl font-black text-destructive">
-                      {currency}{pendingHistory.transactions.reduce((sum, tx) => sum + tx.amount, 0).toFixed(2)}
+                      {currency}{Number((pendingHistory.transactions || []).reduce((sum, tx) => sum + (Number(tx?.amount) || 0), 0) || 0).toFixed(2)}
                     </p>
                   </div>
                   <Table>
@@ -281,7 +281,7 @@ function CustomerHistoryDialog({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {pendingHistory.transactions.slice().reverse().map((tx) => (
+                      {(pendingHistory.transactions || []).slice().reverse().map((tx) => (
                         <TableRow key={tx.id}>
                           <TableCell className="text-xs font-mono">{tx.id.substring(0, 8)}...</TableCell>
                           <TableCell>{safeFormat(tx.date, "MMM d, h:mm a")}</TableCell>
@@ -649,7 +649,7 @@ export default function CustomerManagement({
   }, [pendingBills, pendingBillsSearchTerm]);
 
   const totalPending = useMemo(() => customerPendingBills.reduce((total, bill) => {
-    return total + bill.transactions.reduce((sum, t) => sum + t.amount, 0);
+    return total + (bill.transactions || []).reduce((sum, t) => sum + (Number(t?.amount) || 0), 0);
   }, 0), [customerPendingBills]);
 
   const totalProgress = customerCreditLimit > 0 ? (totalPending / customerCreditLimit) * 100 : 0;
@@ -700,13 +700,13 @@ export default function CustomerManagement({
     });
 
     pendingBills.filter(pb => pb.type === 'customer').forEach(pBill => {
-      const balance = pBill.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      const balance = (pBill.transactions || []).reduce((sum, tx) => sum + (Number(tx?.amount) || 0), 0);
       if (pBill.mobile) {
         const existing = customerMap.get(pBill.mobile);
         if (existing) {
           existing.balance = (existing.balance || 0) + balance;
         } else if (!deletedCustomerIds.has(pBill.mobile)) {
-          const firstTxDate = pBill.transactions.length > 0 ? new Date(pBill.transactions[0].date) : new Date();
+          const firstTxDate = (pBill.transactions || []).length > 0 ? new Date(pBill.transactions[0].date) : new Date();
           customerMap.set(pBill.mobile, {
             id: pBill.mobile,
             phone: pBill.mobile,
@@ -846,7 +846,7 @@ export default function CustomerManagement({
     if (existingBillIndex > -1) {
       newPendingBills = [...pendingBills];
       const existingBill = { ...newPendingBills[existingBillIndex] };
-      existingBill.transactions = [...existingBill.transactions, newTransaction];
+      existingBill.transactions = [...(existingBill.transactions || []), newTransaction];
       newPendingBills[existingBillIndex] = existingBill;
     } else {
       const newBill: PendingBill = {
@@ -866,7 +866,7 @@ export default function CustomerManagement({
     const billToClear = pendingBills.find(b => b.id === billId);
     if (!billToClear) return;
 
-    const totalCleared = billToClear.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+    const totalCleared = (billToClear.transactions || []).reduce((sum, tx) => sum + (Number(tx?.amount) || 0), 0);
     const newPendingBills = pendingBills.filter(b => b.id !== billId);
     setPendingBills(newPendingBills);
     toast({ title: t(`${billToClear.name}'s pending bills have been cleared.`) });
@@ -885,7 +885,7 @@ export default function CustomerManagement({
     const billToUpdate = pendingBills.find(b => b.id === billId);
     if (!billToUpdate) return;
 
-    const updatedTransactions = billToUpdate.transactions.filter(tx => tx.id !== transactionId);
+    const updatedTransactions = (billToUpdate.transactions || []).filter(tx => tx.id !== transactionId);
     let newPendingBills;
     if (updatedTransactions.length === 0) {
       newPendingBills = pendingBills.filter(b => b.id !== billId);
@@ -954,7 +954,7 @@ export default function CustomerManagement({
           <CardContent>
             <div className="max-h-96 overflow-y-auto space-y-2">
               {customerPendingBills.length > 0 ? customerPendingBills.map((bill, index) => {
-                const totalForName = bill.transactions.reduce((sum, t) => sum + t.amount, 0);
+                const totalForName = (bill.transactions || []).reduce((sum, t) => sum + (Number(t?.amount) || 0), 0);
                 return (
                   <Collapsible key={`${bill.id}-${index}`} className="p-2 border rounded-lg">
                     <div className="flex items-center justify-between">
@@ -980,7 +980,7 @@ export default function CustomerManagement({
                       </AlertDialog>
                     </div>
                     <CollapsibleContent className="mt-2 space-y-1 pr-2 max-h-48 overflow-y-auto">
-                      {bill.transactions.map((tx, txIndex) => (
+                      {(bill.transactions || []).map((tx, txIndex) => (
                         <div key={`${tx.id}-${txIndex}`} className="flex justify-between items-center p-1.5 bg-muted/50 rounded-md text-sm group">
                           <div>
                             <span>{safeFormat(tx.date, 'PPP')}</span>

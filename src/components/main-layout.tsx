@@ -898,34 +898,56 @@ export default function MainLayout({
               />
             </TabsContent>
             <TabsContent value="customers" className="m-0 p-0 h-full">
-              <CustomerManagement
-                billHistory={initialBills}
-                customers={initialCustomers}
-                setCustomers={setCustomers}
-                pendingBills={initialPendingBills}
-                setPendingBills={setPendingBills}
-                customerCreditLimit={customerCreditLimit}
-                currency={effectiveCurrency}
-                venueDetails={venueDetails}
-              />
+              <SafeErrorBoundary
+                name="CustomerManagement"
+                fallback={
+                  <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center space-y-4">
+                    <p className="text-destructive font-bold text-lg">Unable to load Customer Dashboard</p>
+                    <p className="text-muted-foreground text-sm max-w-md">A temporary data issue occurred. Click below to reload.</p>
+                    <button className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-bold" onClick={() => window.location.reload()}>Reload Page</button>
+                  </div>
+                }
+              >
+                <CustomerManagement
+                  billHistory={initialBills}
+                  customers={initialCustomers}
+                  setCustomers={setCustomers}
+                  pendingBills={initialPendingBills}
+                  setPendingBills={setPendingBills}
+                  customerCreditLimit={customerCreditLimit}
+                  currency={effectiveCurrency}
+                  venueDetails={venueDetails}
+                />
+              </SafeErrorBoundary>
             </TabsContent>
             <TabsContent value="vendors" className="m-0 p-0 h-full">
-              <VendorManagement
-                vendors={initialVendors}
-                setVendors={setVendors}
-                pendingBills={initialPendingBills}
-                setPendingBills={setPendingBills}
-                vendorCreditLimit={vendorCreditLimit}
-                expenses={initialExpenses}
-                setExpenses={setExpenses}
-                inventory={initialInventory}
-                setInventory={setInventory}
-                currency={effectiveCurrency}
-                purchaseOrders={purchaseOrders}
-                setPurchaseOrders={setPurchaseOrders}
-                currentUser={currentUser}
-                venueDetails={venueDetails}
-              />
+              <SafeErrorBoundary
+                name="VendorManagement"
+                fallback={
+                  <div className="flex flex-col items-center justify-center min-h-[400px] p-8 text-center space-y-4">
+                    <p className="text-destructive font-bold text-lg">Unable to load Vendor Dashboard</p>
+                    <p className="text-muted-foreground text-sm max-w-md">A temporary data issue occurred. Click below to reload.</p>
+                    <button className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-bold" onClick={() => window.location.reload()}>Reload Page</button>
+                  </div>
+                }
+              >
+                <VendorManagement
+                  vendors={initialVendors}
+                  setVendors={setVendors}
+                  pendingBills={initialPendingBills}
+                  setPendingBills={setPendingBills}
+                  vendorCreditLimit={vendorCreditLimit}
+                  expenses={initialExpenses}
+                  setExpenses={setExpenses}
+                  inventory={initialInventory}
+                  setInventory={setInventory}
+                  currency={effectiveCurrency}
+                  purchaseOrders={purchaseOrders}
+                  setPurchaseOrders={setPurchaseOrders}
+                  currentUser={currentUser}
+                  venueDetails={venueDetails}
+                />
+              </SafeErrorBoundary>
             </TabsContent>
             <TabsContent value="expenses" className="m-0 p-0 h-full">
               <ExpensesTracker

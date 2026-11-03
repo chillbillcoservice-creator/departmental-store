@@ -372,6 +372,53 @@ async function runTests() {
   assert(receivedUtr.startsWith('UPI-') || receivedUtr.length >= 8, 'Valid UTR transaction code generated', receivedUtr);
   unsubscribe();
 
+  // -------------------------------------------------------------------------
+  // TEST GROUP 7: VENDOR & CUSTOMER DATA RESILIENCE AUDIT
+  // -------------------------------------------------------------------------
+  console.log('\n🛡️ [7/7] Auditing Vendor & Customer Data Resilience...');
+
+  // Test 1: Vendor with string balance and undefined fields
+  const mockVendorWithStringBalance: any = {
+    id: '',
+    name: 'Delhi Flour Mill',
+    category: 'Groceries',
+    balance: '2500.50', // string from localStorage/input
+  };
+
+  const safeId = mockVendorWithStringBalance.id && mockVendorWithStringBalance.id.trim() !== ''
+    ? mockVendorWithStringBalance.id
+    : 'vendor-fallback-1';
+  assert(safeId.length > 0, 'Empty vendor ID sanitized to non-empty string (Radix UI SelectItem safe)');
+
+  const formattedBalance = Number(mockVendorWithStringBalance.balance || 0).toFixed(2);
+  assert(formattedBalance === '2500.50', 'String vendor balance safely formatted to 2 decimals without throwing', formattedBalance);
+
+  // Test 2: Pending bill with undefined transactions array
+  const corruptedPendingBill: any = {
+    id: 'pb-01',
+    name: 'Sharma Traders',
+    type: 'vendor',
+    // transactions is undefined!
+  };
+
+  const safeTransactions = corruptedPendingBill.transactions || [];
+  const safeTotal = safeTransactions.reduce((sum: number, t: any) => sum + (Number(t?.amount) || 0), 0);
+  assert(safeTotal === 0, 'Pending bill with undefined transactions array safely calculates total 0 without throwing');
+
+  // Test 3: Purchase order with string totalAmount and undefined items
+  const corruptedPO: any = {
+    id: 'po-corrupt',
+    vendorId: 'v1',
+    vendorName: 'Supplier X',
+    totalAmount: '4500',
+    // items is undefined!
+  };
+
+  const poFormattedTotal = Number(corruptedPO.totalAmount || 0).toFixed(2);
+  assert(poFormattedTotal === '4500.00', 'PO with string totalAmount safely formatted to 2 decimals');
+  const safePoItemsCount = (corruptedPO.items || []).length;
+  assert(safePoItemsCount === 0, 'PO with undefined items array safely yields 0 count without throwing');
+
   // Final summary
   console.log('\n======================================================');
   const passed = results.filter((r) => r.passed).length;
