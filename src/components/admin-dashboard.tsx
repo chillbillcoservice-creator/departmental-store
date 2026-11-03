@@ -57,7 +57,6 @@ import InventoryManagement from './inventory-management';
 import BillHistory from './bill-history';
 import { Gstr1ReportDialog } from './gstr1-report-dialog';
 import type { Bill, Employee, OrderItem, Expense, Vendor, InventoryItem, MenuCategory, VenueDetails, PurchaseOrder } from '@/lib/types';
-import { generateAndSendReport } from '@/ai/flows/generate-report';
 import { compileStoreReport, dispatchReportEmail } from '@/lib/report-generator';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';

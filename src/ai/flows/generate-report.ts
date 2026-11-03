@@ -277,5 +277,13 @@ export async function generateAndSendReport(input: {
       lastSeen: c.lastSeen.toISOString(),
     })),
   };
-  return generateAndSendReportFlow(serializableInput);
+  try {
+    return await generateAndSendReportFlow(serializableInput);
+  } catch (err: any) {
+    console.warn('generateAndSendReport flow failed:', err);
+    return {
+      success: false,
+      message: err?.message || 'Report generation completed.',
+    };
+  }
 }

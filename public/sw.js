@@ -1,7 +1,7 @@
 // ChillBill Retail POS - Offline Service Worker
 // Provides 100% offline continuity for billing, receipt printing, scanning, and store ERP
 
-const CACHE_NAME = 'chillbill-pos-v5';
+const CACHE_NAME = 'chillbill-pos-v6';
 
 const STATIC_ASSETS = [
   '/',
@@ -43,17 +43,24 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event - Stale-while-revalidate for critical shell & network-first for live data
+// Message Event - Support instant update triggers
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
+// Fetch Event - Network-First for navigation & API, Cache-First for static assets
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip caching for non-GET and chrome-extension schemes
+  // Skip caching for non-GET and non-http schemes
   if (request.method !== 'GET' || !url.protocol.startsWith('http')) {
     return;
   }
 
-  // API calls & dynamic routes: Network First, fallback to offline response
+  // API calls & dynamic data: Network First, fallback to offline response
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/_next/data/')) {
     event.respondWith(
       fetch(request).catch(() => {
@@ -62,6 +69,23 @@ self.addEventListener('fetch', (event) => {
           { headers: { 'Content-Type': 'application/json' } }
         );
       })
+    );
+    return;
+  }
+
+  // HTML Page Navigation requests: Network First, fallback to cached offline shell
+  // Ensures store staff always gets the latest deployed code when online
+  if (request.mode === 'navigate' || request.destination === 'document' || url.pathname === '/') {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('/')))
     );
     return;
   }
@@ -80,7 +104,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // App shell & static assets: Cache First, update cache in background (Stale While Revalidate)
+  // Static assets (CSS, JS chunks, images): Cache First, background revalidate
   event.respondWith(
     caches.match(request).then((cachedResponse) => {
       const fetchPromise = fetch(request).then((networkResponse) => {

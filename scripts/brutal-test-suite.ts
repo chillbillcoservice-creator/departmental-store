@@ -128,7 +128,7 @@ async function runTests() {
     gstin: '08AAAAA0000A1Z5',
   };
 
-  const sampleBill: Bill = {
+  const sampleBill = {
     id: '01',
     timestamp: new Date(),
     orderItems: [
@@ -144,8 +144,9 @@ async function runTests() {
       name: 'Rohan Sharma',
       phone: '9876545432',
       gstin: '08BBBBB1111B2Z6',
+      address: 'Main Market, Delhi',
     },
-  };
+  } as unknown as Bill;
 
   const billText = formatWhatsAppBillText(sampleBill, sampleVenue, 'Rs.');
   assert(billText.includes('TAX INVOICE (B2B)'), 'B2B GSTIN activates TAX INVOICE heading');
@@ -228,7 +229,7 @@ async function runTests() {
   };
 
   // Create shift bills
-  const shiftBills: Bill[] = [
+  const shiftBills = [
     {
       id: 'B01',
       timestamp: new Date(),
@@ -251,14 +252,14 @@ async function runTests() {
       cashierId: 'emp-101',
       shiftId: shift.id,
     },
-  ];
+  ] as unknown as Bill[];
 
   const shiftExpenses: Expense[] = [
     { id: 'e1', description: 'Counter Tea & Snacks', amount: 120, category: 'Food & Beverage', paymentMethod: 'Cash', date: new Date(), shiftId: shift.id },
   ];
 
   // Log a customer khata cash collection
-  logShiftActivity({ type: 'khata_collection', title: 'Khata Cash Collection', amount: 800, paymentMethod: 'Cash' });
+  logShiftActivity({ type: 'khata_collection', title: 'Khata Cash Collection', description: 'Customer Khata Recovery', amount: 800, paymentMethod: 'Cash' });
 
   // Calculate live reconciled shift summary
   const updatedShift = calculateShiftSummary(getActiveShift()!, shiftBills, shiftExpenses, [poWithShift], []);
@@ -290,7 +291,7 @@ async function runTests() {
   // -------------------------------------------------------------------------
   console.log('\n📊 [4/6] Auditing Store Reports & Profit Margins...');
 
-  const reportBills: Bill[] = [
+  const reportBills = [
     {
       id: '01',
       timestamp: new Date(),
@@ -313,7 +314,7 @@ async function runTests() {
       ],
       orderType: 'Store-Pickup',
     },
-  ];
+  ] as unknown as Bill[];
 
   const reportInventory: InventoryItem[] = [
     { id: 'A', name: 'Item A', category: 'General', price: 500, costPrice: 350, stock: 40, capacity: 50, unit: 'pcs' },
@@ -356,7 +357,7 @@ async function runTests() {
   // -------------------------------------------------------------------------
   console.log('\n⚡ [6/6] Auditing Counter QR Standee Payment Radar...');
 
-  let paymentReceived = false;
+  let paymentReceived: any = false;
   let receivedUtr = '';
 
   const unsubscribe = subscribeToAmountMatch(121.08, (payload) => {

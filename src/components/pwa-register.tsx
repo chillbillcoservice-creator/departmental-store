@@ -48,23 +48,38 @@ export default function PwaRegister() {
             });
           }
         } else {
+          let refreshing = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (!refreshing) {
+              refreshing = true;
+              console.log('[ChillBill PWA] Controller changed, refreshing to load latest code...');
+              window.location.reload();
+            }
+          });
+
           const registerSW = () => {
             navigator.serviceWorker
               .register('/sw.js')
               .then((registration) => {
                 console.log('[ChillBill PWA] Service Worker registered with scope:', registration.scope);
 
-                // Check for updates
+                // Auto-update when new version is detected
                 registration.onupdatefound = () => {
                   const installingWorker = registration.installing;
                   if (installingWorker) {
                     installingWorker.onstatechange = () => {
                       if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                        console.log('[ChillBill PWA] New update available. Will activate on next session.');
+                        console.log('[ChillBill PWA] New update available. Activating immediately.');
+                        installingWorker.postMessage({ type: 'SKIP_WAITING' });
                       }
                     };
                   }
                 };
+
+                // Periodically check for updates (every 30 minutes)
+                setInterval(() => {
+                  registration.update().catch(() => {});
+                }, 30 * 60 * 1000);
               })
               .catch((error) => {
                 console.warn('[ChillBill PWA] Service Worker registration failed:', error);

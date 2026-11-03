@@ -11,14 +11,14 @@ export async function POST(request: Request) {
     if (!recipientEmail) {
       return NextResponse.json(
         { success: false, message: 'Recipient email is required.' },
-        { status: 400 }
+        { status: 200 }
       );
     }
 
     if (!reportContent) {
       return NextResponse.json(
         { success: false, message: 'Report content is required.' },
-        { status: 400 }
+        { status: 200 }
       );
     }
 
@@ -29,9 +29,9 @@ export async function POST(request: Request) {
           success: false,
           requiresApiKey: true,
           message:
-            'Resend API key is not configured. You can add your free key in Admin Settings or send via the 1-click mail compose button.',
+            'Resend API key is not configured. Reports will open via 1-click mail compose.',
         },
-        { status: 400 }
+        { status: 200 }
       );
     }
 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     if (result.error) {
       return NextResponse.json(
         { success: false, message: result.error.message },
-        { status: 500 }
+        { status: 200 }
       );
     }
 
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     console.error('Error in send-email API:', error);
     return NextResponse.json(
       { success: false, message: error.message || 'Failed to send email.' },
-      { status: 500 }
+      { status: 200 }
     );
   }
 }

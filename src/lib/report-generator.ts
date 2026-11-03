@@ -264,10 +264,17 @@ export function dispatchReportEmail(params: {
   const encodedBody = encodeURIComponent(reportContent);
   const encodedTo = encodeURIComponent(recipientEmail);
 
+  // Safe truncation for mailto link (Windows URL limit ~2000 chars)
+  const safeMailtoBody =
+    reportContent.length > 1500
+      ? reportContent.slice(0, 1500) + '\n\n... [Full report copied to clipboard. Press Ctrl+V to paste full details]'
+      : reportContent;
+  const encodedSafeMailtoBody = encodeURIComponent(safeMailtoBody);
+
   // Gmail Web direct compose URL
   const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodedTo}&su=${encodedSubject}&body=${encodedBody}`;
   // Standard mailto link
-  const mailtoUrl = `mailto:${encodedTo}?subject=${encodedSubject}&body=${encodedBody}`;
+  const mailtoUrl = `mailto:${encodedTo}?subject=${encodedSubject}&body=${encodedSafeMailtoBody}`;
 
   try {
     const isMobile =
