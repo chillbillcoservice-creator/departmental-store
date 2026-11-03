@@ -10,7 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, QrCode, Sparkles, Volume2, ShieldCheck, Clock, Zap } from 'lucide-react';
 import { generateUpiQrDataUrl } from '@/lib/upi-qr';
-import { subscribeToPayment, simulateCustomerPayment, PaymentEventPayload } from '@/lib/payment-listener';
+import { subscribeToPayment, generateMockUtr, PaymentEventPayload } from '@/lib/payment-listener';
 import { triggerSoundboxAlert } from '@/lib/soundbox';
 import { cn } from '@/lib/utils';
 import { useLanguage } from '@/contexts/language-context';
@@ -127,14 +127,7 @@ export function UpiPaymentModal({
     }, 1400);
   };
 
-  const handleSimulatePayment = () => {
-    if (isSuccess || isSimulating || !transactionId) return;
-    setIsSimulating(true);
-    setTimeout(() => {
-      simulateCustomerPayment(transactionId, total);
-      setIsSimulating(false);
-    }, 400);
-  };
+
 
   const formatTimer = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -259,24 +252,24 @@ export function UpiPaymentModal({
               </div>
             </div>
 
-            {/* Interactive Sandbox Test Button */}
+            {/* Cashier Payment Received Action */}
             <div className="pt-1">
               <Button
                 type="button"
-                variant="outline"
-                onClick={handleSimulatePayment}
-                disabled={isSimulating}
-                className={cn(
-                  "w-full h-11 border-dashed border-2 font-black text-xs gap-2 rounded-xl transition-all",
-                  "border-primary/40 bg-primary/5 hover:bg-primary/10 text-primary"
-                )}
+                onClick={() => {
+                  handlePaymentSuccess({
+                    transactionId,
+                    amount: total,
+                    status: 'SUCCESS',
+                    utr: generateMockUtr(),
+                    timestamp: Date.now()
+                  });
+                }}
+                className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm gap-2 rounded-xl shadow-lg shadow-emerald-600/25 active:scale-95 transition-all"
               >
-                <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
-                {isSimulating ? t("Simulating Customer Payment...") : t("⚡ Test: Simulate Customer Scan & Pay")}
+                <CheckCircle2 className="h-5 w-5 text-white" />
+                {t("Payment Received — Complete Bill")}
               </Button>
-              <p className="text-[10px] text-muted-foreground text-center pt-1">
-                {t("Click the test button above to test the instant auto-detection & Soundbox announcement.")}
-              </p>
             </div>
           </div>
         )}

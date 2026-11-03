@@ -13,7 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
-import { Printer, Check, MessageSquare, Sparkles } from 'lucide-react';
+import { Printer, Check, MessageSquare, Sparkles, Receipt } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PaymentDialog } from './payment-dialog';
 import { UpiPaymentModal } from './upi-payment-modal';
@@ -23,7 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sendWhatsAppBill } from '@/lib/whatsapp-bill';
 import { DEPARTMENTAL_STORE_CATALOG } from '@/lib/departmental-catalog';
-import { subscribeToAmountMatch, simulateCounterStandeePayment } from '@/lib/payment-listener';
+import { subscribeToAmountMatch, generateMockUtr } from '@/lib/payment-listener';
 import { triggerSoundboxAlert } from '@/lib/soundbox';
 import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
 import { syncCompletedBillToCloud } from '@/lib/firestore-sync';
@@ -133,6 +133,7 @@ export default function PaymentSection({ inventory, setInventory, bills, setBill
     // Standee payment customer state
     const [standeeCustomerName, setStandeeCustomerName] = useState('');
     const [standeeCustomerPhone, setStandeeCustomerPhone] = useState('');
+    const [standeeManualUtr, setStandeeManualUtr] = useState('');
     const standeeCustomerRef = useRef<{ name: string; phone: string } | null>(null);
 
     // Keep standee customer ref in sync
@@ -534,7 +535,8 @@ export default function PaymentSection({ inventory, setInventory, bills, setBill
         shouldPrint = false,
         amountPaid?: number,
         overrideCustomer?: { name: string; phone: string },
-        splitOverride?: { cash: number; online: number }
+        splitOverride?: { cash: number; online: number },
+        customUtr?: string
     ) => {
         if (cart.length === 0) return;
 
@@ -658,6 +660,7 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
             cashierId: currentUser?.id,
             cashierName: currentUser?.name,
             shiftId: getActiveShift()?.id,
+            utr: customUtr || (counterVerifiedUtr ? counterVerifiedUtr : undefined),
         };
 
         // Inventory is already updated in real-time interactions
@@ -2066,15 +2069,41 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                 </div>
                             </div>
 
-                            {/* Simulator Test Trigger */}
+                            {/* Optional UPI Ref / UTR for Accounting */}
+                            <div className="space-y-1.5 text-left pt-1">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground">
+                                        <Receipt className="h-3.5 w-3.5 text-primary" />
+                                        <span>{t("UPI Ref / UTR")}</span>
+                                        <span className="text-[10px] font-normal opacity-70">({t("Optional")})</span>
+                                    </div>
+                                    <span className="text-[10px] text-muted-foreground font-medium">
+                                        {t("For bank reconciliation")}
+                                    </span>
+                                </div>
+                                <Input
+                                    placeholder={t("e.g. 4821 or 12-digit UTR (leave blank to auto-generate)")}
+                                    value={standeeManualUtr}
+                                    onChange={(e) => setStandeeManualUtr(e.target.value)}
+                                    className="h-10 text-xs font-mono font-bold bg-background rounded-xl border-border/60"
+                                    maxLength={24}
+                                />
+                            </div>
+
+                            {/* Production Payment Received Action */}
                             <div className="space-y-2 pt-1">
                                 <Button
                                     type="button"
-                                    onClick={() => simulateCounterStandeePayment(total)}
-                                    className="w-full h-11 border-dashed border-2 font-black text-xs gap-2 rounded-xl bg-primary/5 hover:bg-primary/10 border-primary/40 text-primary transition-all"
+                                    onClick={() => {
+                                        setIsCounterStandeeListening(false);
+                                        const cust = standeeCustomerRef.current || (selectedCustomer ? { name: selectedCustomer.name, phone: selectedCustomer.phone } : undefined);
+                                        const finalUtr = standeeManualUtr.trim() || generateMockUtr();
+                                        processPayment(pendingPrintAfterUpi, total, cust, undefined, finalUtr);
+                                    }}
+                                    className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm gap-2 rounded-xl shadow-lg shadow-emerald-600/25 active:scale-95 transition-all"
                                 >
-                                    <Zap className="h-4 w-4 text-amber-500 fill-amber-500" />
-                                    {t("⚡ Test: Simulate Customer Pay")} {activeCurrency} {total.toFixed(2)}
+                                    <CheckCircle2 className="h-5 w-5 text-white" />
+                                    {t("Payment Received — Complete Bill")} ({activeCurrency} {total.toFixed(2)})
                                 </Button>
 
                                 <div className="flex items-center justify-between gap-2 pt-1">
@@ -2098,12 +2127,13 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                         size="sm"
                                         onClick={() => {
                                             setIsCounterStandeeListening(false);
-                                            const cust = standeeCustomerRef.current || (selectedCustomer ? { name: selectedCustomer.name, phone: selectedCustomer.phone } : undefined);
-                                            processPayment(pendingPrintAfterUpi, total, cust);
+                                            setPaymentMethod('Cash');
+                                            setIsCashDrawerOpen(true);
                                         }}
                                         className="text-xs font-bold text-muted-foreground hover:text-foreground h-8"
                                     >
-                                        {t("Manual Mark Paid")}
+                                        <Banknote className="h-3.5 w-3.5 mr-1 text-amber-500" />
+                                        {t("Switch to Cash")}
                                     </Button>
                                 </div>
                             </div>

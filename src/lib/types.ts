@@ -217,6 +217,7 @@ export interface Bill {
   cashierId?: string;
   cashierName?: string;
   shiftId?: string;
+  utr?: string;
 }
 
 

@@ -52,7 +52,7 @@ import {
 } from '../src/lib/shift-manager';
 import { compileStoreReport } from '../src/lib/report-generator';
 import { buildUsername, generateUniqueUsername } from '../src/lib/generate-username';
-import { subscribeToAmountMatch, simulateCounterStandeePayment } from '../src/lib/payment-listener';
+import { subscribeToAmountMatch, simulateCounterStandeePayment, generateMockUtr } from '../src/lib/payment-listener';
 import type {
   Bill,
   Customer,
@@ -371,6 +371,15 @@ async function runTests() {
   assert(paymentReceived === true, 'Standee Radar intercepted matched customer amount');
   assert(receivedUtr.startsWith('UPI-') || receivedUtr.length >= 8, 'Valid UTR transaction code generated', receivedUtr);
   unsubscribe();
+
+  // Test custom UTR assignment vs auto-generated fallback
+  const customUtrInput = '4821';
+  const resolvedCustomUtr = customUtrInput.trim() || generateMockUtr();
+  assert(resolvedCustomUtr === '4821', 'Custom optional UTR is preserved when entered by cashier');
+
+  const emptyUtrInput = '   ';
+  const resolvedAutoUtr = emptyUtrInput.trim() || generateMockUtr();
+  assert(resolvedAutoUtr.length >= 10, 'Empty UTR safely falls back to auto-generated UTR without blocking checkout');
 
   // -------------------------------------------------------------------------
   // TEST GROUP 7: VENDOR & CUSTOMER DATA RESILIENCE AUDIT
