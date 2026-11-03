@@ -263,7 +263,7 @@ export function calculateShiftSummary(
     Math.round((shiftEnd - shiftStart) / (1000 * 60))
   );
 
-  return {
+  const reconciledShift: StaffShiftSession = {
     ...shift,
     durationMinutes,
     cashSales,
@@ -285,6 +285,14 @@ export function calculateShiftSummary(
     vendorDeliveriesReceived,
     expectedCashInDrawer,
   };
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(ACTIVE_SHIFT_KEY, JSON.stringify(reconciledShift));
+    } catch {}
+  }
+
+  return reconciledShift;
 }
 
 export function completeShiftSession(
@@ -482,9 +490,9 @@ export function generateShiftReceiptText(
 
   lines.push('--------------------------------');
   lines.push('GALLA CASH RECONCILIATION:');
-  lines.push(`Opening Float:   ${currency} ${(session.openingFloat || 0).toFixed(2).padStart(11)}`);
-  lines.push(`Expected Cash:   ${currency} ${(session.expectedCashInDrawer || 0).toFixed(2).padStart(11)}`);
-  lines.push(`Counted Cash:    ${currency} ${(session.actualCashCounted ?? session.expectedCashInDrawer ?? 0).toFixed(2).padStart(11)}`);
+  lines.push(`Opening Float:   ${currency} ${(Number(session.openingFloat) || 0).toFixed(2).padStart(11)}`);
+  lines.push(`Expected Cash:   ${currency} ${(Number(session.expectedCashInDrawer) || 0).toFixed(2).padStart(11)}`);
+  lines.push(`Counted Cash:    ${currency} ${(Number(session.actualCashCounted ?? session.expectedCashInDrawer) || 0).toFixed(2).padStart(11)}`);
   lines.push(`Discrepancy:     ${currency} ${diffStr.padStart(11)}`);
   lines.push('================================');
   lines.push('');

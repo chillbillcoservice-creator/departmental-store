@@ -148,7 +148,7 @@ export function UniversalCatalogImportDialog({
         currentList.push({
           name: item.name,
           price: item.price,
-          barcode: item.barcode,
+          barcode: item.barcode || item.id,
           hsnCode: item.hsnCode,
           code: String(currentList.length + 1).padStart(2, '0'),
         });

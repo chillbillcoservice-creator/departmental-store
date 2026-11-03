@@ -198,7 +198,6 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
       setIsLoading(false);
     }
   };
-  };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!containerRef.current) return;

@@ -300,6 +300,7 @@ export interface PurchaseOrder {
   receivedDate?: Date;
   paidAmount?: number;
   shiftId?: string;
+  notes?: string;
 }
 
 export interface ItemBatch {
@@ -343,6 +344,7 @@ export interface InventoryItem {
   discount?: number; // Check for percentage or fixed amount
   batches?: ItemBatch[];
   hsnCode?: string;
+  barcode?: string;
 }
 
 export interface CartItem extends InventoryItem {
@@ -489,15 +491,15 @@ export type GenerateReportOutput = z.infer<typeof GenerateReportOutputSchema>;
 
 export interface VenueDetails {
   name: string;
-  address: string;
+  address?: string;
   street?: string;
   city?: string;
   state?: string;
   zip?: string;
   country?: string;
-  contactNumber: string;
-  email: string;
-  tagline: string;
+  contactNumber?: string;
+  email?: string;
+  tagline?: string;
   defaultDiscount?: number;
   vatPercentage?: number;
   receiptHeader?: string;
@@ -521,8 +523,8 @@ export interface VenueDetails {
 
 export interface OwnerDetails {
   name: string;
-  contactNumber: string;
-  email: string;
+  contactNumber?: string;
+  email?: string;
   address?: string; // Added to support setup wizard inputs
   language?: string;
   loginCode?: string;

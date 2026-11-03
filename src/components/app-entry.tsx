@@ -237,7 +237,7 @@ export default function AppEntry({
   }, [db]);
 
   const handleSetupComplete = (data: SetupData) => {
-    setVenueName(data.venue.name);
+    setVenueName(data.venue.name || 'ChillBill Store');
     setVenueDetails(data.venue);
     setOwnerDetails(data.owner);
     setCurrency(data.currency);
@@ -245,10 +245,10 @@ export default function AppEntry({
 
     // Build owner as first employee (so they appear on PIN login screen)
     const ownerLoginCode = data.owner.loginCode || '0000';
-    const ownerUsername = data.owner.username?.trim() || buildUsername(data.venue.name, data.owner.name, ownerLoginCode) || 'owner';
+    const ownerUsername = data.owner.username?.trim() || buildUsername(data.venue.name || 'store', data.owner.name || 'owner', ownerLoginCode) || 'owner';
     const ownerEmployee: Employee = {
       id: 'owner-1',
-      name: data.owner.name,
+      name: data.owner.name || 'Store Owner',
       role: 'Owner',
       salary: 0,
       color: '#f97316',
@@ -389,8 +389,8 @@ export default function AppEntry({
           initialData={{
             currency,
             language,
-            venue: venueDetails || { name: venueName || 'ChillBill Store' },
-            owner: ownerDetails || { name: 'Store Owner' }
+            venue: venueDetails || ({ name: venueName || 'ChillBill Store' } as VenueDetails),
+            owner: ownerDetails || ({ name: 'Store Owner' } as OwnerDetails)
           }}
         />
       </LanguageProvider>

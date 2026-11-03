@@ -1,0 +1,389 @@
+/**
+ * Brutal End-to-End Test Suite for ChillBill Departmental Store POS
+ * Tests core business logic, retail calculations, state models, WhatsApp engines,
+ * shift handovers, reporting algorithms, and inventory integrity.
+ */
+
+import { EventEmitter } from 'events';
+
+// Mock window and localStorage before imports
+const mockStorage: Record<string, string> = {};
+const eventEmitter = new EventEmitter();
+
+(global as any).window = {
+  addEventListener: (event: string, handler: any) => eventEmitter.on(event, handler),
+  removeEventListener: (event: string, handler: any) => eventEmitter.off(event, handler),
+  dispatchEvent: (event: any) => {
+    eventEmitter.emit(event.type, event);
+    return true;
+  },
+};
+(global as any).CustomEvent = class CustomEvent {
+  type: string;
+  detail: any;
+  constructor(type: string, params?: { detail: any }) {
+    this.type = type;
+    this.detail = params?.detail;
+  }
+};
+(global as any).localStorage = {
+  getItem: (k: string) => mockStorage[k] || null,
+  setItem: (k: string, v: string) => { mockStorage[k] = v; },
+  removeItem: (k: string) => { delete mockStorage[k]; },
+  clear: () => { Object.keys(mockStorage).forEach(k => delete mockStorage[k]); },
+};
+
+import { DEPARTMENTAL_STORE_CATALOG } from '../src/lib/departmental-catalog';
+import {
+  sanitizeWhatsAppPhone,
+  formatWhatsAppBillText,
+  formatWhatsAppPurchaseOrderText,
+  formatWhatsAppKhataReminderText,
+  formatWhatsAppVendorStatementText,
+} from '../src/lib/whatsapp-service';
+import {
+  getOrStartActiveShift,
+  getActiveShift,
+  logShiftActivity,
+  calculateShiftSummary,
+  completeShiftSession,
+  formatShiftWhatsAppText,
+  generateShiftReceiptText,
+} from '../src/lib/shift-manager';
+import { compileStoreReport } from '../src/lib/report-generator';
+import { buildUsername, generateUniqueUsername } from '../src/lib/generate-username';
+import { subscribeToAmountMatch, simulateCounterStandeePayment } from '../src/lib/payment-listener';
+import type {
+  Bill,
+  Customer,
+  Expense,
+  InventoryItem,
+  PurchaseOrder,
+  Vendor,
+  VenueDetails,
+} from '../src/lib/types';
+
+interface TestResult {
+  name: string;
+  passed: boolean;
+  details?: string;
+  error?: string;
+}
+
+const results: TestResult[] = [];
+
+function assert(condition: boolean, name: string, details?: string) {
+  if (condition) {
+    results.push({ name, passed: true, details });
+    console.log(`  ✓ PASS: ${name}${details ? ` (${details})` : ''}`);
+  } else {
+    results.push({ name, passed: false, error: 'Assertion failed' });
+    console.error(`  ✗ FAIL: ${name}`);
+  }
+}
+
+async function runTests() {
+  console.log('\n======================================================');
+  console.log('🚀 STARTING BRUTAL COMPREHENSIVE SUITE - CHILLBILL POS');
+  console.log('======================================================\n');
+
+  // -------------------------------------------------------------------------
+  // TEST GROUP 1: CATALOG INTEGRITY & MARGINS
+  // -------------------------------------------------------------------------
+  console.log('📦 [1/6] Auditing Departmental Store Catalog...');
+  assert(DEPARTMENTAL_STORE_CATALOG.length >= 25, 'Catalog size check', `${DEPARTMENTAL_STORE_CATALOG.length} items loaded`);
+
+  let invalidBarcodes = 0;
+  let invalidPrices = 0;
+  let negativeMargins = 0;
+
+  DEPARTMENTAL_STORE_CATALOG.forEach((item) => {
+    if (!item.id || item.id.length < 3) invalidBarcodes++;
+    if (!item.price || item.price <= 0) invalidPrices++;
+    if (item.costPrice && item.costPrice > item.price) negativeMargins++;
+  });
+
+  assert(invalidBarcodes === 0, 'Catalog Barcodes Valid', `${invalidBarcodes} invalid`);
+  assert(invalidPrices === 0, 'Catalog Prices Valid (> 0)', `${invalidPrices} zero/negative prices`);
+  assert(negativeMargins === 0, 'Catalog Profit Margins Positive', `${negativeMargins} loss-making items`);
+
+  // -------------------------------------------------------------------------
+  // TEST GROUP 2: WHATSAPP SERVICES & PHONE SANITIZATION
+  // -------------------------------------------------------------------------
+  console.log('\n📱 [2/6] Auditing WhatsApp Engines & Message Generators...');
+  
+  // Phone numbers
+  assert(sanitizeWhatsAppPhone('9876543210') === '919876543210', 'Phone standard 10-digit prepends 91');
+  assert(sanitizeWhatsAppPhone('+91 98765-43210') === '919876543210', 'Phone with symbols & spaces stripped');
+  assert(sanitizeWhatsAppPhone('919876543210') === '919876543210', 'Phone already prefixed with 91 preserved');
+  assert(sanitizeWhatsAppPhone('') === '', 'Empty phone handled gracefully');
+  assert(sanitizeWhatsAppPhone(null) === '', 'Null phone handled gracefully');
+
+  const sampleVenue: VenueDetails = {
+    name: 'ChillBill Mega Mart',
+    address: 'Shop 4, Civil Lines, Jaipur',
+    contactNumber: '9876500000',
+    email: 'store@chillbill.com',
+    currency: 'Rs.',
+    gstin: '08AAAAA0000A1Z5',
+  };
+
+  const sampleBill: Bill = {
+    id: '01',
+    timestamp: new Date(),
+    orderItems: [
+      { name: 'Fortune Oil 1L', price: 155, quantity: 2, code: 'OIL-01' },
+      { name: 'Aashirvaad Atta 5kg', price: 235, quantity: 1, code: 'ATTA-05' },
+    ],
+    subtotal: 545,
+    discount: 45,
+    total: 500,
+    paymentMethod: 'Online',
+    orderType: 'Store-Pickup',
+    customerDetails: {
+      name: 'Rohan Sharma',
+      phone: '9876545432',
+      gstin: '08BBBBB1111B2Z6',
+    },
+  };
+
+  const billText = formatWhatsAppBillText(sampleBill, sampleVenue, 'Rs.');
+  assert(billText.includes('TAX INVOICE (B2B)'), 'B2B GSTIN activates TAX INVOICE heading');
+  assert(billText.includes('Fortune Oil 1L'), 'Bill includes item names');
+  assert(billText.includes('500'), 'Bill includes final total');
+  assert(billText.includes('08BBBBB1111B2Z6'), 'Bill includes customer GSTIN');
+
+  // Customer Khata Reminder
+  const sampleCustomer: Customer = {
+    id: '9876545432',
+    name: 'Bunty',
+    phone: '9876545432',
+    totalSpent: 12000,
+    totalVisits: 14,
+    balance: 8888,
+    firstSeen: new Date(),
+    lastSeen: new Date(),
+  };
+
+  const khataText = formatWhatsAppKhataReminderText(sampleCustomer, 8888, sampleVenue, 'Rs.');
+  assert(khataText.includes('BUNTY'), 'Khata message includes customer name in uppercase');
+  assert(khataText.includes('8888.00'), 'Khata message displays exact pending balance');
+  assert(khataText.toLowerCase().includes(sampleVenue.name.toLowerCase()), 'Khata message includes store name');
+
+  // Vendor Purchase Order
+  const samplePO: PurchaseOrder = {
+    id: 'po-101',
+    vendorId: 'v-01',
+    vendorName: 'Jaipur FMCG Distributors',
+    referenceNo: 'PO-994422',
+    date: new Date(),
+    status: 'Ordered',
+    items: [
+      { inventoryItemId: 'item-1', name: 'Britannia Good Day', quantity: 48, unitCost: 20, totalCost: 960 },
+      { inventoryItemId: 'item-2', name: 'Tata Tea Gold 500g', quantity: 24, unitCost: 280, totalCost: 6720 },
+    ],
+    totalAmount: 7680,
+  };
+
+  const sampleVendor: Vendor = {
+    id: 'v-01',
+    name: 'Jaipur FMCG Distributors',
+    category: 'FMCG & Groceries',
+    phone: '9829012345',
+    balance: 14500,
+  };
+
+  const poText = formatWhatsAppPurchaseOrderText(samplePO, sampleVendor, sampleVenue, 'Rs.');
+  assert(poText.includes('PO-994422'), 'PO text includes reference number');
+  assert(poText.includes('Tata Tea Gold'), 'PO text includes ordered products');
+  assert(poText.includes('7,680'), 'PO text includes estimated order value');
+
+  // Vendor Statement
+  const vendorStmtText = formatWhatsAppVendorStatementText(sampleVendor, sampleVenue, 'Rs.');
+  assert(vendorStmtText.includes('14500.00'), 'Vendor statement reflects current payable balance');
+  assert(vendorStmtText.includes('Jaipur FMCG Distributors'), 'Vendor statement names supplier');
+
+  // -------------------------------------------------------------------------
+  // TEST GROUP 3: SHIFT HANDOVER & CASH RECONCILIATION
+  // -------------------------------------------------------------------------
+  console.log('\n💼 [3/6] Auditing Shift Management & Handover Drawer Math...');
+
+  const cashierEmployee = {
+    id: 'emp-101',
+    name: 'Amit Kumar (Cashier)',
+    role: 'Cashier',
+    salary: 15000,
+    color: '#3b82f6',
+    allowedTabs: ['payments'],
+  };
+
+  const shift = getOrStartActiveShift(cashierEmployee as any, 2000); // 2000 initial float
+  assert(shift.openingFloat === 2000, 'Shift opened with initial float of 2000');
+  assert(getActiveShift()?.employeeName === 'Amit Kumar (Cashier)', 'Active shift retrieved');
+
+  // Vendor Purchase Order with shiftId
+  const poWithShift: PurchaseOrder = {
+    ...samplePO,
+    shiftId: shift.id,
+  };
+
+  // Create shift bills
+  const shiftBills: Bill[] = [
+    {
+      id: 'B01',
+      timestamp: new Date(),
+      subtotal: 1500,
+      total: 1500,
+      paymentMethod: 'Cash',
+      orderItems: [{ name: 'Rice 10kg', price: 750, quantity: 2, code: 'R10' }],
+      orderType: 'Store-Pickup',
+      cashierId: 'emp-101',
+      shiftId: shift.id,
+    },
+    {
+      id: 'B02',
+      timestamp: new Date(),
+      subtotal: 3200,
+      total: 3200,
+      paymentMethod: 'Online',
+      orderItems: [{ name: 'Ghee 1L', price: 800, quantity: 4, code: 'G01' }],
+      orderType: 'Store-Pickup',
+      cashierId: 'emp-101',
+      shiftId: shift.id,
+    },
+  ];
+
+  const shiftExpenses: Expense[] = [
+    { id: 'e1', description: 'Counter Tea & Snacks', amount: 120, category: 'Food & Beverage', paymentMethod: 'Cash', date: new Date(), shiftId: shift.id },
+  ];
+
+  // Log a customer khata cash collection
+  logShiftActivity({ type: 'khata_collection', title: 'Khata Cash Collection', amount: 800, paymentMethod: 'Cash' });
+
+  // Calculate live reconciled shift summary
+  const updatedShift = calculateShiftSummary(getActiveShift()!, shiftBills, shiftExpenses, [poWithShift], []);
+
+  // Expected cash in drawer:
+  // openingFloat (2000) + Cash Sales (1500) + Khata Cash Collection (800) - Expense (120) = 4180
+  assert(updatedShift.expectedCashInDrawer === 4180, 'Expected Cash in drawer accurately computed', `Got ${updatedShift.expectedCashInDrawer}`);
+  assert(updatedShift.cashSales === 1500, 'Cash sales tracked (1500)');
+  assert(updatedShift.onlineSales === 3200, 'Online sales tracked (3200)');
+  assert(updatedShift.totalSales === 4700, 'Total sales volume tracked (4700)');
+  assert(updatedShift.vendorPOsCreated?.length === 1, 'Vendor PO tracked during shift');
+
+  // Test handover slip & WhatsApp report
+  const shiftSlip = generateShiftReceiptText(updatedShift, sampleVenue, 'Rs.');
+  assert(shiftSlip.includes('SHIFT HANDOVER REPORT'), 'Shift handover receipt slip formatted');
+  assert(shiftSlip.includes('4180.00'), 'Shift slip shows exact expected drawer cash');
+
+  const shiftWA = formatShiftWhatsAppText(updatedShift, sampleVenue.name, 'Rs.');
+  assert(decodeURIComponent(shiftWA).includes('Amit Kumar (Cashier)'), 'Shift WhatsApp text includes cashier name');
+
+  // Complete shift with counted cash 4180 (exact match)
+  const completedShift = completeShiftSession(4180, 'Counter shift closed on time.');
+  assert(completedShift?.status === 'Completed', 'Shift session status changed to Completed');
+  assert(completedShift?.cashDifference === 0, 'Exact till tally yields 0 difference', `Got ${completedShift?.cashDifference}`);
+  assert(getActiveShift() === null, 'Active shift cleared after completion');
+
+  // -------------------------------------------------------------------------
+  // TEST GROUP 4: REPORT GENERATION & PROFIT METRICS
+  // -------------------------------------------------------------------------
+  console.log('\n📊 [4/6] Auditing Store Reports & Profit Margins...');
+
+  const reportBills: Bill[] = [
+    {
+      id: '01',
+      timestamp: new Date(),
+      subtotal: 1000,
+      total: 1000,
+      paymentMethod: 'Cash',
+      orderItems: [
+        { name: 'Item A', price: 500, quantity: 2, code: 'A' },
+      ],
+      orderType: 'Store-Pickup',
+    },
+    {
+      id: '02',
+      timestamp: new Date(),
+      subtotal: 2000,
+      total: 2000,
+      paymentMethod: 'Online',
+      orderItems: [
+        { name: 'Item B', price: 1000, quantity: 2, code: 'B' },
+      ],
+      orderType: 'Store-Pickup',
+    },
+  ];
+
+  const reportInventory: InventoryItem[] = [
+    { id: 'A', name: 'Item A', category: 'General', price: 500, costPrice: 350, stock: 40, capacity: 50, unit: 'pcs' },
+    { id: 'B', name: 'Item B', category: 'General', price: 1000, costPrice: 800, stock: 15, capacity: 30, unit: 'pcs' },
+  ];
+
+  const reportExpenses: Expense[] = [
+    { id: 'e1', description: 'Electricity', amount: 300, category: 'Utilities', date: new Date() },
+  ];
+
+  const dailyReport = compileStoreReport('daily', {
+    bills: reportBills,
+    expenses: reportExpenses,
+    inventory: reportInventory,
+    venueName: 'ChillBill Store',
+    currency: 'Rs.',
+    venueDetails: sampleVenue,
+  });
+
+  assert(dailyReport.metrics.totalRevenue === 3000, 'Total Revenue matches bill totals', `Got ${dailyReport.metrics.totalRevenue}`);
+  assert(dailyReport.metrics.totalBills === 2, 'Total bills count matches (2)', `Got ${dailyReport.metrics.totalBills}`);
+  assert(dailyReport.metrics.cashTotal === 1000, 'Cash Revenue tracked separately (1000)', `Got ${dailyReport.metrics.cashTotal}`);
+  assert(dailyReport.metrics.onlineTotal === 2000, 'Online Revenue tracked separately (2000)', `Got ${dailyReport.metrics.onlineTotal}`);
+  assert(dailyReport.metrics.totalExpenses === 300, 'Total Expenses tracked (300)', `Got ${dailyReport.metrics.totalExpenses}`);
+  assert(dailyReport.metrics.netBalance === 2700, 'Net Balance is Revenue - Expenses (3000 - 300 = 2700)', `Got ${dailyReport.metrics.netBalance}`);
+
+  // -------------------------------------------------------------------------
+  // TEST GROUP 5: USERNAME & CREDENTIALS BUILDER
+  // -------------------------------------------------------------------------
+  console.log('\n🔐 [5/6] Auditing Staff & Owner Credentials Generation...');
+
+  const username1 = buildUsername('ChillBill Store', 'Bunty Sharma', '1234');
+  assert(username1 === 'bunty', 'Username built with clean human-friendly slug', username1);
+
+  const uniqueUser = generateUniqueUsername('Amit Kumar', ['amit', 'amit1']);
+  assert(uniqueUser === 'amit2', 'Unique username auto-increments for collisions', uniqueUser);
+
+  // -------------------------------------------------------------------------
+  // TEST GROUP 6: UPI & COUNTER STANDEE REAL-TIME MATCHING
+  // -------------------------------------------------------------------------
+  console.log('\n⚡ [6/6] Auditing Counter QR Standee Payment Radar...');
+
+  let paymentReceived = false;
+  let receivedUtr = '';
+
+  const unsubscribe = subscribeToAmountMatch(121.08, (payload) => {
+    paymentReceived = true;
+    receivedUtr = payload.utr;
+  });
+
+  // Fire simulated customer payment
+  simulateCounterStandeePayment(121.08);
+
+  assert(paymentReceived === true, 'Standee Radar intercepted matched customer amount');
+  assert(receivedUtr.startsWith('UPI-') || receivedUtr.length >= 8, 'Valid UTR transaction code generated', receivedUtr);
+  unsubscribe();
+
+  // Final summary
+  console.log('\n======================================================');
+  const passed = results.filter((r) => r.passed).length;
+  const failed = results.filter((r) => !r.passed).length;
+  console.log(`🏁 TEST RESULTS: ${passed} PASSED, ${failed} FAILED (TOTAL: ${results.length})`);
+  console.log('======================================================\n');
+
+  if (failed > 0) {
+    process.exit(1);
+  }
+}
+
+runTests().catch((err) => {
+  console.error('Fatal test error:', err);
+  process.exit(1);
+});

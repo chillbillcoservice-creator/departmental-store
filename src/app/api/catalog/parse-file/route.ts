@@ -18,7 +18,8 @@ export async function POST(req: NextRequest) {
 
     if (fileName.endsWith('.pdf')) {
       // Dynamic import to prevent client bundling
-      const pdfParse = (await import('pdf-parse')).default;
+      const pdfModule: any = await import('pdf-parse');
+      const pdfParse = pdfModule.default || pdfModule;
       const pdfData = await pdfParse(buffer);
       rawText = pdfData.text || '';
     } else {

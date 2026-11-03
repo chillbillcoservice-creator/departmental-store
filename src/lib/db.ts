@@ -12,7 +12,7 @@ export const generateVenueId = (venueName: string) => {
 export const saveVenueSetup = async (setupData: SetupData, uid?: string) => {
     const db = getDb();
     // If owner is authenticated via Google, use their Firebase UID as venueId for clean linking
-    const venueId = uid || generateVenueId(setupData.venue.name);
+    const venueId = uid || generateVenueId(setupData.venue?.name || 'store');
     const venueRef = doc(db, 'venues', venueId);
 
     // Save main venue document
@@ -32,16 +32,16 @@ export const saveVenueSetup = async (setupData: SetupData, uid?: string) => {
     // Add owner as an employee (for login purposes)
     const ownerEmployee: Employee = {
         id: 'owner-1',
-        name: setupData.owner.name,
+        name: setupData.owner?.name || 'Store Owner',
         role: 'Owner',
         salary: 0,
         color: '#f97316', // orange
-        mobile: setupData.owner.contactNumber,
-        email: setupData.owner.email,
+        mobile: setupData.owner?.contactNumber,
+        email: setupData.owner?.email,
         allowedTabs: ['all'],
-        password: setupData.owner.password || '',
-        loginCode: setupData.owner.loginCode || '0000',
-        username: setupData.owner.username?.trim() || buildUsername(setupData.venue.name, setupData.owner.name, setupData.owner.loginCode || '0000')
+        password: setupData.owner?.password || '',
+        loginCode: setupData.owner?.loginCode || '0000',
+        username: setupData.owner?.username?.trim() || buildUsername(setupData.venue?.name || 'store', setupData.owner?.name || 'owner', setupData.owner?.loginCode || '0000')
     };
     allEmployees.push(ownerEmployee);
 

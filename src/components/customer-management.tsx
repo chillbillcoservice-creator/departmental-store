@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { PlusCircle, Edit, Search, Trash2, Eye, Printer, Mail, CalendarDays, ShoppingBag, ArrowUpDown, ChevronDown, ChevronUp, HandCoins, ChevronsUpDown, CalendarIcon, AlertTriangle, MessageSquare } from 'lucide-react';
 import type { Bill, Customer, PendingBill, PendingBillTransaction, VenueDetails } from '@/lib/types';
 import { logShiftActivity } from '@/lib/shift-manager';
+import { sendWhatsAppKhataReminder } from '@/lib/whatsapp-service';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, isValid } from 'date-fns';
 import { Textarea } from './ui/textarea';
