@@ -129,17 +129,20 @@ export const listenToLiveDailySales = (
 
 /**
  * Listen to recent completed bills (last 10) in real time
+ * Supports onNewBill callback for real-time Ka-Ching alerts on new sales.
  */
 export const listenToRecentBills = (
     venueId: string, 
     limitCount: number = 10,
-    onUpdate: (bills: any[]) => void
+    onUpdate: (bills: any[]) => void,
+    onNewBill?: (newBill: any) => void
 ) => {
     if (!venueId) return () => {};
     try {
         const db = getDb();
         const billsRef = collection(db, 'venues', venueId, 'bills');
         const q = query(billsRef, orderBy('completedAt', 'desc'), limit(limitCount));
+        let isInitial = true;
 
         return onSnapshot(q, (snap) => {
             const list = snap.docs.map(d => ({
@@ -148,6 +151,23 @@ export const listenToRecentBills = (
                 completedAt: d.data().completedAt?.toDate?.() || new Date()
             }));
             onUpdate(list);
+
+            if (isInitial) {
+                isInitial = false;
+                return;
+            }
+
+            // Only fire onNewBill for newly completed bills after the initial snapshot
+            snap.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                    const billData = {
+                        id: change.doc.id,
+                        ...change.doc.data(),
+                        completedAt: change.doc.data().completedAt?.toDate?.() || new Date()
+                    };
+                    onNewBill?.(billData);
+                }
+            });
         }, (err) => {
             console.error("Recent bills listener error:", err);
         });

@@ -8,7 +8,10 @@ import {
     Settings, 
     Sparkles, 
     RefreshCw,
-    Store
+    Store,
+    Volume2,
+    VolumeX,
+    X
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { 
@@ -32,6 +35,7 @@ import {
     syncVendorsToCloud,
     syncEmployeesToCloud
 } from '@/lib/firestore-sync';
+import { playKaChingSound, unlockAudioContext } from '@/lib/soundbox';
 import { MobileDashboardTab } from './mobile-dashboard-tab';
 import { MobileStaffTab } from './mobile-staff-tab';
 import { MobileVendorsTab } from './mobile-vendors-tab';
@@ -80,6 +84,63 @@ export function OwnerMobileLayout({
     const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
     const [vendors, setVendors] = useState<Vendor[]>(initialVendors);
 
+    // Ka-Ching sound alert & notification state
+    const [isSoundEnabled, setIsSoundEnabled] = useState<boolean>(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                return localStorage.getItem('owner_sale_sound_enabled') !== 'false';
+            } catch {
+                return true;
+            }
+        }
+        return true;
+    });
+    const [incomingSaleAlert, setIncomingSaleAlert] = useState<{
+        id: string;
+        total: number;
+        paymentMethod: string;
+        cashierName?: string;
+    } | null>(null);
+
+    // Auto-unlock Web Audio on first user interaction (touch/click) for mobile browsers
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const handleUnlock = () => {
+            unlockAudioContext();
+            window.removeEventListener('touchstart', handleUnlock);
+            window.removeEventListener('click', handleUnlock);
+        };
+        window.addEventListener('touchstart', handleUnlock, { passive: true });
+        window.addEventListener('click', handleUnlock, { passive: true });
+        return () => {
+            window.removeEventListener('touchstart', handleUnlock);
+            window.removeEventListener('click', handleUnlock);
+        };
+    }, []);
+
+    // Auto-dismiss floating sale alert toast after 4.5 seconds
+    useEffect(() => {
+        if (!incomingSaleAlert) return;
+        const timer = setTimeout(() => {
+            setIncomingSaleAlert(null);
+        }, 4500);
+        return () => clearTimeout(timer);
+    }, [incomingSaleAlert]);
+
+    const toggleSound = useCallback(() => {
+        setIsSoundEnabled(prev => {
+            const next = !prev;
+            try {
+                localStorage.setItem('owner_sale_sound_enabled', String(next));
+            } catch {}
+            if (next) {
+                // Play a brief preview so the owner hears it & mobile audio gets unlocked
+                playKaChingSound();
+            }
+            return next;
+        });
+    }, []);
+
     // Sync cloud listeners on mount if venueId is available
     useEffect(() => {
         if (!venueId) return;
@@ -89,10 +150,26 @@ export function OwnerMobileLayout({
             if (summary) setLiveDailySales(summary);
         });
 
-        // 2. Recent bills
-        const unsubBills = listenToRecentBills(venueId, 8, (bills) => {
-            if (bills.length > 0) setRecentCloudBills(bills);
-        });
+        // 2. Recent bills with real-time Ka-Ching alert on new checkouts
+        const unsubBills = listenToRecentBills(
+            venueId, 
+            8, 
+            (bills) => {
+                if (bills.length > 0) setRecentCloudBills(bills);
+            },
+            (newBill) => {
+                // Fresh checkout completed at store counter!
+                if (isSoundEnabled) {
+                    playKaChingSound();
+                }
+                setIncomingSaleAlert({
+                    id: newBill.id,
+                    total: Number(newBill.total || 0),
+                    paymentMethod: newBill.paymentMethod || 'Online',
+                    cashierName: newBill.cashierName
+                });
+            }
+        );
 
         // 3. Live employees
         const unsubEmployees = listenToLiveEmployees(venueId, (cloudEmployees) => {
@@ -159,6 +236,42 @@ export function OwnerMobileLayout({
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col font-sans selection:bg-orange-500/20">
+            {/* ════════ FLOATING SALE ALERT BANNER (KA-CHING) ════════ */}
+            {incomingSaleAlert && (
+                <div className="fixed top-2.5 inset-x-3 z-50 p-3 rounded-2xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white shadow-2xl border border-white/20 animate-in slide-in-from-top-4 duration-300 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center text-xl shrink-0 shadow-inner">
+                            💰
+                        </div>
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] font-black uppercase tracking-wider bg-white/25 px-2 py-0.5 rounded-full">
+                                    New Sale
+                                </span>
+                                <span className="text-[11px] font-bold text-white/90">
+                                    {incomingSaleAlert.paymentMethod}
+                                </span>
+                            </div>
+                            <div className="text-base font-black truncate tracking-tight text-white mt-0.5">
+                                {currency} {Number(incomingSaleAlert.total || 0).toFixed(2)}
+                                {incomingSaleAlert.cashierName && (
+                                    <span className="text-xs font-normal text-white/80 ml-1.5">
+                                        by {incomingSaleAlert.cashierName}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={() => setIncomingSaleAlert(null)}
+                        className="p-1.5 rounded-lg bg-black/10 hover:bg-black/20 text-white/90 active:scale-90 transition-all shrink-0"
+                        title="Dismiss"
+                    >
+                        <X size={16} />
+                    </button>
+                </div>
+            )}
+
             {/* ════════ STICKY TOP APP BAR ════════ */}
             <header className="sticky top-0 z-40 bg-background/85 backdrop-blur-xl border-b border-border/70 px-4 h-14 flex items-center justify-between">
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -181,8 +294,21 @@ export function OwnerMobileLayout({
                     </div>
                 </div>
 
-                {/* Right Header: Active Cloud Indicator */}
+                {/* Right Header: Sound Alert Toggle & Active Cloud Indicator */}
                 <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                        onClick={toggleSound}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold border transition-all duration-200 active:scale-95 ${
+                            isSoundEnabled 
+                                ? 'bg-amber-500/10 text-amber-500 border-amber-500/30 shadow-sm' 
+                                : 'bg-muted/70 text-muted-foreground border-border'
+                        }`}
+                        title={isSoundEnabled ? "Sale Ka-Ching sound is active (Tap to mute)" : "Sale sound is muted (Tap to enable)"}
+                    >
+                        {isSoundEnabled ? <Volume2 size={12} className="text-amber-500" /> : <VolumeX size={12} />}
+                        <span>{isSoundEnabled ? 'Ka-Ching' : 'Muted'}</span>
+                    </button>
+
                     <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                         Online
@@ -237,6 +363,8 @@ export function OwnerMobileLayout({
                         currency={currency}
                         venueDetails={venueDetails}
                         ownerDetails={ownerDetails}
+                        isSoundEnabled={isSoundEnabled}
+                        onToggleSound={toggleSound}
                         onSwitchLicense={onSwitchLicense}
                         onSignOut={onSignOut}
                     />

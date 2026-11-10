@@ -19,7 +19,10 @@ import {
     Download,
     HelpCircle,
     CheckCircle2,
-    Sparkles
+    Sparkles,
+    Volume2,
+    VolumeX,
+    Bell
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -27,12 +30,15 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useTheme } from "next-themes";
 import Image from "next/image";
+import { playKaChingSound } from "@/lib/soundbox";
 
 interface MobileSettingsTabProps {
     venueName: string;
     currency: string;
     venueDetails?: any;
     ownerDetails?: any;
+    isSoundEnabled?: boolean;
+    onToggleSound?: () => void;
     onSwitchLicense: () => void;
     onSignOut: () => void;
 }
@@ -42,6 +48,8 @@ export function MobileSettingsTab({
     currency,
     venueDetails,
     ownerDetails,
+    isSoundEnabled,
+    onToggleSound,
     onSwitchLicense,
     onSignOut
 }: MobileSettingsTabProps) {
@@ -223,6 +231,37 @@ export function MobileSettingsTab({
                         )}
                     </div>
                 )}
+            </div>
+
+            {/* ════════ SALE KA-CHING SOUND ALERTS ════════ */}
+            <div className="p-4 rounded-2xl border bg-card/70 shadow-sm space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                    <div>
+                        <h4 className="font-bold text-xs text-foreground flex items-center gap-1.5">
+                            <Bell size={14} className="text-amber-500" />
+                            Sale Sound Alerts (Ka-Ching!)
+                        </h4>
+                        <p className="text-[11px] text-muted-foreground">Play cash register chime when sales occur at counter</p>
+                    </div>
+                    <Switch 
+                        checked={isSoundEnabled ?? true}
+                        onCheckedChange={() => onToggleSound?.()}
+                    />
+                </div>
+
+                <div className="pt-2 flex items-center justify-between border-t border-border/50">
+                    <span className="text-[11px] text-muted-foreground">Preview audio chime</span>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => playKaChingSound()}
+                        className="h-8 px-3 rounded-xl text-xs font-bold border-amber-500/30 text-amber-500 hover:bg-amber-500/10 flex items-center gap-1.5"
+                    >
+                        <Volume2 size={13} />
+                        Test Ka-Ching Sound
+                    </Button>
+                </div>
             </div>
 
             {/* ════════ THEME TOGGLE ════════ */}

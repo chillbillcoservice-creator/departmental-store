@@ -53,9 +53,11 @@ import {
 import { compileStoreReport } from '../src/lib/report-generator';
 import { buildUsername, generateUniqueUsername } from '../src/lib/generate-username';
 import { subscribeToAmountMatch, simulateCounterStandeePayment, generateMockUtr } from '../src/lib/payment-listener';
+import { playKaChingSound } from '../src/lib/soundbox';
 import type {
   Bill,
   Customer,
+  Employee,
   Expense,
   InventoryItem,
   PurchaseOrder,
@@ -364,9 +366,15 @@ async function runTests() {
     allowedTabs: ['payments', 'inventory', 'customers'],
     color: '#10b981'
   };
-  assert(testNewEmp.loginCode.length === 4, 'Staff PIN is exactly 4 digits');
-  assert(testNewEmp.allowedTabs.includes('payments'), 'Cashier assigned billing permissions');
+  assert(testNewEmp.loginCode?.length === 4, 'Staff PIN is exactly 4 digits');
+  assert(testNewEmp.allowedTabs?.includes('payments') === true, 'Cashier assigned billing permissions');
   assert(testNewEmp.id.startsWith('emp-'), 'Staff ID correctly formatted for Firestore');
+
+  // Verify Ka-Ching sound generator is callable without throwing
+  let soundPromiseResolved = false;
+  await playKaChingSound();
+  soundPromiseResolved = true;
+  assert(Boolean(soundPromiseResolved), 'Ka-Ching sound engine executes cleanly and safely in non-browser/SSR environment');
 
   // -------------------------------------------------------------------------
   // TEST GROUP 6: UPI & COUNTER STANDEE REAL-TIME MATCHING
