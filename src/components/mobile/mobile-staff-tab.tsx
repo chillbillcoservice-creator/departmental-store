@@ -13,7 +13,8 @@ import {
     Clock, 
     CheckCircle2, 
     UserCheck,
-    AlertCircle
+    AlertCircle,
+    Loader2
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Employee } from '@/lib/types';
-import { updateStaffPinInCloud, updateStaffPermissionsInCloud } from '@/lib/firestore-sync';
+import { 
+    saveEmployeeToCloud, 
+    deleteEmployeeFromCloud, 
+    updateStaffPinInCloud, 
+    updateStaffPermissionsInCloud 
+} from '@/lib/firestore-sync';
 
 interface MobileStaffTabProps {
     employees: Employee[];
@@ -63,6 +69,12 @@ export function MobileStaffTab({
     const [newStaffPin, setNewStaffPin] = useState('');
     const [newSalary, setNewSalary] = useState('');
     const [newPhone, setNewPhone] = useState('');
+    const [formError, setFormError] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+
+    // Delete Staff state
+    const [deleteModalEmp, setDeleteModalEmp] = useState<Employee | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
@@ -124,46 +136,79 @@ export function MobileStaffTab({
     };
 
     // ── Handle Add Staff ──
-    const handleAddStaff = () => {
+    const handleAddStaff = async () => {
+        setFormError('');
         if (!newName.trim()) {
-            alert('Please enter staff name.');
+            setFormError('Please enter the full name of the staff member.');
             return;
         }
         const cleanPin = newStaffPin.replace(/\D/g, '').slice(0, 4);
         if (cleanPin.length !== 4) {
-            alert('Please enter a 4-digit PIN for this staff member.');
+            setFormError('Please enter a 4-digit numeric login PIN.');
             return;
         }
 
-        const newId = `emp-${Date.now().toString().slice(-4)}`;
-        const cleanUsername = newName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) + Math.floor(10 + Math.random() * 90);
+        setIsSaving(true);
+        try {
+            const newId = `emp-${Date.now()}`;
+            const cleanUsername = newName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8) + Math.floor(10 + Math.random() * 90);
 
-        const newEmp: Employee = {
-            id: newId,
-            name: newName.trim(),
-            role: newRole,
-            salary: Number(newSalary) || 0,
-            mobile: newPhone.trim(),
-            loginCode: cleanPin,
-            username: cleanUsername,
-            allowedTabs: newRole === 'Manager' ? ['all'] : ['payments', 'inventory', 'customers'],
-            color: newRole === 'Manager' ? '#f59e0b' : '#10b981'
-        };
+            const newEmp: Employee = {
+                id: newId,
+                name: newName.trim(),
+                role: newRole,
+                salary: Number(newSalary) || 0,
+                mobile: newPhone.trim(),
+                loginCode: cleanPin,
+                username: cleanUsername,
+                allowedTabs: newRole === 'Manager' ? ['all'] : ['payments', 'inventory', 'customers'],
+                color: newRole === 'Manager' ? '#f59e0b' : '#10b981'
+            };
 
-        const updated = [...employees, newEmp];
-        onUpdateEmployees(updated);
+            const updated = [...employees, newEmp];
+            onUpdateEmployees(updated);
 
-        if (venueId) {
-            updateStaffPinInCloud(venueId, newId, cleanPin);
+            if (venueId) {
+                await saveEmployeeToCloud(venueId, newEmp);
+            }
+
+            setIsAddStaffOpen(false);
+            setNewName('');
+            setNewStaffPin('');
+            setNewSalary('');
+            setNewPhone('');
+            setActionSuccess(`Staff member ${newEmp.name} added successfully!`);
+            setTimeout(() => setActionSuccess(null), 2000);
+        } catch (e: any) {
+            console.error("Failed to add staff:", e);
+            setFormError('Failed to save staff member. Please try again.');
+        } finally {
+            setIsSaving(false);
         }
+    };
 
-        setIsAddStaffOpen(false);
-        setNewName('');
-        setNewStaffPin('');
-        setNewSalary('');
-        setNewPhone('');
-        setActionSuccess(`Staff member ${newEmp.name} added!`);
-        setTimeout(() => setActionSuccess(null), 1500);
+    // ── Handle Delete Staff ──
+    const handleDeleteStaff = async () => {
+        if (!deleteModalEmp) return;
+        setIsDeleting(true);
+        try {
+            const updated = employees.filter(e => e.id !== deleteModalEmp.id);
+            onUpdateEmployees(updated);
+
+            if (venueId) {
+                await deleteEmployeeFromCloud(venueId, deleteModalEmp.id);
+            }
+
+            setActionSuccess(`Staff member ${deleteModalEmp.name} removed.`);
+            setTimeout(() => {
+                setActionSuccess(null);
+                setDeleteModalEmp(null);
+            }, 1200);
+        } catch (e) {
+            console.error("Failed to delete staff:", e);
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     const getRoleBadgeColor = (role: string) => {
@@ -262,14 +307,25 @@ export function MobileStaffTab({
                                     <KeyRound size={13} className="mr-1.5" /> Change PIN
                                 </Button>
                                 {!isOwner && (
-                                    <Button 
-                                        size="sm" 
-                                        variant="outline"
-                                        onClick={() => handleOpenPermModal(emp)}
-                                        className="h-8 px-3 rounded-xl text-xs font-bold"
-                                    >
-                                        <Shield size={13} className="mr-1.5" /> Permissions
-                                    </Button>
+                                    <>
+                                        <Button 
+                                            size="sm" 
+                                            variant="outline"
+                                            onClick={() => handleOpenPermModal(emp)}
+                                            className="h-8 px-3 rounded-xl text-xs font-bold"
+                                        >
+                                            <Shield size={13} className="mr-1.5" /> Permissions
+                                        </Button>
+                                        <Button 
+                                            size="sm" 
+                                            variant="ghost"
+                                            onClick={() => setDeleteModalEmp(emp)}
+                                            className="h-8 px-2.5 rounded-xl text-xs font-bold text-red-500 hover:bg-red-500/10 hover:text-red-600"
+                                            title="Remove Staff Member"
+                                        >
+                                            <Trash2 size={13} />
+                                        </Button>
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -360,7 +416,7 @@ export function MobileStaffTab({
             </Dialog>
 
             {/* ════════ DIALOG: ADD STAFF ════════ */}
-            <Dialog open={isAddStaffOpen} onOpenChange={setIsAddStaffOpen}>
+            <Dialog open={isAddStaffOpen} onOpenChange={(open) => { setIsAddStaffOpen(open); if (!open) setFormError(''); }}>
                 <DialogContent className="max-w-sm w-[92vw] p-5 rounded-2xl">
                     <DialogHeader>
                         <DialogTitle className="text-base font-black flex items-center gap-2">
@@ -373,9 +429,21 @@ export function MobileStaffTab({
                     </DialogHeader>
 
                     <div className="space-y-3 py-2 text-xs">
+                        {formError && (
+                            <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold flex items-center gap-1.5">
+                                <AlertCircle size={14} className="shrink-0" />
+                                <span>{formError}</span>
+                            </div>
+                        )}
+
                         <div className="space-y-1">
                             <Label className="text-[11px] font-bold text-muted-foreground">Full Name *</Label>
-                            <Input placeholder="e.g. Ramesh Kumar" value={newName} onChange={e => setNewName(e.target.value)} className="h-9 text-xs" />
+                            <Input 
+                                placeholder="e.g. Ramesh Kumar" 
+                                value={newName} 
+                                onChange={e => { setNewName(e.target.value); setFormError(''); }} 
+                                className="h-9 text-xs" 
+                            />
                         </div>
 
                         <div className="space-y-1">
@@ -399,8 +467,10 @@ export function MobileStaffTab({
                             <Input 
                                 placeholder="e.g. 1234" 
                                 maxLength={4}
+                                inputMode="numeric"
+                                pattern="[0-9]*"
                                 value={newStaffPin} 
-                                onChange={e => setNewStaffPin(e.target.value.replace(/\D/g, '').slice(0, 4))} 
+                                onChange={e => { setNewStaffPin(e.target.value.replace(/\D/g, '').slice(0, 4)); setFormError(''); }} 
                                 className="h-9 text-xs font-mono tracking-widest text-center font-bold" 
                             />
                         </div>
@@ -417,13 +487,60 @@ export function MobileStaffTab({
                         </div>
 
                         <div className="grid grid-cols-2 gap-2 pt-3">
-                            <Button variant="ghost" onClick={() => setIsAddStaffOpen(false)} className="h-10 text-xs font-bold rounded-xl">
+                            <Button variant="ghost" disabled={isSaving} onClick={() => setIsAddStaffOpen(false)} className="h-10 text-xs font-bold rounded-xl">
                                 Cancel
                             </Button>
-                            <Button onClick={handleAddStaff} className="h-10 text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white rounded-xl">
-                                Create Staff
+                            <Button 
+                                onClick={handleAddStaff} 
+                                disabled={isSaving}
+                                className="h-10 text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white rounded-xl flex items-center justify-center gap-1.5"
+                            >
+                                {isSaving ? (
+                                    <>
+                                        <Loader2 size={14} className="animate-spin" />
+                                        <span>Saving...</span>
+                                    </>
+                                ) : (
+                                    <span>Create Staff</span>
+                                )}
                             </Button>
                         </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* ════════ DIALOG: CONFIRM DELETE STAFF ════════ */}
+            <Dialog open={!!deleteModalEmp} onOpenChange={(open) => !open && setDeleteModalEmp(null)}>
+                <DialogContent className="max-w-xs w-[90vw] p-5 rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="text-base font-black flex items-center gap-2 text-red-500">
+                            <Trash2 size={16} />
+                            Remove Staff Member
+                        </DialogTitle>
+                        <DialogDescription className="text-xs">
+                            Are you sure you want to remove <strong className="text-foreground">{deleteModalEmp?.name}</strong>? Their login PIN will be revoked immediately.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="grid grid-cols-2 gap-2 pt-3">
+                        <Button variant="ghost" disabled={isDeleting} onClick={() => setDeleteModalEmp(null)} className="h-10 text-xs font-bold rounded-xl">
+                            Cancel
+                        </Button>
+                        <Button 
+                            variant="destructive" 
+                            disabled={isDeleting}
+                            onClick={handleDeleteStaff} 
+                            className="h-10 text-xs font-bold rounded-xl flex items-center justify-center gap-1.5"
+                        >
+                            {isDeleting ? (
+                                <>
+                                    <Loader2 size={14} className="animate-spin" />
+                                    <span>Removing...</span>
+                                </>
+                            ) : (
+                                <span>Confirm Remove</span>
+                            )}
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>

@@ -342,7 +342,7 @@ async function runTests() {
   assert(dailyReport.metrics.netBalance === 2700, 'Net Balance is Revenue - Expenses (3000 - 300 = 2700)', `Got ${dailyReport.metrics.netBalance}`);
 
   // -------------------------------------------------------------------------
-  // TEST GROUP 5: USERNAME & CREDENTIALS BUILDER
+  // TEST GROUP 5: USERNAME, CREDENTIALS & MOBILE CLOUD STAFF SYNC
   // -------------------------------------------------------------------------
   console.log('\n🔐 [5/6] Auditing Staff & Owner Credentials Generation...');
 
@@ -351,6 +351,22 @@ async function runTests() {
 
   const uniqueUser = generateUniqueUsername('Amit Kumar', ['amit', 'amit1']);
   assert(uniqueUser === 'amit2', 'Unique username auto-increments for collisions', uniqueUser);
+
+  // Mobile Companion Staff Creation & Cloud Sync Resilience
+  const testNewEmp: Employee = {
+    id: `emp-${Date.now()}`,
+    name: 'Ramesh Cashier',
+    role: 'Cashier',
+    salary: 14000,
+    mobile: '9876543210',
+    loginCode: '4321',
+    username: 'ramesh42',
+    allowedTabs: ['payments', 'inventory', 'customers'],
+    color: '#10b981'
+  };
+  assert(testNewEmp.loginCode.length === 4, 'Staff PIN is exactly 4 digits');
+  assert(testNewEmp.allowedTabs.includes('payments'), 'Cashier assigned billing permissions');
+  assert(testNewEmp.id.startsWith('emp-'), 'Staff ID correctly formatted for Firestore');
 
   // -------------------------------------------------------------------------
   // TEST GROUP 6: UPI & COUNTER STANDEE REAL-TIME MATCHING

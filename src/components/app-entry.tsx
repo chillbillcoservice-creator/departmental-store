@@ -17,6 +17,7 @@ import { LanguageProvider } from "@/contexts/language-context";
 import { buildUsername } from "@/lib/generate-username";
 import { saveVenueSetup } from "@/lib/db";
 import { DEPARTMENTAL_STORE_CATALOG, isLegacyInventory } from "@/lib/departmental-catalog";
+import { listenToLiveEmployees } from "@/lib/firestore-sync";
 
 interface AppEntryProps {
   initialMenu: MenuCategory[];
@@ -170,6 +171,17 @@ export default function AppEntry({
   const [licenseError, setLicenseError] = useState<LicenseCheckResult | null>(null);
   const [isLoadingVenue, setIsLoadingVenue] = useState(false);
   const [venueId, setVenueId] = useLocalStorageState<string | null>('venueId', null);
+
+  // Cloud sync for staff roster: keeps Desktop POS and Mobile Companion in 100% real-time sync
+  useEffect(() => {
+    if (!venueId) return;
+    const unsub = listenToLiveEmployees(venueId, (cloudEmployees) => {
+      if (cloudEmployees && cloudEmployees.length > 0) {
+        setEmployees(cloudEmployees);
+      }
+    });
+    return () => unsub();
+  }, [venueId, setEmployees]);
   const [initialAuthView, setInitialAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(null);
   const [initialSetupData, setInitialSetupData] = useState<{ storeName?: string; ownerName?: string; email?: string } | null>(null);
 

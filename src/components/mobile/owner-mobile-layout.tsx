@@ -29,7 +29,8 @@ import {
     listenToLiveVendors,
     LiveDailySales,
     syncInventoryToCloud,
-    syncVendorsToCloud
+    syncVendorsToCloud,
+    syncEmployeesToCloud
 } from '@/lib/firestore-sync';
 import { MobileDashboardTab } from './mobile-dashboard-tab';
 import { MobileStaffTab } from './mobile-staff-tab';
@@ -129,11 +130,12 @@ export function OwnerMobileLayout({
         };
     }, [venueId, onUpdateEmployees, onUpdateVendors]);
 
-    // Initial cloud backup of inventory and vendors if not yet uploaded
+    // Initial cloud backup of inventory, vendors, and staff if not yet uploaded
     useEffect(() => {
         if (venueId) {
             if (initialInventory.length > 0) syncInventoryToCloud(venueId, initialInventory);
             if (initialVendors.length > 0) syncVendorsToCloud(venueId, initialVendors);
+            if (initialEmployees.length > 0) syncEmployeesToCloud(venueId, initialEmployees);
         }
     }, [venueId]);
 

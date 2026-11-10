@@ -3,6 +3,8 @@ import {
     doc, 
     setDoc, 
     updateDoc, 
+    deleteDoc,
+    writeBatch,
     onSnapshot, 
     query, 
     orderBy, 
@@ -156,6 +158,55 @@ export const listenToRecentBills = (
 };
 
 /**
+ * Save new or updated employee to Firestore
+ */
+export const saveEmployeeToCloud = async (venueId: string, emp: Employee) => {
+    if (!venueId || !emp.id) return;
+    try {
+        const db = getDb();
+        const empRef = doc(db, 'venues', venueId, 'employees', emp.id);
+        await setDoc(empRef, {
+            ...emp,
+            updatedAt: Timestamp.now()
+        }, { merge: true });
+    } catch (e) {
+        console.error("Failed to save employee to cloud:", e);
+    }
+};
+
+/**
+ * Delete employee from Firestore
+ */
+export const deleteEmployeeFromCloud = async (venueId: string, employeeId: string) => {
+    if (!venueId || !employeeId) return;
+    try {
+        const db = getDb();
+        const empRef = doc(db, 'venues', venueId, 'employees', employeeId);
+        await deleteDoc(empRef);
+    } catch (e) {
+        console.error("Failed to delete employee from cloud:", e);
+    }
+};
+
+/**
+ * Batch sync employees to Firestore
+ */
+export const syncEmployeesToCloud = async (venueId: string, employees: Employee[]) => {
+    if (!venueId || !employees.length) return;
+    try {
+        const db = getDb();
+        const batch = writeBatch(db);
+        employees.forEach(emp => {
+            const empRef = doc(db, 'venues', venueId, 'employees', emp.id);
+            batch.set(empRef, { ...emp, updatedAt: Timestamp.now() }, { merge: true });
+        });
+        await batch.commit();
+    } catch (e) {
+        console.error("Failed to sync employees to cloud:", e);
+    }
+};
+
+/**
  * Update staff PIN in Firestore from Mobile Companion
  */
 export const updateStaffPinInCloud = async (
@@ -164,12 +215,16 @@ export const updateStaffPinInCloud = async (
     newPin: string
 ) => {
     if (!venueId || !employeeId) return;
-    const db = getDb();
-    const empRef = doc(db, 'venues', venueId, 'employees', employeeId);
-    await updateDoc(empRef, {
-        loginCode: newPin,
-        updatedAt: Timestamp.now()
-    });
+    try {
+        const db = getDb();
+        const empRef = doc(db, 'venues', venueId, 'employees', employeeId);
+        await setDoc(empRef, {
+            loginCode: newPin,
+            updatedAt: Timestamp.now()
+        }, { merge: true });
+    } catch (e) {
+        console.error("Failed to update staff PIN in cloud:", e);
+    }
 };
 
 /**
@@ -181,12 +236,16 @@ export const updateStaffPermissionsInCloud = async (
     allowedTabs: string[]
 ) => {
     if (!venueId || !employeeId) return;
-    const db = getDb();
-    const empRef = doc(db, 'venues', venueId, 'employees', employeeId);
-    await updateDoc(empRef, {
-        allowedTabs,
-        updatedAt: Timestamp.now()
-    });
+    try {
+        const db = getDb();
+        const empRef = doc(db, 'venues', venueId, 'employees', employeeId);
+        await setDoc(empRef, {
+            allowedTabs,
+            updatedAt: Timestamp.now()
+        }, { merge: true });
+    } catch (e) {
+        console.error("Failed to update staff permissions in cloud:", e);
+    }
 };
 
 /**
