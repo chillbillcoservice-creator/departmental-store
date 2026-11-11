@@ -38,6 +38,7 @@ import { ScrollArea } from './ui/scroll-area';
 import { Separator } from './ui/separator';
 import { Checkbox } from './ui/checkbox';
 import { DayContent, DayContentProps } from 'react-day-picker';
+import { saveEmployeeToCloud, deleteEmployeeFromCloud, getActiveVenueId } from '@/lib/firestore-sync';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -53,6 +54,7 @@ const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500',
 const defaultRoles = ["Store Manager", "Cashier", "Inventory Clerk", "Billing Clerk", "Floor Assistant", "Security", "Helper"];
 
 interface StaffManagementProps {
+  venueId?: string;
   employees: Employee[];
   setEmployees: (employees: Employee[]) => void;
   advances: Advance[];
@@ -62,7 +64,7 @@ interface StaffManagementProps {
   currency: string;
 }
 
-export default function StaffManagement({ employees, setEmployees, advances, setAdvances, attendance, setAttendance, currency = 'Rs.' }: StaffManagementProps) {
+export default function StaffManagement({ venueId, employees, setEmployees, advances, setAdvances, attendance, setAttendance, currency = 'Rs.' }: StaffManagementProps) {
   const { t } = useLanguage();
   const { toast } = useToast();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -115,28 +117,57 @@ export default function StaffManagement({ employees, setEmployees, advances, set
 
   const handleSaveEmployee = (employeeData: Partial<Employee>) => {
     const { id, ...data } = employeeData;
-    let newEmployees;
+    let newEmployees: Employee[];
+    let targetEmployee: Employee | undefined;
     if (id) {
       newEmployees = employees.map(e => e.id === id ? { ...e, ...data } : e);
+      targetEmployee = newEmployees.find(e => e.id === id);
       toast({ title: t('Employee Updated') });
     } else {
       const existingIds = employees.map(e => parseInt(e.id.replace('UA', ''), 10)).filter(id => !isNaN(id));
       const maxId = existingIds.length > 0 ? Math.max(...existingIds) : 0;
       const newId = `UA${(maxId + 1).toString().padStart(3, '0')}`;
-      const newEmployee = {
+      targetEmployee = {
         ...(data as Omit<Employee, 'id' | 'color'>),
         id: newId,
         color: colors[employees.length % colors.length]
-      };
-      newEmployees = [...employees, newEmployee];
+      } as Employee;
+      newEmployees = [...employees, targetEmployee];
       toast({ title: t('Employee Added'), description: `${data.name} saved with ID ${newId}.` });
     }
     setEmployees(newEmployees);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('employees', JSON.stringify(newEmployees));
+      } catch {}
+    }
+    const cleanVenue = getActiveVenueId(venueId);
+    if (cleanVenue && targetEmployee) {
+      saveEmployeeToCloud(cleanVenue, targetEmployee);
+    }
   };
 
   const handleDeleteEmployee = (employeeId: string) => {
+    const target = employees.find(e => e.id === employeeId);
+    if (target?.role === 'Owner') {
+      toast({
+        variant: 'destructive',
+        title: t('Cannot Delete Store Owner'),
+        description: t('The primary store owner account cannot be deleted.'),
+      });
+      return;
+    }
     const newEmployees = employees.filter(e => e.id !== employeeId);
     setEmployees(newEmployees);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('employees', JSON.stringify(newEmployees));
+      } catch {}
+    }
+    const cleanVenue = getActiveVenueId(venueId);
+    if (cleanVenue) {
+      deleteEmployeeFromCloud(cleanVenue, employeeId);
+    }
     toast({ title: t('Employee Deleted') });
   };
 

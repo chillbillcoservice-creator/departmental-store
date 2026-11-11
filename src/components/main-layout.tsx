@@ -970,6 +970,7 @@ export default function MainLayout({
 
             <TabsContent value="staff" className="m-0 p-0 h-full">
               <StaffManagement
+                venueId={venueId}
                 employees={initialEmployees}
                 setEmployees={setEmployees}
                 advances={initialAdvances}
@@ -981,6 +982,7 @@ export default function MainLayout({
             </TabsContent>
             <TabsContent value="admin" className="m-0 p-0 h-full">
               <AdminDashboard
+                venueId={venueId}
                 billHistory={initialBills}
                 setBills={setBills}
                 currentUser={currentUser}

@@ -58,6 +58,7 @@ import BillHistory from './bill-history';
 import { Gstr1ReportDialog } from './gstr1-report-dialog';
 import type { Bill, Employee, OrderItem, Expense, Vendor, InventoryItem, MenuCategory, VenueDetails, PurchaseOrder } from '@/lib/types';
 import { compileStoreReport, dispatchReportEmail } from '@/lib/report-generator';
+import { saveEmployeeToCloud, deleteEmployeeFromCloud, getActiveVenueId } from '@/lib/firestore-sync';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -90,6 +91,7 @@ const colors = ['bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500',
 const defaultRoles = ["Store Manager", "Cashier", "Sales Associate", "Stock Clerk", "Security", "Cleaner", "Other"];
 
 interface AdminDashboardProps {
+  venueId?: string;
   billHistory: Bill[];
   setBills?: (bills: Bill[]) => void;
   currentUser?: Employee | null;
@@ -119,6 +121,7 @@ interface AdminDashboardProps {
 }
 
 export default function AdminDashboard({
+  venueId,
   billHistory = [],
   setBills,
   currentUser,
@@ -149,7 +152,7 @@ export default function AdminDashboard({
   const generateUniqueId = () => {
     return `${Date.now()}.${Math.random().toString(36).substr(2, 9)}`;
   };
-  const props = { billHistory, employees, setEmployees, expenses, inventory, setInventory, customerCreditLimit, setCustomerCreditLimit, vendorCreditLimit, setVendorCreditLimit, onRerunSetup, menu, setMenu, venueName, setVenueName, currency, setCurrency, venueDetails, setVenueDetails, purchaseOrders, setPurchaseOrders, vendors, setVendors };
+  const props = { venueId, billHistory, employees, setEmployees, expenses, inventory, setInventory, customerCreditLimit, setCustomerCreditLimit, vendorCreditLimit, setVendorCreditLimit, onRerunSetup, menu, setMenu, venueName, setVenueName, currency, setCurrency, venueDetails, setVenueDetails, purchaseOrders, setPurchaseOrders, vendors, setVendors };
   const { t } = useLanguage();
   const { themeColor, setThemeColor, availableColors } = useThemeColor();
   const { toast } = useToast();
@@ -581,12 +584,16 @@ export default function AdminDashboard({
 
   const handleClearAllBills = async () => {
     try {
-      await fetch('/api/bills', { method: 'DELETE' });
+      setBills?.([]);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('bills', '[]');
+        } catch {}
+      }
       toast({
         title: "All Bills Cleared",
-        description: "The entire bill history has been successfully deleted.",
+        description: "The entire bill history has been successfully cleared.",
       });
-      // You might need a way to refetch/update the billHistory state in MainLayout
     } catch (error) {
       console.error("Error clearing all bills:", error);
       toast({
@@ -597,35 +604,27 @@ export default function AdminDashboard({
     }
   };
 
-  const saveEmployeesToServer = async (updatedEmployees: Employee[]) => {
-    try {
-      const response = await fetch('/api/employees', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ employees: updatedEmployees }),
-      });
-      if (!response.ok) {
-        throw new Error('Failed to save employees');
-      }
-      setEmployees(updatedEmployees);
-    } catch (error) {
-      console.error(error);
-      toast({
-        variant: 'destructive',
-        title: 'Save Failed',
-        description: 'Could not save employee data to the server.',
-      });
-    }
-  };
-
   const addEmployee = async (employee: Omit<Employee, 'id'>) => {
     const existingIds = employees.map(e => parseInt(e.id.replace('UA', ''), 10)).filter(id => !isNaN(id));
     const maxId = existingIds.length > 0 ? Math.max(...existingIds) : 0;
     const newId = `UA${(maxId + 1).toString().padStart(3, '0')}`;
-    const newEmployee = { ...employee, id: newId };
+    const newEmployee: Employee = {
+      ...employee,
+      id: newId,
+      color: (employee as any).color || colors[employees.length % colors.length]
+    } as Employee;
     const updatedEmployees = [...employees, newEmployee];
-    await saveEmployeesToServer(updatedEmployees);
-    toast({ title: 'Employee Added', description: `${employee.name} saved with ID ${newId}.` });
+    setEmployees(updatedEmployees);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('employees', JSON.stringify(updatedEmployees));
+      } catch {}
+    }
+    const activeVenue = getActiveVenueId(venueId);
+    if (activeVenue) {
+      await saveEmployeeToCloud(activeVenue, newEmployee);
+    }
+    toast({ title: t('Employee Added'), description: `${employee.name} saved with ID ${newId}.` });
   };
 
   const handleAddEmployee = (employee: Omit<Employee, 'id' | 'color'>) => {
@@ -634,28 +633,55 @@ export default function AdminDashboard({
       color: colors[employees.length % colors.length]
     };
     addEmployee(newEmployee);
-  }
+  };
 
   const updateEmployee = async (employee: Employee) => {
     const updatedEmployees = employees.map(e => e.id === employee.id ? employee : e);
-    await saveEmployeesToServer(updatedEmployees);
-    toast({ title: 'Employee Updated', description: 'Employee information has been updated.' });
+    setEmployees(updatedEmployees);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('employees', JSON.stringify(updatedEmployees));
+      } catch {}
+    }
+    const activeVenue = getActiveVenueId(venueId);
+    if (activeVenue) {
+      await saveEmployeeToCloud(activeVenue, employee);
+    }
+    toast({ title: t('Employee Updated'), description: t('Employee information has been updated.') });
   };
 
   const handleEditEmployee = (employee: Employee) => {
     updateEmployee(employee);
     setEditingEmployee(null);
-  }
+  };
 
   const deleteEmployee = async (employeeId: string) => {
+    const target = employees.find(e => e.id === employeeId);
+    if (target?.role === 'Owner') {
+      toast({
+        variant: 'destructive',
+        title: t('Cannot Delete Store Owner'),
+        description: t('The primary store owner account cannot be deleted.'),
+      });
+      return;
+    }
     const updatedEmployees = employees.filter(e => e.id !== employeeId);
-    await saveEmployeesToServer(updatedEmployees);
-    toast({ title: 'Employee Deleted', description: 'Employee has been removed from the database.' });
+    setEmployees(updatedEmployees);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('employees', JSON.stringify(updatedEmployees));
+      } catch {}
+    }
+    const activeVenue = getActiveVenueId(venueId);
+    if (activeVenue) {
+      await deleteEmployeeFromCloud(activeVenue, employeeId);
+    }
+    toast({ title: t('Employee Deleted'), description: t('Employee has been removed from the database.') });
   };
 
   const handleDeleteEmployee = (employeeId: string) => {
     deleteEmployee(employeeId);
-  }
+  };
 
   const openEditEmployeeDialog = (employee: Employee) => {
     setEditingEmployee(employee);

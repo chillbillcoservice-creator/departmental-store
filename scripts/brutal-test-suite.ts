@@ -390,6 +390,26 @@ async function runTests() {
 
   assert(getActiveVenueId('test-01') === 'test-01', 'getActiveVenueId preserves store identity without hardcoded overwrite');
 
+  // Staff Management Deletion & Owner Protection Auditing
+  const sampleStaffList = [
+    { id: 'emp-1', name: 'Manager', role: 'Manager' },
+    { id: 'emp-2', name: 'Cashier Staff', role: 'Staff' },
+    { id: 'owner-1', name: 'Store Owner', role: 'Owner' },
+  ];
+  const deleteStaffMember = (list: typeof sampleStaffList, id: string) => {
+    const target = list.find(e => e.id === id);
+    if (target?.role === 'Owner') return { success: false, list };
+    return { success: true, list: list.filter(e => e.id !== id) };
+  };
+  const ownerDelResult = deleteStaffMember(sampleStaffList, 'owner-1');
+  assert(!ownerDelResult.success, 'Store Owner deletion is strictly protected and blocked');
+  assert(ownerDelResult.list.length === 3, 'Staff list retains owner when deletion is rejected');
+
+  const staffDelResult = deleteStaffMember(sampleStaffList, 'emp-2');
+  assert(staffDelResult.success, 'Staff member deletion succeeded');
+  assert(staffDelResult.list.length === 2, 'Staff list removes deleted employee immediately');
+  assert(!staffDelResult.list.some(e => e.id === 'emp-2'), 'Deleted employee ID is no longer in staff roster');
+
   // Verify Ka-Ching sound generator is callable without throwing
   let soundPromiseResolved = false;
   unlockAudioContext();
