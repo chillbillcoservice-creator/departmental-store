@@ -13,7 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
-import { Printer, Check, MessageSquare, Sparkles, Receipt } from 'lucide-react';
+import { Printer, Check, MessageSquare, Sparkles, Receipt, History } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PaymentDialog } from './payment-dialog';
 import { UpiPaymentModal } from './upi-payment-modal';
@@ -1213,15 +1213,102 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
         printWindow.document.close();
     };
 
+    // Today's live sales calculation for the counter bar button
+    const todayStats = useMemo(() => {
+        const todayStr = new Date().toDateString();
+        const todayBills = bills.filter(b => {
+            const d = b.timestamp ? new Date(b.timestamp) : null;
+            return d && d.toDateString() === todayStr;
+        });
+        const total = todayBills.reduce((s, b) => s + (Number(b.total) || 0), 0);
+        return { total, count: todayBills.length };
+    }, [bills]);
+
+    // Period filter and summary calculation for Sales & Order History dialog
+    const { filteredHistoryBills, periodSummary } = useMemo(() => {
+        const now = new Date();
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const sevenDaysAgo = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+        const thirtyDaysAgo = now.getTime() - 30 * 24 * 60 * 60 * 1000;
+
+        const periodBills = bills.filter(b => {
+            const bTime = new Date(b.timestamp).getTime();
+            if (historyFilter === 'today') return bTime >= startOfToday;
+            if (historyFilter === 'weekly') return bTime >= sevenDaysAgo;
+            if (historyFilter === 'monthly') return bTime >= thirtyDaysAgo;
+            return true;
+        });
+
+        let total = 0;
+        let cash = 0;
+        let online = 0;
+
+        periodBills.forEach(b => {
+            const bTotal = Number(b.total) || 0;
+            total += bTotal;
+            if (b.paymentMethod === 'Cash') {
+                cash += bTotal;
+            } else if (b.paymentMethod === 'Online') {
+                online += bTotal;
+            } else if (b.paymentMethod === 'Split' && b.splitPayments) {
+                b.splitPayments.forEach((sp: any) => {
+                    if (sp.method === 'Cash') cash += Number(sp.amount || 0);
+                    if (sp.method === 'Online') online += Number(sp.amount || 0);
+                });
+            } else {
+                online += bTotal;
+            }
+        });
+
+        const searchLower = historySearchTerm.toLowerCase().trim();
+        const searched = periodBills.filter(b => {
+            if (!searchLower) return true;
+            return (b.id || '').toLowerCase().includes(searchLower) ||
+                (b.customerDetails?.name || '').toLowerCase().includes(searchLower) ||
+                (b.paymentMethod || '').toLowerCase().includes(searchLower);
+        }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+        const count = periodBills.length;
+        const aov = count > 0 ? Math.round(total / count) : 0;
+        const onlinePct = total > 0 ? Math.round((online / total) * 100) : 0;
+        const cashPct = total > 0 ? Math.round((cash / total) * 100) : 0;
+
+        return {
+            filteredHistoryBills: searched,
+            periodSummary: {
+                total,
+                count,
+                cash,
+                online,
+                aov,
+                onlinePct,
+                cashPct
+            }
+        };
+    }, [bills, historyFilter, historySearchTerm]);
+
     return (
         <div className="flex flex-col lg:flex-row h-full gap-4 lg:gap-5 p-3 lg:p-4 overflow-hidden">
             {/* Items Section */}
             <div className="flex-grow flex flex-col gap-4 min-h-0">
                 <div className="flex flex-col md:flex-row items-center gap-3">
-                    <Button variant="outline" className="h-14 rounded-2xl gap-2 font-bold border-2 min-w-[120px]" onClick={() => setIsHistoryDialogOpen(true)}>
-                        <div className="flex flex-col items-start leading-none">
-                            <span className="text-[10px] uppercase opacity-70">{t("Today's Bills")}</span>
-                            <span className="text-lg font-black">{bills.filter(b => new Date(b.timestamp).toDateString() === new Date().toDateString()).length}</span>
+                    <Button 
+                        variant="outline" 
+                        className="h-14 rounded-2xl px-3.5 gap-2.5 font-bold border-2 border-primary/30 hover:border-primary hover:bg-primary/5 min-w-[145px] transition-all cursor-pointer shadow-xs" 
+                        onClick={() => setIsHistoryDialogOpen(true)}
+                        title={t("View Today's Sales & Order History")}
+                    >
+                        <div className="w-8 h-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                            <History className="h-4 w-4" />
+                        </div>
+                        <div className="flex flex-col items-start leading-tight">
+                            <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{t("Today's Sale")}</span>
+                            <div className="flex items-baseline gap-1.5 mt-0.5">
+                                <span className="text-base font-black text-foreground">
+                                    {activeCurrency} {todayStats.total.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                </span>
+                                <span className="text-[11px] font-bold text-muted-foreground">({todayStats.count})</span>
+                            </div>
                         </div>
                     </Button>
                     <Button
@@ -2309,58 +2396,81 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
             />
 
             <Dialog open={isHistoryDialogOpen} onOpenChange={setIsHistoryDialogOpen}>
-                <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+                <DialogContent className="max-w-3xl max-h-[85vh] flex flex-col p-6">
                     <DialogHeader>
-                        <DialogTitle>{t("Order History")}</DialogTitle>
-                        <div className="flex flex-col gap-3 mt-2">
+                        <div className="flex items-center justify-between">
+                            <DialogTitle className="text-xl font-black flex items-center gap-2">
+                                <History className="h-5 w-5 text-primary" />
+                                {historyFilter === 'today' ? t("Today's Sales & Orders") : historyFilter === 'weekly' ? t("This Week's Sales & Orders") : t("This Month's Sales & Orders")}
+                            </DialogTitle>
+                        </div>
+
+                        <div className="flex flex-col gap-3 mt-3">
                             <Tabs defaultValue="today" value={historyFilter} onValueChange={(v) => setHistoryFilter(v as any)} className="w-full">
                                 <TabsList className="grid w-full grid-cols-3">
-                                    <TabsTrigger value="today">{t("Today")}</TabsTrigger>
-                                    <TabsTrigger value="weekly">{t("This Week")}</TabsTrigger>
-                                    <TabsTrigger value="monthly">{t("This Month")}</TabsTrigger>
+                                    <TabsTrigger value="today" className="font-bold">{t("Today")}</TabsTrigger>
+                                    <TabsTrigger value="weekly" className="font-bold">{t("This Week")}</TabsTrigger>
+                                    <TabsTrigger value="monthly" className="font-bold">{t("This Month")}</TabsTrigger>
                                 </TabsList>
                             </Tabs>
+
+                            {/* Real-time Sales KPI Summary Banner */}
+                            <div className="grid grid-cols-3 gap-2.5 p-3 rounded-2xl bg-muted/50 border border-border/80">
+                                <div className="flex flex-col p-2.5 rounded-xl bg-background border border-border/60 shadow-xs">
+                                    <span className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1">
+                                        <Receipt className="h-3 w-3 text-primary" /> {t("Total Sales")}
+                                    </span>
+                                    <span className="text-lg font-black text-foreground mt-0.5">
+                                        {activeCurrency} {periodSummary.total.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                    </span>
+                                    <span className="text-[10px] font-semibold text-muted-foreground">
+                                        {periodSummary.count} {t("bills")} &bull; AOV: {activeCurrency}{periodSummary.aov}
+                                    </span>
+                                </div>
+
+                                <div className="flex flex-col p-2.5 rounded-xl bg-background border border-emerald-500/20 shadow-xs">
+                                    <span className="text-[10px] uppercase font-bold text-emerald-600 flex items-center gap-1">
+                                        <CreditCard className="h-3 w-3 text-emerald-600" /> {t("UPI / Online")}
+                                    </span>
+                                    <span className="text-lg font-black text-emerald-600 mt-0.5">
+                                        {activeCurrency} {periodSummary.online.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                    </span>
+                                    <span className="text-[10px] font-semibold text-muted-foreground">
+                                        {periodSummary.onlinePct}% {t("of total")}
+                                    </span>
+                                </div>
+
+                                <div className="flex flex-col p-2.5 rounded-xl bg-background border border-amber-500/20 shadow-xs">
+                                    <span className="text-[10px] uppercase font-bold text-amber-600 flex items-center gap-1">
+                                        <Banknote className="h-3 w-3 text-amber-600" /> {t("Cash in Till")}
+                                    </span>
+                                    <span className="text-lg font-black text-amber-600 mt-0.5">
+                                        {activeCurrency} {periodSummary.cash.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                    </span>
+                                    <span className="text-[10px] font-semibold text-muted-foreground">
+                                        {periodSummary.cashPct}% {t("of total")}
+                                    </span>
+                                </div>
+                            </div>
+
                             <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                                 <Input
                                     placeholder={t("Search by Bill ID or Customer Name...")}
-                                    className="pl-9 bg-muted/50 border-input"
+                                    className="pl-9 bg-muted/40 border-input h-10 rounded-xl"
                                     value={historySearchTerm}
                                     onChange={(e) => setHistorySearchTerm(e.target.value)}
                                 />
                             </div>
                         </div>
                     </DialogHeader>
-                    <ScrollArea className="flex-1">
+                    <ScrollArea className="flex-1 mt-2">
                         <div className="space-y-2 p-1">
-                            {bills.filter(b => {
-                                const billDate = new Date(b.timestamp);
-                                const today = new Date();
-                                let isMatch = false;
-
-                                if (historyFilter === 'today') {
-                                    isMatch = billDate.toDateString() === today.toDateString();
-                                } else if (historyFilter === 'weekly') {
-                                    const oneWeekAgo = new Date();
-                                    oneWeekAgo.setDate(today.getDate() - 7);
-                                    isMatch = billDate >= oneWeekAgo && billDate <= today;
-                                } else if (historyFilter === 'monthly') {
-                                    const oneMonthAgo = new Date();
-                                    oneMonthAgo.setDate(today.getDate() - 30);
-                                    isMatch = billDate >= oneMonthAgo && billDate <= today;
-                                }
-
-                                const searchLower = historySearchTerm.toLowerCase();
-                                const matchesSearch = !historySearchTerm ||
-                                    (b.id || '').toLowerCase().includes(searchLower) ||
-                                    (b.customerDetails?.name || '').toLowerCase().includes(searchLower) ||
-                                    (b.paymentMethod || '').toLowerCase().includes(searchLower);
-                                return isMatch && matchesSearch;
-                            }).length === 0 ? (
+                            {filteredHistoryBills.length === 0 ? (
                                 <div className="text-center text-muted-foreground py-10">{t("No orders found for this period.")}</div>
                             ) : (
                                 <table className="w-full text-sm">
-                                    <thead className="bg-muted text-muted-foreground font-bold">
+                                    <thead className="bg-muted/70 text-muted-foreground font-bold sticky top-0 rounded-lg">
                                         <tr>
                                             <th className="p-2 text-left">{t("Bill ID")}</th>
                                             <th className="p-2 text-left">{t("Customer")}</th>
@@ -2371,32 +2481,8 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {bills.filter(b => {
-                                            const billDate = new Date(b.timestamp);
-                                            const today = new Date();
-                                            let isMatch = false;
-
-                                            if (historyFilter === 'today') {
-                                                isMatch = billDate.toDateString() === today.toDateString();
-                                            } else if (historyFilter === 'weekly') {
-                                                const oneWeekAgo = new Date();
-                                                oneWeekAgo.setDate(today.getDate() - 7);
-                                                isMatch = billDate >= oneWeekAgo && billDate <= today;
-                                            } else if (historyFilter === 'monthly') {
-                                                const oneMonthAgo = new Date();
-                                                oneMonthAgo.setDate(today.getDate() - 3); // Typo protection? No, 30.
-                                                oneMonthAgo.setDate(today.getDate() - 30);
-                                                isMatch = billDate >= oneMonthAgo && billDate <= today;
-                                            }
-
-                                            const searchLower = historySearchTerm.toLowerCase();
-                                            const matchesSearch = !historySearchTerm ||
-                                                (b.id || '').toLowerCase().includes(searchLower) ||
-                                                (b.customerDetails?.name || '').toLowerCase().includes(searchLower) ||
-                                                (b.paymentMethod || '').toLowerCase().includes(searchLower);
-                                            return isMatch && matchesSearch;
-                                        }).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).map(bill => (
-                                            <tr key={bill.id} className="border-b hover:bg-muted/20">
+                                        {filteredHistoryBills.map(bill => (
+                                            <tr key={bill.id} className="border-b hover:bg-muted/30 transition-colors">
                                                 <td className="p-2 font-mono font-bold">{bill.id}</td>
                                                 <td className="p-2 font-medium">{bill.customerDetails?.name || t('Walk-in')}</td>
                                                 <td className="p-2">
@@ -2406,9 +2492,16 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                                     </div>
                                                 </td>
                                                 <td className="p-2 text-right font-black">{activeCurrency} {bill.total.toFixed(2)}</td>
-                                                <td className="p-2 text-center text-xs uppercase">{bill.paymentMethod}</td>
+                                                <td className="p-2 text-center text-xs uppercase font-semibold">
+                                                    <span className={cn(
+                                                        "px-2 py-0.5 rounded-full text-[10px]",
+                                                        bill.paymentMethod === 'Cash' ? "bg-amber-500/10 text-amber-600 border border-amber-500/20" : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                                                    )}>
+                                                        {bill.paymentMethod}
+                                                    </span>
+                                                </td>
                                                 <td className="p-2 text-center space-x-1">
-                                                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handlePrint(bill)} title="Print Receipt">
+                                                    <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-muted" onClick={() => handlePrint(bill)} title="Print Receipt">
                                                         <Printer className="h-4 w-4" />
                                                     </Button>
                                                     <Button
