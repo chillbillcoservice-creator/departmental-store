@@ -34,8 +34,10 @@ import { BarcodeLabelDialog } from './barcode-label-dialog';
 import { ExpiryTrackerDialog } from './expiry-tracker-dialog';
 import { ShrinkageAuditDialog } from './shrinkage-audit-dialog';
 import { UniversalCatalogImportDialog } from './universal-catalog-import-dialog';
+import { syncInventoryToCloud } from '@/lib/firestore-sync';
 
 interface InventoryManagementProps {
+  venueId?: string;
   inventory: InventoryItem[];
   menu: MenuCategory[];
   vendors: Vendor[];
@@ -501,6 +503,7 @@ function DamageLogDialog({ item, onLog }: { item: InventoryItem, onLog: (id: str
 }
 
 export default function InventoryManagement({
+  venueId,
   inventory,
   menu,
   vendors,
@@ -754,11 +757,17 @@ export default function InventoryManagement({
       toast({ title: t("Item added successfully"), description: `${t("ID")}: ${finalId}` });
     }
     setInventory(newInventory);
+    if (venueId) {
+      syncInventoryToCloud(venueId, newInventory).catch(e => console.error("Cloud inventory sync error:", e));
+    }
   };
 
   const handleDeleteItem = (itemId: string) => {
     const newInventory = inventory.filter(item => item.id !== itemId);
     setInventory(newInventory);
+    if (venueId) {
+      syncInventoryToCloud(venueId, newInventory).catch(e => console.error("Cloud inventory sync error:", e));
+    }
     toast({ title: "Item deleted successfully" });
   };
 
@@ -778,6 +787,9 @@ export default function InventoryManagement({
 
     const newInventory = inventory.map(i => i.id === id ? { ...i, stock } : i);
     setInventory(newInventory);
+    if (venueId) {
+      syncInventoryToCloud(venueId, newInventory).catch(e => console.error("Cloud inventory sync error:", e));
+    }
   }
 
   const handleLogDamage = (id: string, amount: number, reason: string) => {
@@ -787,7 +799,11 @@ export default function InventoryManagement({
     const damageAmount = Math.max(0, Math.min(item.stock, amount));
     const newStock = item.stock - damageAmount;
 
-    setInventory(inventory.map(i => i.id === id ? { ...i, stock: newStock } : i));
+    const newInventory = inventory.map(i => i.id === id ? { ...i, stock: newStock } : i);
+    setInventory(newInventory);
+    if (venueId) {
+      syncInventoryToCloud(venueId, newInventory).catch(e => console.error("Cloud inventory sync error:", e));
+    }
 
     const unitPrice = item.costPrice || item.price || 0;
     const newRecord: DamageRecord = {

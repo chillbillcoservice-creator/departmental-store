@@ -32,9 +32,9 @@ import {
     listenToLiveVendors,
     fetchLiveDailySales,
     fetchRecentBills,
+    fetchLiveInventory,
     DEFAULT_STORE_UID,
     LiveDailySales,
-    syncInventoryToCloud,
     syncVendorsToCloud,
     syncEmployeesToCloud,
     cleanVenueId
@@ -153,10 +153,11 @@ export function OwnerMobileLayout({
     // Instant direct cloud fetch for immediate refresh
     const handleManualRefresh = useCallback(async () => {
         try {
-            console.log(`[OwnerMobile] Fetching fresh sales & bills for: "${activeVenueId}"`);
-            const [sales, bills] = await Promise.all([
+            console.log(`[OwnerMobile] Fetching fresh sales, bills & catalog for: "${activeVenueId}"`);
+            const [sales, bills, cloudInv] = await Promise.all([
                 fetchLiveDailySales(activeVenueId),
-                fetchRecentBills(activeVenueId, 8)
+                fetchRecentBills(activeVenueId, 8),
+                fetchLiveInventory(activeVenueId)
             ]);
             if (sales) {
                 console.log("[OwnerMobile] Live sales fetched successfully:", sales);
@@ -165,6 +166,10 @@ export function OwnerMobileLayout({
             if (bills && bills.length > 0) {
                 console.log(`[OwnerMobile] Live bills fetched (${bills.length} bills)`);
                 setRecentCloudBills(bills);
+            }
+            if (cloudInv && cloudInv.length > 0) {
+                console.log(`[OwnerMobile] Live inventory fetched (${cloudInv.length} items)`);
+                setInventory(cloudInv);
             }
         } catch (e) {
             console.error("[OwnerMobile] Direct fetch error:", e);
@@ -246,10 +251,9 @@ export function OwnerMobileLayout({
         };
     }, [activeVenueId, handleManualRefresh, onUpdateEmployees, onUpdateVendors]);
 
-    // Initial cloud backup of inventory, vendors, and staff if not yet uploaded
+    // Initial cloud backup of vendors and staff if not yet uploaded (inventory is managed by POS counter)
     useEffect(() => {
         if (venueId) {
-            if (initialInventory.length > 0) syncInventoryToCloud(venueId, initialInventory);
             if (initialVendors.length > 0) syncVendorsToCloud(venueId, initialVendors);
             if (initialEmployees.length > 0) syncEmployeesToCloud(venueId, initialEmployees);
         }

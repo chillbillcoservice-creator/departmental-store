@@ -888,6 +888,7 @@ export default function MainLayout({
             </TabsContent>
             <TabsContent value="inventory" className="m-0 p-0 h-full">
               <InventoryManagement
+                venueId={venueId}
                 inventory={initialInventory}
                 setInventory={setInventory}
                 menu={initialMenu}

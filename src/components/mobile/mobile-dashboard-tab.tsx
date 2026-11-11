@@ -138,7 +138,7 @@ export function MobileDashboardTab({
             list = list.filter(i => i.name.toLowerCase().includes(q) || i.category?.toLowerCase().includes(q));
         }
 
-        return list.slice(0, 30); // smooth mobile scroll limit
+        return list.slice(0, invFilter === 'all' ? 100 : 30); // smooth mobile scroll limit
     }, [inventory, invFilter, invSearch, lowStockItems, outOfStockItems]);
 
     // Recent Counter Bills list

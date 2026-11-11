@@ -600,6 +600,32 @@ export const syncInventoryToCloud = async (venueId: string, items: InventoryItem
 };
 
 /**
+ * Fetch Live Inventory directly once
+ */
+export const fetchLiveInventory = async (venueId: string): Promise<InventoryItem[] | null> => {
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        const authedUid = await ensureStoreTerminalAuth();
+        if (authedUid) cleanId = authedUid;
+    } else {
+        await ensureStoreTerminalAuth();
+    }
+    if (!cleanId) return null;
+    try {
+        const db = getDb();
+        const invRef = doc(db, 'venues', cleanId, 'catalogs', 'main');
+        const snap = await getDoc(invRef);
+        if (snap.exists() && Array.isArray(snap.data()?.items)) {
+            return snap.data().items as InventoryItem[];
+        }
+        return null;
+    } catch (e) {
+        console.error("Failed to fetch live inventory from cloud:", e);
+        return null;
+    }
+};
+
+/**
  * Listen to live inventory
  */
 export const listenToLiveInventory = (

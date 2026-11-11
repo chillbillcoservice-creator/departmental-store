@@ -555,6 +555,40 @@ async function runTests() {
   assert(updatedItemWithVendor.vendorId === createdVendor.id, 'Vendor successfully linked to unassigned inventory item');
   assert(mockVendors.length === 1 && mockVendors[0].name === newVendorName, 'Newly created vendor registered in vendor catalog');
 
+  // -------------------------------------------------------------------------
+  // TEST GROUP 8: PC TO MOBILE INVENTORY RECONCILIATION & SYNC AUDIT
+  // -------------------------------------------------------------------------
+  console.log('\n🔄 [8/8] Auditing PC to Mobile Inventory Reconciliation & Sync...');
+
+  const baseCloudItems: InventoryItem[] = [
+    { id: '8901030000001', name: 'Aashirvaad Atta 5kg', price: 245, costPrice: 215, stock: 45, capacity: 100, category: 'Groceries', unit: 'bag' },
+    { id: '8901030000002', name: 'Fortune Sunflower Oil 1L', price: 145, costPrice: 125, stock: 30, capacity: 50, category: 'Groceries', unit: 'bottle' },
+  ];
+
+  const localItemsWithNewProduct: InventoryItem[] = [
+    ...baseCloudItems,
+    { id: '8901030000099', name: 'Parle-G Gold Biscuit 250g', price: 30, costPrice: 24, stock: 60, capacity: 100, category: 'Snacks', unit: 'pack' }
+  ];
+
+  // Test 1: Local has newly added items missing in cloud -> reconcile and merge preserving new item
+  const cloudIdSet = new Set(baseCloudItems.map(i => i.id));
+  const missingInCloud = localItemsWithNewProduct.filter(i => !cloudIdSet.has(i.id));
+  assert(missingInCloud.length === 1 && missingInCloud[0].id === '8901030000099', 'Detected local item missing in cloud catalog');
+
+  const mergedMap = new Map<string, InventoryItem>();
+  baseCloudItems.forEach(i => mergedMap.set(i.id, i));
+  localItemsWithNewProduct.forEach(i => mergedMap.set(i.id, i));
+  const mergedInventory = Array.from(mergedMap.values());
+
+  assert(mergedInventory.length === 3, 'Reconciliation merged catalog to 3 items without dropping additions', String(mergedInventory.length));
+  assert(mergedInventory.some(i => i.id === '8901030000099'), 'Newly added item preserved in reconciled catalog');
+
+  // Test 2: Inventory hash change detection
+  const hash1 = `${mergedInventory.length}-${mergedInventory.map(i => `${i.id}:${i.stock}`).join(',')}`;
+  const stockAdjustedInv = mergedInventory.map(i => i.id === '8901030000099' ? { ...i, stock: 55 } : i);
+  const hash2 = `${stockAdjustedInv.length}-${stockAdjustedInv.map(i => `${i.id}:${i.stock}`).join(',')}`;
+  assert(hash1 !== hash2, 'Inventory hash signature detects stock adjustments for cloud sync');
+
   // Final summary
   console.log('\n======================================================');
   const passed = results.filter((r) => r.passed).length;

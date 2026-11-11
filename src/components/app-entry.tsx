@@ -9,7 +9,7 @@ import LicenseExpiredScreen from "./license-expired-screen";
 import { OwnerMobileLayout } from "./mobile/owner-mobile-layout";
 import { useMobileDetection } from "@/lib/mobile-detection";
 import { verifyStoreLicense, LicenseCheckResult } from "@/lib/licensing";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useFirestore } from '@/firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { User } from 'firebase/auth';
@@ -17,7 +17,7 @@ import { LanguageProvider } from "@/contexts/language-context";
 import { buildUsername } from "@/lib/generate-username";
 import { saveVenueSetup } from "@/lib/db";
 import { DEPARTMENTAL_STORE_CATALOG, isLegacyInventory } from "@/lib/departmental-catalog";
-import { listenToLiveEmployees, cleanVenueId, ensureStoreTerminalAuth, DEFAULT_STORE_UID } from "@/lib/firestore-sync";
+import { listenToLiveEmployees, syncInventoryToCloud, fetchLiveInventory, cleanVenueId, ensureStoreTerminalAuth, DEFAULT_STORE_UID } from "@/lib/firestore-sync";
 
 interface AppEntryProps {
   initialMenu: MenuCategory[];
@@ -213,6 +213,64 @@ export default function AppEntry({
     });
     return () => unsub();
   }, [effectiveVenueId, setEmployees]);
+
+  // Cloud sync for inventory: Reconcile on mount & preserve local additions
+  useEffect(() => {
+    if (!effectiveVenueId) return;
+    let isCancelled = false;
+
+    const reconcileInventory = async () => {
+      try {
+        const cloudItems = await fetchLiveInventory(effectiveVenueId);
+        if (isCancelled) return;
+
+        const localItems = inventory || [];
+
+        if (!cloudItems || cloudItems.length === 0) {
+          if (localItems.length > 0) {
+            await syncInventoryToCloud(effectiveVenueId, localItems);
+          }
+        } else {
+          const cloudIdSet = new Set(cloudItems.map(i => i.id));
+          const missingInCloud = localItems.filter(i => !cloudIdSet.has(i.id));
+
+          if (missingInCloud.length > 0) {
+            // Local has new items added by the merchant on PC -> Merge & upload
+            const mergedMap = new Map<string, InventoryItem>();
+            cloudItems.forEach(i => mergedMap.set(i.id, i));
+            localItems.forEach(i => mergedMap.set(i.id, i));
+            const merged = Array.from(mergedMap.values());
+            setInventory(merged);
+            await syncInventoryToCloud(effectiveVenueId, merged);
+          } else if (cloudItems.length > localItems.length) {
+            // Cloud has more items (e.g. added from another station)
+            setInventory(cloudItems);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to reconcile inventory with cloud:", err);
+      }
+    };
+
+    reconcileInventory();
+    return () => { isCancelled = true; };
+  }, [effectiveVenueId]);
+
+  // Continuous real-time auto-sync: whenever inventory is modified on PC, sync to cloud
+  const isFirstInvMount = useRef(true);
+  useEffect(() => {
+    if (!effectiveVenueId || !inventory || inventory.length === 0) return;
+    if (isFirstInvMount.current) {
+      isFirstInvMount.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      syncInventoryToCloud(effectiveVenueId, inventory).catch(err => {
+        console.error("Auto-sync inventory to cloud failed:", err);
+      });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [inventory, effectiveVenueId]);
   const [initialAuthView, setInitialAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(null);
   const [initialSetupData, setInitialSetupData] = useState<{ storeName?: string; ownerName?: string; email?: string } | null>(null);
 
