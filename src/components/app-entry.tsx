@@ -10,14 +10,14 @@ import { OwnerMobileLayout } from "./mobile/owner-mobile-layout";
 import { useMobileDetection } from "@/lib/mobile-detection";
 import { verifyStoreLicense, LicenseCheckResult } from "@/lib/licensing";
 import { useState, useEffect, useRef } from "react";
-import { useFirestore } from '@/firebase';
+import { useFirestore, initializeFirebase } from '@/firebase';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { User } from 'firebase/auth';
 import { LanguageProvider } from "@/contexts/language-context";
 import { buildUsername } from "@/lib/generate-username";
 import { saveVenueSetup } from "@/lib/db";
 import { DEPARTMENTAL_STORE_CATALOG, isLegacyInventory } from "@/lib/departmental-catalog";
-import { listenToLiveEmployees, syncInventoryToCloud, fetchLiveInventory, cleanVenueId, ensureStoreTerminalAuth, DEFAULT_STORE_UID } from "@/lib/firestore-sync";
+import { listenToLiveEmployees, syncInventoryToCloud, fetchLiveInventory, cleanVenueId, ensureStoreTerminalAuth } from "@/lib/firestore-sync";
 
 interface AppEntryProps {
   initialMenu: MenuCategory[];
@@ -173,23 +173,25 @@ export default function AppEntry({
   const [venueId, setVenueId] = useLocalStorageState<string | null>('venueId', null);
 
   const effectiveVenueId = cleanVenueId(venueId) || 
-    (typeof window !== 'undefined' ? cleanVenueId(localStorage.getItem('venueId')) : '') || 
-    DEFAULT_STORE_UID;
+    (typeof window !== 'undefined' ? cleanVenueId(localStorage.getItem('venueId')) : '');
 
-  // Auto-heal local storage, authenticate store terminal, and link canonical venue UID
+  // Keep terminal authenticated for the ACTIVE store owner email (if stored)
   useEffect(() => {
-    ensureStoreTerminalAuth(ownerDetails?.email || 'chillbill.co.service@gmail.com').then((canonicalUid) => {
-      const activeUid = canonicalUid || DEFAULT_STORE_UID;
-      if (activeUid && (!venueId || venueId !== activeUid || venueId.includes(' ') || venueId.length < 20)) {
-        console.log(`[AppEntry] 🔐 Canonical store terminal UID linked: ${activeUid}`);
-        setVenueId(activeUid);
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.setItem('venueId', activeUid);
-          } catch {}
+    const storeEmail = ownerDetails?.email || (typeof window !== 'undefined' ? localStorage.getItem('storeEmail') : '');
+    if (storeEmail) {
+      ensureStoreTerminalAuth(storeEmail).then((uid) => {
+        if (uid && (!venueId || venueId !== uid)) {
+          console.log(`[AppEntry] 🔐 Store terminal UID linked: ${uid}`);
+          setVenueId(uid);
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('venueId', uid);
+              localStorage.setItem('storeEmail', storeEmail);
+            } catch {}
+          }
         }
-      }
-    });
+      });
+    }
   }, [ownerDetails?.email, venueId, setVenueId]);
 
   useEffect(() => {
@@ -221,10 +223,18 @@ export default function AppEntry({
 
     const reconcileInventory = async () => {
       try {
+        // Read directly from localStorage to guarantee we have the user's latest added items
+        const storedInvRaw = typeof window !== 'undefined' ? localStorage.getItem('inventory') : null;
+        let localItems: InventoryItem[] = [];
+        try {
+          if (storedInvRaw) localItems = JSON.parse(storedInvRaw);
+        } catch {}
+        if (!localItems.length && inventory && inventory.length > 0) {
+          localItems = inventory;
+        }
+
         const cloudItems = await fetchLiveInventory(effectiveVenueId);
         if (isCancelled) return;
-
-        const localItems = inventory || [];
 
         if (!cloudItems || cloudItems.length === 0) {
           if (localItems.length > 0) {
@@ -241,10 +251,21 @@ export default function AppEntry({
             localItems.forEach(i => mergedMap.set(i.id, i));
             const merged = Array.from(mergedMap.values());
             setInventory(merged);
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem('inventory', JSON.stringify(merged));
+                localStorage.setItem('chillbill_catalog_initialized', 'true');
+              } catch {}
+            }
             await syncInventoryToCloud(effectiveVenueId, merged);
-          } else if (cloudItems.length > localItems.length) {
-            // Cloud has more items (e.g. added from another station)
+          } else if (cloudItems.length >= localItems.length) {
             setInventory(cloudItems);
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem('inventory', JSON.stringify(cloudItems));
+                localStorage.setItem('chillbill_catalog_initialized', 'true');
+              } catch {}
+            }
           }
         }
       } catch (err) {
@@ -545,6 +566,30 @@ export default function AppEntry({
     (typeof window !== 'undefined' && (localStorage.getItem('isSetupComplete') === 'true' || localStorage.getItem('setupComplete') === 'true')) &&
     !initialAuthView;
 
+  const handleSwitchStore = async () => {
+    try {
+      const { auth } = initializeFirebase();
+      await auth.signOut();
+    } catch {}
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('venueId');
+      localStorage.removeItem('storeEmail');
+      localStorage.removeItem('ownerDetails');
+      localStorage.removeItem('venueDetails');
+      localStorage.removeItem('venueName');
+      localStorage.removeItem('currentEmployee');
+      localStorage.removeItem('ownerUser');
+      localStorage.removeItem('isSetupComplete');
+      localStorage.removeItem('setupComplete');
+    }
+    setVenueId(null);
+    setCurrentEmployee(null);
+    setOwnerUser(null);
+    setIsSetupComplete(false);
+    setInitialAuthView("owner-login");
+    window.location.reload();
+  };
+
   // Step 3: If terminal is already activated on this device, go DIRECTLY to SS2 (Staff & Owner PIN Login)
   if (isTerminalActivated && !currentEmployee) {
     return (
@@ -565,9 +610,7 @@ export default function AppEntry({
             }
           }}
           onUpdateEmployees={(updated) => setEmployees(updated)}
-          onSwitchLicense={() => {
-            setInitialAuthView("owner-login");
-          }}
+          onSwitchLicense={handleSwitchStore}
         />
       </LanguageProvider>
     );
@@ -755,12 +798,7 @@ export default function AppEntry({
           ownerDetails={ownerDetails}
           onUpdateEmployees={(updated) => setEmployees(updated)}
           onUpdateVendors={(updated) => setVendors(updated)}
-          onSwitchLicense={() => {
-            if (typeof window !== 'undefined') {
-              localStorage.clear();
-              window.location.reload();
-            }
-          }}
+          onSwitchLicense={handleSwitchStore}
           onSignOut={() => {
             setCurrentEmployee(null);
           }}

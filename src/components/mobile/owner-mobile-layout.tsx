@@ -33,11 +33,11 @@ import {
     fetchLiveDailySales,
     fetchRecentBills,
     fetchLiveInventory,
-    DEFAULT_STORE_UID,
     LiveDailySales,
     syncVendorsToCloud,
     syncEmployeesToCloud,
-    cleanVenueId
+    cleanVenueId,
+    getActiveVenueId
 } from '@/lib/firestore-sync';
 import { playKaChingSound, unlockAudioContext } from '@/lib/soundbox';
 import { MobileDashboardTab } from './mobile-dashboard-tab';
@@ -148,7 +148,7 @@ export function OwnerMobileLayout({
         });
     }, []);
 
-    const activeVenueId = cleanVenueId(venueId) || DEFAULT_STORE_UID;
+    const activeVenueId = getActiveVenueId(venueId);
 
     // Instant direct cloud fetch for immediate refresh
     const handleManualRefresh = useCallback(async () => {

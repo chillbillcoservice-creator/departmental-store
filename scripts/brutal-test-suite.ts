@@ -54,7 +54,7 @@ import { compileStoreReport } from '../src/lib/report-generator';
 import { buildUsername, generateUniqueUsername } from '../src/lib/generate-username';
 import { subscribeToAmountMatch, simulateCounterStandeePayment, generateMockUtr } from '../src/lib/payment-listener';
 import { playKaChingSound, playScanBeep, unlockAudioContext, getSharedAudioContext } from '../src/lib/soundbox';
-import { cleanVenueId, DEFAULT_STORE_UID, DEFAULT_STORE_EMAIL, buildTerminalCredentials } from '../src/lib/firestore-sync';
+import { cleanVenueId, buildTerminalCredentials, getActiveVenueId } from '../src/lib/firestore-sync';
 import type {
   Bill,
   Customer,
@@ -378,11 +378,17 @@ async function runTests() {
   assert(cleanVenueId(null) === '', 'cleanVenueId handles null gracefully');
   assert(cleanVenueId(undefined) === '', 'cleanVenueId handles undefined gracefully');
 
-  // Terminal credentials & canonical UID resolution tests
-  assert(DEFAULT_STORE_UID === 'kiIIHjUyCcfUMqHjd1DfnS595DU2', 'Canonical store terminal UID is correctly registered (kiIIHjUyCcfUMqHjd1DfnS595DU2)');
-  const termCreds = buildTerminalCredentials(DEFAULT_STORE_EMAIL);
-  assert(termCreds.terminalEmail === 'chillbill_co_service_gmail_com@chillbill-terminal.pos', 'Terminal identity email generated deterministically');
-  assert(termCreds.terminalPassword === 'cbill_chillbillcoservicegmailcom_2026!', 'Terminal identity password generated deterministically');
+  // Terminal credentials & multi-tenant isolation tests
+  const krishnaCreds = buildTerminalCredentials('chillbill.co.service@gmail.com');
+  assert(krishnaCreds.terminalEmail === 'chillbill_co_service_gmail_com@chillbill-terminal.pos', 'Krishna terminal email generated deterministically');
+  assert(krishnaCreds.terminalPassword === 'cbill_chillbillcoservicegmailcom_2026!', 'Krishna terminal password generated deterministically');
+
+  const rohitCreds = buildTerminalCredentials('chillbillindia@gmail.com');
+  assert(rohitCreds.terminalEmail === 'chillbillindia_gmail_com@chillbill-terminal.pos', 'Rohit terminal email generated deterministically');
+  assert(rohitCreds.terminalPassword === 'cbill_chillbillindiagmailcom_2026!', 'Rohit terminal password generated deterministically');
+  assert(rohitCreds.terminalEmail !== krishnaCreds.terminalEmail, 'Multi-tenant isolation: Different stores have completely separate terminal identities');
+
+  assert(getActiveVenueId('test-01') === 'test-01', 'getActiveVenueId preserves store identity without hardcoded overwrite');
 
   // Verify Ka-Ching sound generator is callable without throwing
   let soundPromiseResolved = false;

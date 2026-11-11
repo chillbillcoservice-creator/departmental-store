@@ -757,6 +757,12 @@ export default function InventoryManagement({
       toast({ title: t("Item added successfully"), description: `${t("ID")}: ${finalId}` });
     }
     setInventory(newInventory);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('inventory', JSON.stringify(newInventory));
+        localStorage.setItem('chillbill_catalog_initialized', 'true');
+      } catch (e) {}
+    }
     if (venueId) {
       syncInventoryToCloud(venueId, newInventory).catch(e => console.error("Cloud inventory sync error:", e));
     }
@@ -765,6 +771,12 @@ export default function InventoryManagement({
   const handleDeleteItem = (itemId: string) => {
     const newInventory = inventory.filter(item => item.id !== itemId);
     setInventory(newInventory);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('inventory', JSON.stringify(newInventory));
+        localStorage.setItem('chillbill_catalog_initialized', 'true');
+      } catch (e) {}
+    }
     if (venueId) {
       syncInventoryToCloud(venueId, newInventory).catch(e => console.error("Cloud inventory sync error:", e));
     }
@@ -787,6 +799,12 @@ export default function InventoryManagement({
 
     const newInventory = inventory.map(i => i.id === id ? { ...i, stock } : i);
     setInventory(newInventory);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('inventory', JSON.stringify(newInventory));
+        localStorage.setItem('chillbill_catalog_initialized', 'true');
+      } catch (e) {}
+    }
     if (venueId) {
       syncInventoryToCloud(venueId, newInventory).catch(e => console.error("Cloud inventory sync error:", e));
     }
@@ -801,6 +819,12 @@ export default function InventoryManagement({
 
     const newInventory = inventory.map(i => i.id === id ? { ...i, stock: newStock } : i);
     setInventory(newInventory);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('inventory', JSON.stringify(newInventory));
+        localStorage.setItem('chillbill_catalog_initialized', 'true');
+      } catch (e) {}
+    }
     if (venueId) {
       syncInventoryToCloud(venueId, newInventory).catch(e => console.error("Cloud inventory sync error:", e));
     }
