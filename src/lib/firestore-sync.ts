@@ -31,7 +31,7 @@ export const buildTerminalCredentials = (email: string) => {
 };
 
 /**
- * Get the currently active store's registered email from localStorage
+ * Get the currently active store's registered email from localStorage or auth
  */
 export const getActiveStoreEmail = (): string => {
     if (typeof window === 'undefined') return '';
@@ -45,28 +45,63 @@ export const getActiveStoreEmail = (): string => {
                 return parsed.email.trim().toLowerCase();
             }
         }
+        const licRaw = localStorage.getItem('chillbill_license_token');
+        if (licRaw) {
+            const parsed = JSON.parse(licRaw);
+            if (parsed?.ownerEmail && typeof parsed.ownerEmail === 'string') {
+                return parsed.ownerEmail.trim().toLowerCase();
+            }
+        }
+        const venueRaw = localStorage.getItem('venueDetails');
+        if (venueRaw) {
+            const parsed = JSON.parse(venueRaw);
+            if (parsed?.email && typeof parsed.email === 'string') {
+                return parsed.email.trim().toLowerCase();
+            }
+        }
+        const { auth } = initializeFirebase();
+        if (auth.currentUser?.email && !auth.currentUser.email.endsWith('@chillbill-terminal.pos')) {
+            return auth.currentUser.email.trim().toLowerCase();
+        }
     } catch {}
     return '';
 };
 
 /**
- * Ensures Firebase Auth has an active signed-in session for the store.
+ * Ensures Firebase Auth has an active signed-in session for the store terminal.
  * Strictly uses the store's OWN registered email (never a global default account).
  */
 export const ensureStoreTerminalAuth = async (storeEmail?: string): Promise<string | null> => {
     try {
         const { auth } = initializeFirebase();
-        if (auth.currentUser && auth.currentUser.uid) {
-            return auth.currentUser.uid;
-        }
-
-        const email = storeEmail || getActiveStoreEmail();
+        const email = (storeEmail || getActiveStoreEmail()).trim().toLowerCase();
         if (!email) {
-            return null;
+            return auth.currentUser?.uid || null;
         }
 
         const { terminalEmail, terminalPassword } = buildTerminalCredentials(email);
-        const cred = await signInWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+
+        // Only return early if currentUser is ALREADY the terminal account for this store
+        if (auth.currentUser && auth.currentUser.email === terminalEmail) {
+            return auth.currentUser.uid;
+        }
+
+        let cred: any = null;
+        try {
+            cred = await signInWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+        } catch (signInErr: any) {
+            if (signInErr?.code === 'auth/user-not-found' || signInErr?.code === 'auth/invalid-credential') {
+                try {
+                    const { createUserWithEmailAndPassword } = await import('firebase/auth');
+                    cred = await createUserWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+                } catch (createErr: any) {
+                    if (createErr?.code === 'auth/email-already-in-use') {
+                        cred = await signInWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+                    }
+                }
+            }
+        }
+
         if (cred?.user?.uid) {
             console.log(`[FirestoreSync] 🔐 Store terminal authenticated: ${cred.user.uid} (${email})`);
             if (typeof window !== 'undefined') {
@@ -77,7 +112,7 @@ export const ensureStoreTerminalAuth = async (storeEmail?: string): Promise<stri
             }
             return cred.user.uid;
         }
-        return null;
+        return auth.currentUser?.uid || null;
     } catch (e: any) {
         console.warn("[FirestoreSync] Terminal auth notice:", e?.message || e);
         return null;

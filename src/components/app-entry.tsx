@@ -17,7 +17,7 @@ import { LanguageProvider } from "@/contexts/language-context";
 import { buildUsername } from "@/lib/generate-username";
 import { saveVenueSetup } from "@/lib/db";
 import { DEPARTMENTAL_STORE_CATALOG, isLegacyInventory } from "@/lib/departmental-catalog";
-import { listenToLiveEmployees, syncInventoryToCloud, fetchLiveInventory, cleanVenueId, ensureStoreTerminalAuth } from "@/lib/firestore-sync";
+import { listenToLiveEmployees, syncInventoryToCloud, fetchLiveInventory, cleanVenueId, ensureStoreTerminalAuth, getActiveStoreEmail } from "@/lib/firestore-sync";
 
 interface AppEntryProps {
   initialMenu: MenuCategory[];
@@ -177,7 +177,7 @@ export default function AppEntry({
 
   // Keep terminal authenticated for the ACTIVE store owner email (if stored)
   useEffect(() => {
-    const storeEmail = ownerDetails?.email || (typeof window !== 'undefined' ? localStorage.getItem('storeEmail') : '');
+    const storeEmail = getActiveStoreEmail() || ownerDetails?.email || (typeof window !== 'undefined' ? localStorage.getItem('storeEmail') : '');
     if (storeEmail) {
       ensureStoreTerminalAuth(storeEmail).then((uid) => {
         if (uid && (!venueId || venueId !== uid)) {

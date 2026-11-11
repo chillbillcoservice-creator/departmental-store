@@ -37,7 +37,9 @@ import {
     syncVendorsToCloud,
     syncEmployeesToCloud,
     cleanVenueId,
-    getActiveVenueId
+    getActiveVenueId,
+    ensureStoreTerminalAuth,
+    getActiveStoreEmail
 } from '@/lib/firestore-sync';
 import { playKaChingSound, unlockAudioContext } from '@/lib/soundbox';
 import { MobileDashboardTab } from './mobile-dashboard-tab';
@@ -148,16 +150,45 @@ export function OwnerMobileLayout({
         });
     }, []);
 
-    const activeVenueId = getActiveVenueId(venueId);
+    const [canonicalVenueId, setCanonicalVenueId] = useState<string>(() => getActiveVenueId(venueId));
+
+    useEffect(() => {
+        const resolveCanonical = async () => {
+            const email = getActiveStoreEmail();
+            if (email) {
+                const terminalUid = await ensureStoreTerminalAuth(email);
+                if (terminalUid && terminalUid !== canonicalVenueId) {
+                    console.log(`[OwnerMobile] Aligning mobile to canonical terminal UID: ${terminalUid}`);
+                    setCanonicalVenueId(terminalUid);
+                    if (typeof window !== 'undefined') {
+                        try {
+                            localStorage.setItem('venueId', terminalUid);
+                            localStorage.setItem('storeEmail', email);
+                        } catch {}
+                    }
+                }
+            }
+        };
+        resolveCanonical();
+    }, [canonicalVenueId]);
+
+    const activeVenueId = canonicalVenueId || getActiveVenueId(venueId);
 
     // Instant direct cloud fetch for immediate refresh
     const handleManualRefresh = useCallback(async () => {
         try {
-            console.log(`[OwnerMobile] Fetching fresh sales, bills & catalog for: "${activeVenueId}"`);
+            const email = getActiveStoreEmail();
+            let targetVenue = activeVenueId;
+            if (email) {
+                const terminalUid = await ensureStoreTerminalAuth(email);
+                if (terminalUid) targetVenue = terminalUid;
+            }
+            if (!targetVenue) return;
+            console.log(`[OwnerMobile] Fetching fresh sales, bills & catalog for: "${targetVenue}"`);
             const [sales, bills, cloudInv] = await Promise.all([
-                fetchLiveDailySales(activeVenueId),
-                fetchRecentBills(activeVenueId, 8),
-                fetchLiveInventory(activeVenueId)
+                fetchLiveDailySales(targetVenue),
+                fetchRecentBills(targetVenue, 8),
+                fetchLiveInventory(targetVenue)
             ]);
             if (sales) {
                 console.log("[OwnerMobile] Live sales fetched successfully:", sales);

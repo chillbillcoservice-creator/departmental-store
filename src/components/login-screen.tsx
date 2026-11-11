@@ -23,6 +23,7 @@ import { initializeFirebase } from "@/firebase";
 import { useTheme } from "next-themes";
 import { ThemeToggle } from "./theme-toggle";
 import { verifyStoreLicense, LicenseCheckResult } from "@/lib/licensing";
+import { ensureStoreTerminalAuth } from "@/lib/firestore-sync";
 
 /* ═══════════════════════════════════════════════════
    CORAL BLAZE DESIGN TOKENS
@@ -302,7 +303,15 @@ export default function LoginScreen({
                     ownerName: result.user.displayName || "Store Owner",
                     email,
                 };
-                onOwnerSignup?.(uid, storeDetails);
+                // Resolve canonical store terminal UID so mobile and desktop share the exact same venue!
+                const canonicalUid = await ensureStoreTerminalAuth(email) || uid;
+                if (typeof window !== 'undefined') {
+                    try {
+                        localStorage.setItem('storeEmail', email);
+                        localStorage.setItem('venueId', canonicalUid);
+                    } catch {}
+                }
+                onOwnerSignup?.(canonicalUid, storeDetails);
             }
         } catch (err: any) {
             console.error("Google Auth error:", err);
@@ -404,14 +413,21 @@ export default function LoginScreen({
             }
 
             if (userCredential?.user) {
-                const uid = userCredential.user.uid;
+                const email = cleanEmail;
+                const canonicalUid = await ensureStoreTerminalAuth(email) || userCredential.user.uid;
                 const storeDetails = {
                     storeName: whiteData?.storeName,
                     ownerName: whiteData?.ownerName,
                     email: cleanEmail,
                     licenseKey: registeredKey,
                 };
-                onOwnerSignup?.(uid, storeDetails);
+                if (typeof window !== 'undefined') {
+                    try {
+                        localStorage.setItem('storeEmail', email);
+                        localStorage.setItem('venueId', canonicalUid);
+                    } catch {}
+                }
+                onOwnerSignup?.(canonicalUid, storeDetails);
             }
         } catch (err: any) {
             console.error("License auth error:", err);
