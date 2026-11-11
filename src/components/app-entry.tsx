@@ -17,7 +17,7 @@ import { LanguageProvider } from "@/contexts/language-context";
 import { buildUsername } from "@/lib/generate-username";
 import { saveVenueSetup } from "@/lib/db";
 import { DEPARTMENTAL_STORE_CATALOG, isLegacyInventory } from "@/lib/departmental-catalog";
-import { listenToLiveEmployees } from "@/lib/firestore-sync";
+import { listenToLiveEmployees, cleanVenueId } from "@/lib/firestore-sync";
 
 interface AppEntryProps {
   initialMenu: MenuCategory[];
@@ -172,16 +172,32 @@ export default function AppEntry({
   const [isLoadingVenue, setIsLoadingVenue] = useState(false);
   const [venueId, setVenueId] = useLocalStorageState<string | null>('venueId', null);
 
+  const effectiveVenueId = cleanVenueId(venueId) || 
+    (typeof window !== 'undefined' ? cleanVenueId(localStorage.getItem('venueId')) : '') || 
+    cleanVenueId(venueDetails?.name || venueName || '');
+
+  // Auto-heal local storage and state if cleaned ID differs
+  useEffect(() => {
+    if (effectiveVenueId && (!venueId || venueId !== effectiveVenueId)) {
+      setVenueId(effectiveVenueId);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('venueId', JSON.stringify(effectiveVenueId));
+        } catch {}
+      }
+    }
+  }, [effectiveVenueId, venueId, setVenueId]);
+
   // Cloud sync for staff roster: keeps Desktop POS and Mobile Companion in 100% real-time sync
   useEffect(() => {
-    if (!venueId) return;
-    const unsub = listenToLiveEmployees(venueId, (cloudEmployees) => {
+    if (!effectiveVenueId) return;
+    const unsub = listenToLiveEmployees(effectiveVenueId, (cloudEmployees) => {
       if (cloudEmployees && cloudEmployees.length > 0) {
         setEmployees(cloudEmployees);
       }
     });
     return () => unsub();
-  }, [venueId, setEmployees]);
+  }, [effectiveVenueId, setEmployees]);
   const [initialAuthView, setInitialAuthView] = useState<null | "landing" | "signup" | "login" | "owner-login">(null);
   const [initialSetupData, setInitialSetupData] = useState<{ storeName?: string; ownerName?: string; email?: string } | null>(null);
 
@@ -655,7 +671,7 @@ export default function AppEntry({
       <LanguageProvider key={language} initialLanguage={language}>
         <OwnerMobileLayout
           venueName={venueName}
-          venueId={venueId || undefined}
+          venueId={effectiveVenueId || undefined}
           currency={(!currency || currency === '$') ? 'Rs.' : currency}
           initialBills={bills}
           initialInventory={inventory}
@@ -711,6 +727,7 @@ export default function AppEntry({
         setLanguage={setLanguage}
         initialLanguage={language}
         venueDetails={venueDetails}
+        venueId={effectiveVenueId || undefined}
         setVenueDetails={setVenueDetails}
         ownerDetails={ownerDetails}
         initialUser={currentEmployee}

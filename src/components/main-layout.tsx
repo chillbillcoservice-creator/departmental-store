@@ -69,6 +69,7 @@ interface MainLayoutProps {
   initialCurrency: string;
   setCurrency: (currency: string) => void;
   venueDetails?: VenueDetails | null;
+  venueId?: string;
   ownerDetails?: OwnerDetails | null;
   initialLanguage: string;
   setLanguage: (lang: string) => void;
@@ -101,6 +102,7 @@ export default function MainLayout({
   initialCurrency,
   setCurrency,
   venueDetails,
+  venueId,
   setVenueDetails,
   ownerDetails,
   initialUser,
@@ -872,6 +874,8 @@ export default function MainLayout({
                 setCustomers={setCustomers}
                 currency={effectiveCurrency}
                 venueDetails={venueDetails || null}
+                venueId={venueId}
+                venueName={initialVenueName}
                 pendingBills={initialPendingBills}
                 setPendingBills={setPendingBills}
                 cartSession={cartSession}

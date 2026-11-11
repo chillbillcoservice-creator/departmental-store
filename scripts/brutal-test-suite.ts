@@ -53,7 +53,8 @@ import {
 import { compileStoreReport } from '../src/lib/report-generator';
 import { buildUsername, generateUniqueUsername } from '../src/lib/generate-username';
 import { subscribeToAmountMatch, simulateCounterStandeePayment, generateMockUtr } from '../src/lib/payment-listener';
-import { playKaChingSound } from '../src/lib/soundbox';
+import { playKaChingSound, unlockAudioContext, getSharedAudioContext } from '../src/lib/soundbox';
+import { cleanVenueId } from '../src/lib/firestore-sync';
 import type {
   Bill,
   Customer,
@@ -370,11 +371,30 @@ async function runTests() {
   assert(testNewEmp.allowedTabs?.includes('payments') === true, 'Cashier assigned billing permissions');
   assert(testNewEmp.id.startsWith('emp-'), 'Staff ID correctly formatted for Firestore');
 
+  // Venue ID sanitization tests (protects against JSON quotes bug)
+  assert(cleanVenueId('"krishna-supermart"') === 'krishna-supermart', 'cleanVenueId strips wrapping double quotes from JSON.stringify');
+  assert(cleanVenueId("'krishna-supermart'") === 'krishna-supermart', 'cleanVenueId strips wrapping single quotes');
+  assert(cleanVenueId('  krishna-supermart  ') === 'krishna-supermart', 'cleanVenueId trims leading and trailing whitespace');
+  assert(cleanVenueId(null) === '', 'cleanVenueId handles null gracefully');
+  assert(cleanVenueId(undefined) === '', 'cleanVenueId handles undefined gracefully');
+
   // Verify Ka-Ching sound generator is callable without throwing
   let soundPromiseResolved = false;
+  unlockAudioContext();
   await playKaChingSound();
   soundPromiseResolved = true;
   assert(Boolean(soundPromiseResolved), 'Ka-Ching sound engine executes cleanly and safely in non-browser/SSR environment');
+
+  // Verify Cloud Bills Fallback Calculation for Mobile Companion Dashboard
+  const sampleRecentCloudBills = [
+    { id: 'b1', total: 450, paymentMethod: 'Cash', completedAt: new Date() },
+    { id: 'b2', total: 1250, paymentMethod: 'Online', completedAt: new Date() },
+    { id: 'b3', total: 300, paymentMethod: 'Split', splitPayments: [{ method: 'Cash', amount: 100 }, { method: 'Online', amount: 200 }], completedAt: new Date() },
+  ];
+  const cloudTotal = sampleRecentCloudBills.reduce((s, b) => s + b.total, 0);
+  const cloudCount = sampleRecentCloudBills.length;
+  assert(cloudTotal === 2000, 'Cloud bills total calculated correctly (Got 2000)', String(cloudTotal));
+  assert(cloudCount === 3, 'Cloud bills count calculated correctly (Got 3)', String(cloudCount));
 
   // -------------------------------------------------------------------------
   // TEST GROUP 6: UPI & COUNTER STANDEE REAL-TIME MATCHING

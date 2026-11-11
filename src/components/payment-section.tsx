@@ -26,7 +26,7 @@ import { DEPARTMENTAL_STORE_CATALOG } from '@/lib/departmental-catalog';
 import { subscribeToAmountMatch, generateMockUtr } from '@/lib/payment-listener';
 import { triggerSoundboxAlert } from '@/lib/soundbox';
 import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
-import { syncCompletedBillToCloud } from '@/lib/firestore-sync';
+import { syncCompletedBillToCloud, cleanVenueId } from '@/lib/firestore-sync';
 
 interface PaymentSectionProps {
     inventory: InventoryItem[];
@@ -37,6 +37,8 @@ interface PaymentSectionProps {
     setCustomers: React.Dispatch<React.SetStateAction<Customer[]>>;
     currency: string;
     venueDetails: any | null;
+    venueId?: string;
+    venueName?: string;
     pendingBills: PendingBill[];
     setPendingBills: React.Dispatch<React.SetStateAction<PendingBill[]>>;
     cartSession: {
@@ -59,7 +61,7 @@ interface PaymentSectionProps {
     currentUser?: Employee | null;
 }
 
-export default function PaymentSection({ inventory, setInventory, bills, setBills, customers, setCustomers, currency, venueDetails, pendingBills, setPendingBills, cartSession, setCartSession, savedCarts, setSavedCarts, expenses = [], currentUser }: PaymentSectionProps) {
+export default function PaymentSection({ inventory, setInventory, bills, setBills, customers, setCustomers, currency, venueDetails, venueId, venueName, pendingBills, setPendingBills, cartSession, setCartSession, savedCarts, setSavedCarts, expenses = [], currentUser }: PaymentSectionProps) {
     const { t } = useLanguage();
     const { toast } = useToast();
     const activeCurrency = (!currency || currency === '$') ? 'Rs.' : currency;
@@ -668,11 +670,24 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
 
         // Real-time Cloud Sync for Owner Mobile Companion
         try {
-            const vId = (typeof window !== 'undefined' ? localStorage.getItem('venueId') : null) || venueDetails?.name;
-            if (vId) {
-                syncCompletedBillToCloud(vId, newBill);
+            const rawVId = venueId || 
+                (typeof window !== 'undefined' ? localStorage.getItem('venueId') : null) || 
+                venueDetails?.venueId || 
+                venueDetails?.id || 
+                venueDetails?.name || 
+                venueName;
+            
+            const effectiveVenueId = cleanVenueId(rawVId);
+            if (effectiveVenueId) {
+                syncCompletedBillToCloud(effectiveVenueId, newBill).catch(err => {
+                    console.error("[PaymentSection] Cloud bill sync failed:", err);
+                });
+            } else {
+                console.warn("[PaymentSection] Could not determine venueId for cloud bill sync");
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error("[PaymentSection] Error preparing cloud bill sync:", e);
+        }
 
         // Log to active shift session
         logShiftActivity({

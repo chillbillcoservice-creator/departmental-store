@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { 
     LayoutDashboard, 
     Users, 
@@ -33,7 +33,8 @@ import {
     LiveDailySales,
     syncInventoryToCloud,
     syncVendorsToCloud,
-    syncEmployeesToCloud
+    syncEmployeesToCloud,
+    cleanVenueId
 } from '@/lib/firestore-sync';
 import { playKaChingSound, unlockAudioContext } from '@/lib/soundbox';
 import { MobileDashboardTab } from './mobile-dashboard-tab';
@@ -95,6 +96,11 @@ export function OwnerMobileLayout({
         }
         return true;
     });
+    const isSoundEnabledRef = useRef(isSoundEnabled);
+    useEffect(() => {
+        isSoundEnabledRef.current = isSoundEnabled;
+    }, [isSoundEnabled]);
+
     const [incomingSaleAlert, setIncomingSaleAlert] = useState<{
         id: string;
         total: number;
@@ -102,19 +108,17 @@ export function OwnerMobileLayout({
         cashierName?: string;
     } | null>(null);
 
-    // Auto-unlock Web Audio on first user interaction (touch/click) for mobile browsers
+    // Auto-unlock Web Audio on first user interaction (touch/click/pointer) for mobile browsers
     useEffect(() => {
         if (typeof window === 'undefined') return;
+        const events = ['touchstart', 'touchend', 'click', 'pointerdown', 'keydown'];
         const handleUnlock = () => {
             unlockAudioContext();
-            window.removeEventListener('touchstart', handleUnlock);
-            window.removeEventListener('click', handleUnlock);
+            events.forEach(ev => window.removeEventListener(ev, handleUnlock));
         };
-        window.addEventListener('touchstart', handleUnlock, { passive: true });
-        window.addEventListener('click', handleUnlock, { passive: true });
+        events.forEach(ev => window.addEventListener(ev, handleUnlock, { passive: true }));
         return () => {
-            window.removeEventListener('touchstart', handleUnlock);
-            window.removeEventListener('click', handleUnlock);
+            events.forEach(ev => window.removeEventListener(ev, handleUnlock));
         };
     }, []);
 
@@ -143,23 +147,30 @@ export function OwnerMobileLayout({
 
     // Sync cloud listeners on mount if venueId is available
     useEffect(() => {
-        if (!venueId) return;
+        const activeVenueId = cleanVenueId(venueId);
+        if (!activeVenueId) return;
+
+        console.log(`[OwnerMobile] Attaching live cloud listeners for venueId: "${activeVenueId}"`);
 
         // 1. Live sales summary
-        const unsubSales = listenToLiveDailySales(venueId, (summary) => {
-            if (summary) setLiveDailySales(summary);
+        const unsubSales = listenToLiveDailySales(activeVenueId, (summary) => {
+            if (summary) {
+                console.log("[OwnerMobile] Live sales summary updated:", summary);
+                setLiveDailySales(summary);
+            }
         });
 
         // 2. Recent bills with real-time Ka-Ching alert on new checkouts
         const unsubBills = listenToRecentBills(
-            venueId, 
+            activeVenueId, 
             8, 
             (bills) => {
                 if (bills.length > 0) setRecentCloudBills(bills);
             },
             (newBill) => {
                 // Fresh checkout completed at store counter!
-                if (isSoundEnabled) {
+                console.log("[OwnerMobile] ⚡ Real-time sale checkout detected!", newBill);
+                if (isSoundEnabledRef.current) {
                     playKaChingSound();
                 }
                 setIncomingSaleAlert({
@@ -172,7 +183,7 @@ export function OwnerMobileLayout({
         );
 
         // 3. Live employees
-        const unsubEmployees = listenToLiveEmployees(venueId, (cloudEmployees) => {
+        const unsubEmployees = listenToLiveEmployees(activeVenueId, (cloudEmployees) => {
             if (cloudEmployees.length > 0) {
                 setEmployees(cloudEmployees);
                 onUpdateEmployees(cloudEmployees);
@@ -180,17 +191,17 @@ export function OwnerMobileLayout({
         });
 
         // 4. Live purchase orders
-        const unsubPOs = listenToLivePurchaseOrders(venueId, (cloudPOs) => {
+        const unsubPOs = listenToLivePurchaseOrders(activeVenueId, (cloudPOs) => {
             if (cloudPOs.length > 0) setPurchaseOrders(cloudPOs);
         });
 
         // 5. Live inventory
-        const unsubInv = listenToLiveInventory(venueId, (cloudInv) => {
+        const unsubInv = listenToLiveInventory(activeVenueId, (cloudInv) => {
             if (cloudInv.length > 0) setInventory(cloudInv);
         });
 
         // 6. Live vendors
-        const unsubVendors = listenToLiveVendors(venueId, (cloudVendors) => {
+        const unsubVendors = listenToLiveVendors(activeVenueId, (cloudVendors) => {
             if (cloudVendors.length > 0) {
                 setVendors(cloudVendors);
                 onUpdateVendors(cloudVendors);

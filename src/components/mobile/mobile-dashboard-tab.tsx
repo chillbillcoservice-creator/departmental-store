@@ -55,7 +55,7 @@ export function MobileDashboardTab({
     const [isPoDialogOpen, setIsPoDialogOpen] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
-    // Filter today's local bills as fallback if cloud summary isn't active
+    // Filter today's local bills
     const todayBills = useMemo(() => {
         const todayStr = new Date().toDateString();
         return bills.filter(b => {
@@ -64,7 +64,16 @@ export function MobileDashboardTab({
         });
     }, [bills]);
 
-    // Compute live metrics (prefer live cloud summary if available, fallback to today's bills)
+    // Filter today's cloud bills as an immediate, real-time fallback
+    const todayCloudBills = useMemo(() => {
+        const todayStr = new Date().toDateString();
+        return recentCloudBills.filter(b => {
+            const bDate = b.completedAt ? new Date(b.completedAt) : (b.timestamp ? new Date(b.timestamp) : null);
+            return bDate && bDate.toDateString() === todayStr;
+        });
+    }, [recentCloudBills]);
+
+    // Compute live metrics (prefer live cloud summary if available, then recent cloud bills, then local bills)
     const metrics = useMemo(() => {
         if (liveSalesSummary && liveSalesSummary.billCount > 0) {
             const total = liveSalesSummary.totalSales || 0;
@@ -79,25 +88,29 @@ export function MobileDashboardTab({
             };
         }
 
-        const total = todayBills.reduce((s, b) => s + (b.total || 0), 0);
-        const count = todayBills.length;
+        // Active bill source: prefer cloud bills synced from counter, fallback to local bills
+        const activeBills = todayCloudBills.length > 0 ? todayCloudBills : todayBills;
+
+        const total = activeBills.reduce((s, b) => s + (Number(b.total) || 0), 0);
+        const count = activeBills.length;
         const aov = count > 0 ? Math.round(total / count) : 0;
         let cash = 0;
         let online = 0;
 
-        todayBills.forEach(b => {
-            if (b.paymentMethod === 'Cash') cash += b.total;
-            else if (b.paymentMethod === 'Online') online += b.total;
+        activeBills.forEach(b => {
+            const billTotal = Number(b.total) || 0;
+            if (b.paymentMethod === 'Cash') cash += billTotal;
+            else if (b.paymentMethod === 'Online') online += billTotal;
             else if (b.paymentMethod === 'Split' && b.splitPayments) {
-                b.splitPayments.forEach(sp => {
-                    if (sp.method === 'Cash') cash += sp.amount;
-                    if (sp.method === 'Online') online += sp.amount;
+                b.splitPayments.forEach((sp: any) => {
+                    if (sp.method === 'Cash') cash += Number(sp.amount) || 0;
+                    if (sp.method === 'Online') online += Number(sp.amount) || 0;
                 });
             }
         });
 
         return { total, count, aov, cash, online };
-    }, [liveSalesSummary, todayBills]);
+    }, [liveSalesSummary, todayCloudBills, todayBills]);
 
     // Inventory Health
     const lowStockItems = useMemo(() => {

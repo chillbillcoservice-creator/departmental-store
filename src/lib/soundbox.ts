@@ -4,24 +4,29 @@
  * in English and Hindi using native Web Audio & Web Speech APIs.
  */
 
-// Mobile Web Audio unlock helper
-let isAudioUnlocked = false;
+// Mobile Web Audio unlock helper with persistent singleton AudioContext
+let sharedAudioContext: AudioContext | null = null;
+
+export function getSharedAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) return null;
+  if (!sharedAudioContext || sharedAudioContext.state === 'closed') {
+    try {
+      sharedAudioContext = new AudioCtx();
+    } catch {
+      return null;
+    }
+  }
+  return sharedAudioContext;
+}
 
 export function unlockAudioContext(): void {
-  if (typeof window === 'undefined' || isAudioUnlocked) return;
+  if (typeof window === 'undefined') return;
   try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-    if (AudioCtx) {
-      const dummy = new AudioCtx();
-      if (dummy.state === 'suspended') {
-        dummy.resume().then(() => {
-          isAudioUnlocked = true;
-          dummy.close().catch(() => {});
-        }).catch(() => {});
-      } else {
-        isAudioUnlocked = true;
-        dummy.close().catch(() => {});
-      }
+    const ctx = getSharedAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
     }
   } catch {}
 }
@@ -41,13 +46,19 @@ export function playKaChingSound(): Promise<void> {
         return;
       }
 
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtx) {
+      // Trigger mobile haptic feedback
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try {
+          navigator.vibrate([80, 40, 120]);
+        } catch {}
+      }
+
+      const ctx = getSharedAudioContext();
+      if (!ctx) {
         resolve();
         return;
       }
 
-      const ctx = new AudioCtx();
       if (ctx.state === 'suspended') {
         ctx.resume().catch(() => {});
       }
@@ -141,7 +152,6 @@ export function playKaChingSound(): Promise<void> {
       });
 
       setTimeout(() => {
-        ctx.close().catch(() => {});
         resolve();
       }, 950);
     } catch {
@@ -154,13 +164,16 @@ export function playKaChingSound(): Promise<void> {
 export function playSoundboxChime(): Promise<void> {
   return new Promise((resolve) => {
     try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!AudioCtx) {
+      const ctx = getSharedAudioContext();
+      if (!ctx) {
         resolve();
         return;
       }
 
-      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+
       const now = ctx.currentTime;
 
       // Chord tones: D5 (587.33 Hz), F#5 (739.99 Hz), A5 (880.00 Hz), D6 (1174.66 Hz)
@@ -190,7 +203,6 @@ export function playSoundboxChime(): Promise<void> {
       });
 
       setTimeout(() => {
-        ctx.close().catch(() => {});
         resolve();
       }, 900);
     } catch {

@@ -27,6 +27,19 @@ export interface LiveDailySales {
     lastUpdated?: any;
 }
 
+/**
+ * Sanitize venueId to prevent quoted or whitespace-padded path mismatches
+ * e.g. '"my-venue"' -> 'my-venue', ' my-venue ' -> 'my-venue'
+ */
+export const cleanVenueId = (rawId: string | null | undefined): string => {
+    if (!rawId) return '';
+    let clean = String(rawId).trim();
+    if ((clean.startsWith('"') && clean.endsWith('"')) || (clean.startsWith("'") && clean.endsWith("'"))) {
+        clean = clean.slice(1, -1).trim();
+    }
+    return clean;
+};
+
 export const getTodayDateKey = (): string => {
     const now = new Date();
     const y = now.getFullYear();
@@ -39,19 +52,23 @@ export const getTodayDateKey = (): string => {
  * Sync a completed bill from counter to Firestore & update the daily summary
  */
 export const syncCompletedBillToCloud = async (venueId: string, bill: Bill) => {
-    if (!venueId) return;
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId) {
+        console.warn("[FirestoreSync] Cannot sync bill: venueId is empty");
+        return;
+    }
     try {
         const db = getDb();
         const dateKey = getTodayDateKey();
         
         // 1. Save detailed bill to bills collection
-        const billRef = doc(db, 'venues', venueId, 'bills', bill.id);
+        const billRef = doc(db, 'venues', cleanId, 'bills', bill.id);
         const billData = {
             id: bill.id,
-            total: bill.total || 0,
-            subtotal: bill.subtotal || 0,
-            discount: bill.discount || 0,
-            vatAmount: bill.vatAmount || 0,
+            total: Number(bill.total || 0),
+            subtotal: Number(bill.subtotal || 0),
+            discount: Number(bill.discount || 0),
+            vatAmount: Number(bill.vatAmount || 0),
             paymentMethod: bill.paymentMethod || 'Online',
             splitPayments: bill.splitPayments || [],
             cashierName: bill.cashierName || 'Counter Staff',
@@ -59,8 +76,8 @@ export const syncCompletedBillToCloud = async (venueId: string, bill: Bill) => {
             itemCount: bill.orderItems?.length || 0,
             orderItems: (bill.orderItems || []).map(item => ({
                 name: item.name,
-                price: item.price,
-                quantity: item.quantity,
+                price: Number(item.price || 0),
+                quantity: Number(item.quantity || 1),
                 category: item.category || 'General'
             })),
             customerName: bill.customerDetails?.name || null,
@@ -71,31 +88,33 @@ export const syncCompletedBillToCloud = async (venueId: string, bill: Bill) => {
         await setDoc(billRef, billData, { merge: true });
 
         // 2. Atomically update daily summary
-        const summaryRef = doc(db, 'venues', venueId, 'dailyReports', dateKey);
+        const summaryRef = doc(db, 'venues', cleanId, 'dailyReports', dateKey);
         const isCash = bill.paymentMethod === 'Cash';
         const isOnline = bill.paymentMethod === 'Online';
         const isSplit = bill.paymentMethod === 'Split';
 
-        let cashPart = isCash ? bill.total : 0;
-        let onlinePart = isOnline ? bill.total : 0;
+        let cashPart = isCash ? Number(bill.total || 0) : 0;
+        let onlinePart = isOnline ? Number(bill.total || 0) : 0;
         if (isSplit && bill.splitPayments) {
             bill.splitPayments.forEach(sp => {
-                if (sp.method === 'Cash') cashPart += sp.amount;
-                if (sp.method === 'Online') onlinePart += sp.amount;
+                if (sp.method === 'Cash') cashPart += Number(sp.amount || 0);
+                if (sp.method === 'Online') onlinePart += Number(sp.amount || 0);
             });
         }
 
         await setDoc(summaryRef, {
             date: dateKey,
-            totalSales: increment(bill.total || 0),
+            totalSales: increment(Number(bill.total || 0)),
             billCount: increment(1),
             cashSales: increment(cashPart),
             onlineSales: increment(onlinePart),
-            splitSales: increment(isSplit ? bill.total : 0),
+            splitSales: increment(isSplit ? Number(bill.total || 0) : 0),
             lastUpdated: Timestamp.now()
         }, { merge: true });
+
+        console.log(`[FirestoreSync] ✅ Bill #${bill.id} (Rs. ${bill.total}) synced to cloud for venue: ${cleanId}`);
     } catch (e) {
-        console.error("Failed to sync bill to cloud:", e);
+        console.error("[FirestoreSync] ❌ Failed to sync bill to cloud:", e);
     }
 };
 
@@ -106,11 +125,12 @@ export const listenToLiveDailySales = (
     venueId: string, 
     onUpdate: (summary: LiveDailySales | null) => void
 ) => {
-    if (!venueId) return () => {};
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId) return () => {};
     try {
         const db = getDb();
         const dateKey = getTodayDateKey();
-        const summaryRef = doc(db, 'venues', venueId, 'dailyReports', dateKey);
+        const summaryRef = doc(db, 'venues', cleanId, 'dailyReports', dateKey);
 
         return onSnapshot(summaryRef, (snap) => {
             if (snap.exists()) {
@@ -137,12 +157,14 @@ export const listenToRecentBills = (
     onUpdate: (bills: any[]) => void,
     onNewBill?: (newBill: any) => void
 ) => {
-    if (!venueId) return () => {};
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId) return () => {};
     try {
         const db = getDb();
-        const billsRef = collection(db, 'venues', venueId, 'bills');
+        const billsRef = collection(db, 'venues', cleanId, 'bills');
         const q = query(billsRef, orderBy('completedAt', 'desc'), limit(limitCount));
         let isInitial = true;
+        const seenBillIds = new Set<string>();
 
         return onSnapshot(q, (snap) => {
             const list = snap.docs.map(d => ({
@@ -154,17 +176,21 @@ export const listenToRecentBills = (
 
             if (isInitial) {
                 isInitial = false;
+                snap.docs.forEach(d => seenBillIds.add(d.id));
                 return;
             }
 
             // Only fire onNewBill for newly completed bills after the initial snapshot
             snap.docChanges().forEach((change) => {
-                if (change.type === 'added') {
+                if (change.type === 'added' && !seenBillIds.has(change.doc.id)) {
+                    seenBillIds.add(change.doc.id);
+                    const data = change.doc.data();
                     const billData = {
                         id: change.doc.id,
-                        ...change.doc.data(),
-                        completedAt: change.doc.data().completedAt?.toDate?.() || new Date()
+                        ...data,
+                        completedAt: data.completedAt?.toDate?.() || new Date()
                     };
+                    console.log(`[FirestoreSync] 🔔 New live checkout received! Bill #${billData.id} - Rs. ${(billData as any).total}`);
                     onNewBill?.(billData);
                 }
             });
@@ -181,10 +207,11 @@ export const listenToRecentBills = (
  * Save new or updated employee to Firestore
  */
 export const saveEmployeeToCloud = async (venueId: string, emp: Employee) => {
-    if (!venueId || !emp.id) return;
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId || !emp.id) return;
     try {
         const db = getDb();
-        const empRef = doc(db, 'venues', venueId, 'employees', emp.id);
+        const empRef = doc(db, 'venues', cleanId, 'employees', emp.id);
         await setDoc(empRef, {
             ...emp,
             updatedAt: Timestamp.now()
@@ -198,10 +225,11 @@ export const saveEmployeeToCloud = async (venueId: string, emp: Employee) => {
  * Delete employee from Firestore
  */
 export const deleteEmployeeFromCloud = async (venueId: string, employeeId: string) => {
-    if (!venueId || !employeeId) return;
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId || !employeeId) return;
     try {
         const db = getDb();
-        const empRef = doc(db, 'venues', venueId, 'employees', employeeId);
+        const empRef = doc(db, 'venues', cleanId, 'employees', employeeId);
         await deleteDoc(empRef);
     } catch (e) {
         console.error("Failed to delete employee from cloud:", e);
@@ -212,12 +240,13 @@ export const deleteEmployeeFromCloud = async (venueId: string, employeeId: strin
  * Batch sync employees to Firestore
  */
 export const syncEmployeesToCloud = async (venueId: string, employees: Employee[]) => {
-    if (!venueId || !employees.length) return;
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId || !employees.length) return;
     try {
         const db = getDb();
         const batch = writeBatch(db);
         employees.forEach(emp => {
-            const empRef = doc(db, 'venues', venueId, 'employees', emp.id);
+            const empRef = doc(db, 'venues', cleanId, 'employees', emp.id);
             batch.set(empRef, { ...emp, updatedAt: Timestamp.now() }, { merge: true });
         });
         await batch.commit();
@@ -234,10 +263,11 @@ export const updateStaffPinInCloud = async (
     employeeId: string, 
     newPin: string
 ) => {
-    if (!venueId || !employeeId) return;
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId || !employeeId) return;
     try {
         const db = getDb();
-        const empRef = doc(db, 'venues', venueId, 'employees', employeeId);
+        const empRef = doc(db, 'venues', cleanId, 'employees', employeeId);
         await setDoc(empRef, {
             loginCode: newPin,
             updatedAt: Timestamp.now()
@@ -255,10 +285,11 @@ export const updateStaffPermissionsInCloud = async (
     employeeId: string, 
     allowedTabs: string[]
 ) => {
-    if (!venueId || !employeeId) return;
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId || !employeeId) return;
     try {
         const db = getDb();
-        const empRef = doc(db, 'venues', venueId, 'employees', employeeId);
+        const empRef = doc(db, 'venues', cleanId, 'employees', employeeId);
         await setDoc(empRef, {
             allowedTabs,
             updatedAt: Timestamp.now()
@@ -275,10 +306,11 @@ export const listenToLiveEmployees = (
     venueId: string, 
     onUpdate: (employees: Employee[]) => void
 ) => {
-    if (!venueId) return () => {};
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId) return () => {};
     try {
         const db = getDb();
-        const employeesRef = collection(db, 'venues', venueId, 'employees');
+        const employeesRef = collection(db, 'venues', cleanId, 'employees');
 
         return onSnapshot(employeesRef, (snap) => {
             const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Employee));
@@ -296,10 +328,11 @@ export const listenToLiveEmployees = (
  * Sync Purchase Order to Firestore
  */
 export const syncPurchaseOrderToCloud = async (venueId: string, po: PurchaseOrder) => {
-    if (!venueId || !po.id) return;
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId || !po.id) return;
     try {
         const db = getDb();
-        const poRef = doc(db, 'venues', venueId, 'purchaseOrders', po.id);
+        const poRef = doc(db, 'venues', cleanId, 'purchaseOrders', po.id);
         await setDoc(poRef, {
             ...po,
             date: po.date instanceof Date ? Timestamp.fromDate(po.date) : Timestamp.now(),
@@ -317,10 +350,11 @@ export const listenToLivePurchaseOrders = (
     venueId: string, 
     onUpdate: (pos: PurchaseOrder[]) => void
 ) => {
-    if (!venueId) return () => {};
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId) return () => {};
     try {
         const db = getDb();
-        const posRef = collection(db, 'venues', venueId, 'purchaseOrders');
+        const posRef = collection(db, 'venues', cleanId, 'purchaseOrders');
 
         return onSnapshot(posRef, (snap) => {
             const list = snap.docs.map(d => {
@@ -345,10 +379,11 @@ export const listenToLivePurchaseOrders = (
  * Sync Inventory to Cloud
  */
 export const syncInventoryToCloud = async (venueId: string, items: InventoryItem[]) => {
-    if (!venueId || !items.length) return;
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId || !items.length) return;
     try {
         const db = getDb();
-        const invRef = doc(db, 'venues', venueId, 'catalogs', 'main');
+        const invRef = doc(db, 'venues', cleanId, 'catalogs', 'main');
         await setDoc(invRef, {
             items,
             itemCount: items.length,
@@ -366,10 +401,11 @@ export const listenToLiveInventory = (
     venueId: string, 
     onUpdate: (items: InventoryItem[]) => void
 ) => {
-    if (!venueId) return () => {};
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId) return () => {};
     try {
         const db = getDb();
-        const invRef = doc(db, 'venues', venueId, 'catalogs', 'main');
+        const invRef = doc(db, 'venues', cleanId, 'catalogs', 'main');
 
         return onSnapshot(invRef, (snap) => {
             if (snap.exists() && snap.data()?.items) {
@@ -388,10 +424,11 @@ export const listenToLiveInventory = (
  * Sync Vendors to Cloud
  */
 export const syncVendorsToCloud = async (venueId: string, vendors: Vendor[]) => {
-    if (!venueId || !vendors.length) return;
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId || !vendors.length) return;
     try {
         const db = getDb();
-        const vendorsRef = doc(db, 'venues', venueId, 'catalogs', 'vendors');
+        const vendorsRef = doc(db, 'venues', cleanId, 'catalogs', 'vendors');
         await setDoc(vendorsRef, {
             vendors,
             count: vendors.length,
@@ -409,10 +446,11 @@ export const listenToLiveVendors = (
     venueId: string, 
     onUpdate: (vendors: Vendor[]) => void
 ) => {
-    if (!venueId) return () => {};
+    const cleanId = cleanVenueId(venueId);
+    if (!cleanId) return () => {};
     try {
         const db = getDb();
-        const vendorsRef = doc(db, 'venues', venueId, 'catalogs', 'vendors');
+        const vendorsRef = doc(db, 'venues', cleanId, 'catalogs', 'vendors');
 
         return onSnapshot(vendorsRef, (snap) => {
             if (snap.exists() && snap.data()?.vendors) {
