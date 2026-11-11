@@ -34,6 +34,7 @@ const eventEmitter = new EventEmitter();
 };
 
 import { DEPARTMENTAL_STORE_CATALOG } from '../src/lib/departmental-catalog';
+import { formatLicenseKeyInput } from '../src/lib/licensing';
 import {
   sanitizeWhatsAppPhone,
   formatWhatsAppBillText,
@@ -614,6 +615,42 @@ async function runTests() {
   const stockAdjustedInv = mergedInventory.map(i => i.id === '8901030000099' ? { ...i, stock: 55 } : i);
   const hash2 = `${stockAdjustedInv.length}-${stockAdjustedInv.map(i => `${i.id}:${i.stock}`).join(',')}`;
   assert(hash1 !== hash2, 'Inventory hash signature detects stock adjustments for cloud sync');
+
+  // -------------------------------------------------------------------------
+  // TEST GROUP 9: LICENSE KEY AUTO-HYPHENATION & FORMATTING AUDIT
+  // -------------------------------------------------------------------------
+  console.log('\n🔑 [9/9] Auditing License Key Auto-Hyphenation & Formatting Engine...');
+
+  // 1. Typing 'cbill' auto-capitalizes and appends hyphen
+  const t1 = formatLicenseKeyInput('cbill', 'cbil');
+  assert(t1 === 'CBILL-', 'Typing "cbill" automatically produces "CBILL-"', t1);
+
+  // 2. Typing next character after hyphen continues smoothly
+  const t2 = formatLicenseKeyInput('CBILL-2', 'CBILL-');
+  assert(t2 === 'CBILL-2', 'Typing "2" after hyphen produces "CBILL-2"', t2);
+
+  // 3. Typing 4-digit year auto-appends second hyphen
+  const t3 = formatLicenseKeyInput('CBILL-2026', 'CBILL-202');
+  assert(t3 === 'CBILL-2026-', 'Typing full year "2026" automatically produces "CBILL-2026-"', t3);
+
+  // 4. Backspace from hyphen does not trap or re-add hyphen
+  const t4 = formatLicenseKeyInput('CBILL', 'CBILL-');
+  assert(t4 === 'CBILL', 'Backspacing from "CBILL-" cleanly yields "CBILL" without hyphen loop', t4);
+
+  const t5 = formatLicenseKeyInput('CBILL-2026', 'CBILL-2026-');
+  assert(t5 === 'CBILL-2026', 'Backspacing from "CBILL-2026-" cleanly yields "CBILL-2026"', t5);
+
+  // 5. Pasting raw unhyphenated string formats correctly
+  const t6 = formatLicenseKeyInput('cbill2026e5sk', '');
+  assert(t6 === 'CBILL-2026-E5SK', 'Pasting raw lowercase "cbill2026e5sk" formats to "CBILL-2026-E5SK"', t6);
+
+  // 6. Pasting with erratic whitespace or symbols cleans properly
+  const t7 = formatLicenseKeyInput('  cbill - 2026 - st2r  ', '');
+  assert(t7 === 'CBILL-2026-ST2R', 'Pasting messy formatted string cleans to "CBILL-2026-ST2R"', t7);
+
+  // 7. Maximum 13 alphanumeric chars (CBILL + 4 year + 4 random) capped
+  const t8 = formatLicenseKeyInput('cbill2026e5sk9999', '');
+  assert(t8 === 'CBILL-2026-E5SK', 'Input past 13 chars is safely capped to 15-char license format', t8);
 
   // Final summary
   console.log('\n======================================================');

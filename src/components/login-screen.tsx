@@ -22,7 +22,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { initializeFirebase } from "@/firebase";
 import { useTheme } from "next-themes";
 import { ThemeToggle } from "./theme-toggle";
-import { verifyStoreLicense, LicenseCheckResult } from "@/lib/licensing";
+import { verifyStoreLicense, LicenseCheckResult, formatLicenseKeyInput } from "@/lib/licensing";
 import { ensureStoreTerminalAuth } from "@/lib/firestore-sync";
 
 /* ═══════════════════════════════════════════════════
@@ -681,7 +681,12 @@ export default function LoginScreen({
                                 <input
                                     type="text"
                                     value={passwordInput}
-                                    onChange={e => { setPasswordInput(e.target.value.toUpperCase()); setError(""); setSuccessMsg(""); }}
+                                    onChange={e => {
+                                        const formatted = formatLicenseKeyInput(e.target.value, passwordInput);
+                                        setPasswordInput(formatted);
+                                        setError("");
+                                        setSuccessMsg("");
+                                    }}
                                     placeholder="License Key (e.g. CBILL-2026-XXXX)"
                                     className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm font-mono tracking-wider transition-all focus:outline-none uppercase"
                                     style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
@@ -836,7 +841,12 @@ export default function LoginScreen({
                                             <input
                                                 type="text"
                                                 value={passwordInput}
-                                                onChange={e => { setPasswordInput(e.target.value.toUpperCase()); setError(""); setSuccessMsg(""); }}
+                                                onChange={e => {
+                                                    const formatted = formatLicenseKeyInput(e.target.value, passwordInput);
+                                                    setPasswordInput(formatted);
+                                                    setError("");
+                                                    setSuccessMsg("");
+                                                }}
                                                 placeholder="License Key (e.g. CBILL-2026-XXXX)"
                                                 className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm font-mono tracking-wider transition-all focus:outline-none uppercase"
                                                 style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}
@@ -912,7 +922,12 @@ export default function LoginScreen({
                                             <input
                                                 type="text"
                                                 value={passwordInput}
-                                                onChange={e => { setPasswordInput(e.target.value.toUpperCase()); setError(""); setSuccessMsg(""); }}
+                                                onChange={e => {
+                                                    const formatted = formatLicenseKeyInput(e.target.value, passwordInput);
+                                                    setPasswordInput(formatted);
+                                                    setError("");
+                                                    setSuccessMsg("");
+                                                }}
                                                 placeholder="License Key (e.g. CBILL-2026-XXXX)"
                                                 className="w-full h-11 pl-10 pr-3 rounded-xl border text-sm font-mono tracking-wider transition-all focus:outline-none uppercase"
                                                 style={{ background: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)", color: T.text, borderColor: error ? "#ef4444" : T.borderLt }}

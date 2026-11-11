@@ -80,6 +80,39 @@ export function generateLicenseKey(prefix = 'CBILL'): string {
 }
 
 /**
+ * Automatically format and insert hyphens for license key input fields.
+ * Format: CBILL-YEAR-XXXX (e.g. CBILL-2026-E5SK)
+ * - Auto-capitalizes input.
+ * - Auto-inserts '-' after 'CBILL' (5 chars) and after year (9 chars total).
+ * - Smooth backspace handling without getting stuck in hyphen loops.
+ * - Auto-formats pasted unhyphenated strings.
+ */
+export function formatLicenseKeyInput(input: string, prevValue: string = ''): string {
+  const raw = (input || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const isDeleting = (input || '').length < (prevValue || '').length;
+  if (raw.length === 0) return '';
+
+  const segment1 = raw.slice(0, 5);
+  const segment2 = raw.slice(5, 9);
+  const segment3 = raw.slice(9, 13);
+
+  let result = segment1;
+  if (raw.length > 5) {
+    result += '-' + segment2;
+  } else if (raw.length === 5 && !isDeleting) {
+    result += '-';
+  }
+
+  if (raw.length > 9) {
+    result += '-' + segment3;
+  } else if (raw.length === 9 && !isDeleting) {
+    result += '-';
+  }
+
+  return result;
+}
+
+/**
  * Save cryptographically signed offline token to localStorage
  */
 export function saveOfflineLicenseToken(license: StoreLicense): void {

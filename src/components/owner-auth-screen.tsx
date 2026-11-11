@@ -12,7 +12,7 @@ import {
 import { doc, getDoc } from "firebase/firestore";
 import { initializeFirebase } from "@/firebase";
 import { cn } from "@/lib/utils";
-import { verifyStoreLicense } from "@/lib/licensing";
+import { verifyStoreLicense, formatLicenseKeyInput } from "@/lib/licensing";
 
 interface OwnerAuthScreenProps {
   onAuthSuccess: (user: User, venueId: string, isNewUser: boolean) => void;
@@ -423,7 +423,12 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
                 <input
                   type="text"
                   value={password}
-                  onChange={(e) => { setPassword(e.target.value.toUpperCase()); setError(""); setSuccessMsg(""); }}
+                  onChange={(e) => {
+                    const formatted = formatLicenseKeyInput(e.target.value, password);
+                    setPassword(formatted);
+                    setError("");
+                    setSuccessMsg("");
+                  }}
                   placeholder="License Key (e.g. CBILL-2026-XXXX)"
                   style={{
                     width: '100%',
