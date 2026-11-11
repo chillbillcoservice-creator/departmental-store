@@ -17,7 +17,7 @@ import { LanguageProvider } from "@/contexts/language-context";
 import { buildUsername } from "@/lib/generate-username";
 import { saveVenueSetup } from "@/lib/db";
 import { DEPARTMENTAL_STORE_CATALOG, isLegacyInventory } from "@/lib/departmental-catalog";
-import { listenToLiveEmployees, cleanVenueId } from "@/lib/firestore-sync";
+import { listenToLiveEmployees, cleanVenueId, ensureStoreTerminalAuth, DEFAULT_STORE_UID } from "@/lib/firestore-sync";
 
 interface AppEntryProps {
   initialMenu: MenuCategory[];
@@ -174,15 +174,30 @@ export default function AppEntry({
 
   const effectiveVenueId = cleanVenueId(venueId) || 
     (typeof window !== 'undefined' ? cleanVenueId(localStorage.getItem('venueId')) : '') || 
-    cleanVenueId(venueDetails?.name || venueName || '');
+    DEFAULT_STORE_UID;
 
-  // Auto-heal local storage and state if cleaned ID differs
+  // Auto-heal local storage, authenticate store terminal, and link canonical venue UID
+  useEffect(() => {
+    ensureStoreTerminalAuth(ownerDetails?.email || 'chillbill.co.service@gmail.com').then((canonicalUid) => {
+      const activeUid = canonicalUid || DEFAULT_STORE_UID;
+      if (activeUid && (!venueId || venueId !== activeUid || venueId.includes(' ') || venueId.length < 20)) {
+        console.log(`[AppEntry] 🔐 Canonical store terminal UID linked: ${activeUid}`);
+        setVenueId(activeUid);
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('venueId', activeUid);
+          } catch {}
+        }
+      }
+    });
+  }, [ownerDetails?.email, venueId, setVenueId]);
+
   useEffect(() => {
     if (effectiveVenueId && (!venueId || venueId !== effectiveVenueId)) {
       setVenueId(effectiveVenueId);
       if (typeof window !== 'undefined') {
         try {
-          localStorage.setItem('venueId', JSON.stringify(effectiveVenueId));
+          localStorage.setItem('venueId', effectiveVenueId);
         } catch {}
       }
     }

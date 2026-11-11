@@ -54,7 +54,7 @@ import { compileStoreReport } from '../src/lib/report-generator';
 import { buildUsername, generateUniqueUsername } from '../src/lib/generate-username';
 import { subscribeToAmountMatch, simulateCounterStandeePayment, generateMockUtr } from '../src/lib/payment-listener';
 import { playKaChingSound, playScanBeep, unlockAudioContext, getSharedAudioContext } from '../src/lib/soundbox';
-import { cleanVenueId } from '../src/lib/firestore-sync';
+import { cleanVenueId, DEFAULT_STORE_UID, DEFAULT_STORE_EMAIL, buildTerminalCredentials } from '../src/lib/firestore-sync';
 import type {
   Bill,
   Customer,
@@ -377,6 +377,12 @@ async function runTests() {
   assert(cleanVenueId('  krishna-supermart  ') === 'krishna-supermart', 'cleanVenueId trims leading and trailing whitespace');
   assert(cleanVenueId(null) === '', 'cleanVenueId handles null gracefully');
   assert(cleanVenueId(undefined) === '', 'cleanVenueId handles undefined gracefully');
+
+  // Terminal credentials & canonical UID resolution tests
+  assert(DEFAULT_STORE_UID === 'kiIIHjUyCcfUMqHjd1DfnS595DU2', 'Canonical store terminal UID is correctly registered (kiIIHjUyCcfUMqHjd1DfnS595DU2)');
+  const termCreds = buildTerminalCredentials(DEFAULT_STORE_EMAIL);
+  assert(termCreds.terminalEmail === 'chillbill_co_service_gmail_com@chillbill-terminal.pos', 'Terminal identity email generated deterministically');
+  assert(termCreds.terminalPassword === 'cbill_chillbillcoservicegmailcom_2026!', 'Terminal identity password generated deterministically');
 
   // Verify Ka-Ching sound generator is callable without throwing
   let soundPromiseResolved = false;

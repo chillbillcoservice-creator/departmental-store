@@ -30,6 +30,9 @@ import {
     listenToLivePurchaseOrders, 
     listenToLiveInventory, 
     listenToLiveVendors,
+    fetchLiveDailySales,
+    fetchRecentBills,
+    DEFAULT_STORE_UID,
     LiveDailySales,
     syncInventoryToCloud,
     syncVendorsToCloud,
@@ -145,12 +148,35 @@ export function OwnerMobileLayout({
         });
     }, []);
 
-    // Sync cloud listeners on mount if venueId is available
-    useEffect(() => {
-        const activeVenueId = cleanVenueId(venueId);
-        if (!activeVenueId) return;
+    const activeVenueId = cleanVenueId(venueId) || DEFAULT_STORE_UID;
 
+    // Instant direct cloud fetch for immediate refresh
+    const handleManualRefresh = useCallback(async () => {
+        try {
+            console.log(`[OwnerMobile] Fetching fresh sales & bills for: "${activeVenueId}"`);
+            const [sales, bills] = await Promise.all([
+                fetchLiveDailySales(activeVenueId),
+                fetchRecentBills(activeVenueId, 8)
+            ]);
+            if (sales) {
+                console.log("[OwnerMobile] Live sales fetched successfully:", sales);
+                setLiveDailySales(sales);
+            }
+            if (bills && bills.length > 0) {
+                console.log(`[OwnerMobile] Live bills fetched (${bills.length} bills)`);
+                setRecentCloudBills(bills);
+            }
+        } catch (e) {
+            console.error("[OwnerMobile] Direct fetch error:", e);
+        }
+    }, [activeVenueId]);
+
+    // Sync cloud listeners on mount
+    useEffect(() => {
         console.log(`[OwnerMobile] Attaching live cloud listeners for venueId: "${activeVenueId}"`);
+
+        // Trigger immediate fetch so dashboard updates without waiting for listener push
+        handleManualRefresh();
 
         // 1. Live sales summary
         const unsubSales = listenToLiveDailySales(activeVenueId, (summary) => {
@@ -179,6 +205,8 @@ export function OwnerMobileLayout({
                     paymentMethod: newBill.paymentMethod || 'Online',
                     cashierName: newBill.cashierName
                 });
+                // Also trigger immediate refresh to recalculate today's totals
+                handleManualRefresh();
             }
         );
 
@@ -216,7 +244,7 @@ export function OwnerMobileLayout({
             unsubInv();
             unsubVendors();
         };
-    }, [venueId, onUpdateEmployees, onUpdateVendors]);
+    }, [activeVenueId, handleManualRefresh, onUpdateEmployees, onUpdateVendors]);
 
     // Initial cloud backup of inventory, vendors, and staff if not yet uploaded
     useEffect(() => {
@@ -340,9 +368,7 @@ export function OwnerMobileLayout({
                         liveSalesSummary={liveDailySales}
                         recentCloudBills={recentCloudBills}
                         onSavePO={handleSavePO}
-                        onRefresh={() => {
-                            // Quick refresh pulse
-                        }}
+                        onRefresh={handleManualRefresh}
                     />
                 )}
 

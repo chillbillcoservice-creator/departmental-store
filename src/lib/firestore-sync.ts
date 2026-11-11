@@ -2,6 +2,8 @@ import {
     collection, 
     doc, 
     setDoc, 
+    getDoc,
+    getDocs,
     updateDoc, 
     deleteDoc,
     writeBatch,
@@ -12,10 +14,54 @@ import {
     Timestamp, 
     increment 
 } from 'firebase/firestore';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { initializeFirebase } from '@/firebase';
 import { Bill, InventoryItem, Employee, Vendor, PurchaseOrder } from './types';
 
 const getDb = () => initializeFirebase().firestore;
+
+export const DEFAULT_STORE_EMAIL = 'chillbill.co.service@gmail.com';
+export const DEFAULT_STORE_UID = 'kiIIHjUyCcfUMqHjd1DfnS595DU2';
+
+/**
+ * Builds deterministic terminal credentials for a store
+ */
+export const buildTerminalCredentials = (email: string) => {
+    const cleanEmail = (email || DEFAULT_STORE_EMAIL).toLowerCase().trim();
+    const terminalEmail = `${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}@chillbill-terminal.pos`;
+    const terminalPassword = `cbill_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '')}_2026!`;
+    return { terminalEmail, terminalPassword };
+};
+
+/**
+ * Ensures Firebase Auth has an active signed-in session for the store.
+ * If unauthenticated, silently logs in using the registered store terminal identity.
+ * Returns the authenticated UID.
+ */
+export const ensureStoreTerminalAuth = async (storeEmail?: string): Promise<string> => {
+    try {
+        const { auth } = initializeFirebase();
+        if (auth.currentUser && auth.currentUser.uid) {
+            return auth.currentUser.uid;
+        }
+
+        const { terminalEmail, terminalPassword } = buildTerminalCredentials(storeEmail || DEFAULT_STORE_EMAIL);
+        const cred = await signInWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+        if (cred?.user?.uid) {
+            console.log(`[FirestoreSync] 🔐 Auto-authenticated store terminal UID: ${cred.user.uid}`);
+            if (typeof window !== 'undefined') {
+                try {
+                    localStorage.setItem('venueId', cred.user.uid);
+                } catch {}
+            }
+            return cred.user.uid;
+        }
+        return DEFAULT_STORE_UID;
+    } catch (e: any) {
+        console.warn("[FirestoreSync] Terminal auto-auth notice:", e?.message || e);
+        return DEFAULT_STORE_UID;
+    }
+};
 
 export interface LiveDailySales {
     date: string; // YYYY-MM-DD
@@ -52,7 +98,14 @@ export const getTodayDateKey = (): string => {
  * Sync a completed bill from counter to Firestore & update the daily summary
  */
 export const syncCompletedBillToCloud = async (venueId: string, bill: Bill) => {
-    const cleanId = cleanVenueId(venueId);
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        const authedUid = await ensureStoreTerminalAuth();
+        if (authedUid) cleanId = authedUid;
+    } else {
+        await ensureStoreTerminalAuth();
+    }
+
     if (!cleanId) {
         console.warn("[FirestoreSync] Cannot sync bill: venueId is empty");
         return;
@@ -119,32 +172,103 @@ export const syncCompletedBillToCloud = async (venueId: string, bill: Bill) => {
 };
 
 /**
+ * Fetch live today's sales summary once (direct read)
+ */
+export const fetchLiveDailySales = async (venueId: string): Promise<LiveDailySales | null> => {
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        cleanId = await ensureStoreTerminalAuth();
+    }
+    if (!cleanId) return null;
+    try {
+        const db = getDb();
+        const dateKey = getTodayDateKey();
+        const summaryRef = doc(db, 'venues', cleanId, 'dailyReports', dateKey);
+        const snap = await getDoc(summaryRef);
+        if (snap.exists()) {
+            return snap.data() as LiveDailySales;
+        }
+        return null;
+    } catch (e) {
+        console.error("Failed to fetch live daily sales:", e);
+        return null;
+    }
+};
+
+/**
+ * Fetch recent bills once (direct read)
+ */
+export const fetchRecentBills = async (venueId: string, limitCount: number = 10): Promise<any[]> => {
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        cleanId = await ensureStoreTerminalAuth();
+    }
+    if (!cleanId) return [];
+    try {
+        const db = getDb();
+        const billsRef = collection(db, 'venues', cleanId, 'bills');
+        const q = query(billsRef, orderBy('completedAt', 'desc'), limit(limitCount));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => ({
+            id: d.id,
+            ...d.data(),
+            completedAt: d.data().completedAt?.toDate?.() || new Date()
+        }));
+    } catch (e) {
+        console.error("Failed to fetch recent bills:", e);
+        return [];
+    }
+};
+
+/**
  * Listen to live today's sales summary for the mobile dashboard
  */
 export const listenToLiveDailySales = (
     venueId: string, 
     onUpdate: (summary: LiveDailySales | null) => void
 ) => {
-    const cleanId = cleanVenueId(venueId);
-    if (!cleanId) return () => {};
-    try {
-        const db = getDb();
-        const dateKey = getTodayDateKey();
-        const summaryRef = doc(db, 'venues', cleanId, 'dailyReports', dateKey);
+    let cleanId = cleanVenueId(venueId);
+    let unsub: (() => void) = () => {};
+    let isCancelled = false;
 
-        return onSnapshot(summaryRef, (snap) => {
-            if (snap.exists()) {
-                onUpdate(snap.data() as LiveDailySales);
-            } else {
-                onUpdate(null);
-            }
-        }, (err) => {
-            console.error("Sales summary listener error:", err);
-        });
-    } catch (e) {
-        console.error("Failed to attach sales summary listener:", e);
-        return () => {};
-    }
+    const setupListener = async () => {
+        if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+            const authedUid = await ensureStoreTerminalAuth();
+            if (authedUid) cleanId = authedUid;
+        } else {
+            await ensureStoreTerminalAuth();
+        }
+
+        if (isCancelled || !cleanId) return;
+
+        try {
+            const db = getDb();
+            const dateKey = getTodayDateKey();
+            const summaryRef = doc(db, 'venues', cleanId, 'dailyReports', dateKey);
+
+            unsub = onSnapshot(summaryRef, (snap) => {
+                if (snap.exists()) {
+                    onUpdate(snap.data() as LiveDailySales);
+                } else {
+                    onUpdate(null);
+                }
+            }, async (err) => {
+                console.error("Sales summary listener error:", err);
+                if (err?.code === 'permission-denied') {
+                    await ensureStoreTerminalAuth();
+                }
+            });
+        } catch (e) {
+            console.error("Failed to attach sales summary listener:", e);
+        }
+    };
+
+    setupListener();
+
+    return () => {
+        isCancelled = true;
+        unsub();
+    };
 };
 
 /**
@@ -157,57 +281,82 @@ export const listenToRecentBills = (
     onUpdate: (bills: any[]) => void,
     onNewBill?: (newBill: any) => void
 ) => {
-    const cleanId = cleanVenueId(venueId);
-    if (!cleanId) return () => {};
-    try {
-        const db = getDb();
-        const billsRef = collection(db, 'venues', cleanId, 'bills');
-        const q = query(billsRef, orderBy('completedAt', 'desc'), limit(limitCount));
-        let isInitial = true;
-        const seenBillIds = new Set<string>();
+    let cleanId = cleanVenueId(venueId);
+    let unsub: (() => void) = () => {};
+    let isCancelled = false;
 
-        return onSnapshot(q, (snap) => {
-            const list = snap.docs.map(d => ({
-                id: d.id,
-                ...d.data(),
-                completedAt: d.data().completedAt?.toDate?.() || new Date()
-            }));
-            onUpdate(list);
+    const setupListener = async () => {
+        if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+            const authedUid = await ensureStoreTerminalAuth();
+            if (authedUid) cleanId = authedUid;
+        } else {
+            await ensureStoreTerminalAuth();
+        }
 
-            if (isInitial) {
-                isInitial = false;
-                snap.docs.forEach(d => seenBillIds.add(d.id));
-                return;
-            }
+        if (isCancelled || !cleanId) return;
 
-            // Only fire onNewBill for newly completed bills after the initial snapshot
-            snap.docChanges().forEach((change) => {
-                if (change.type === 'added' && !seenBillIds.has(change.doc.id)) {
-                    seenBillIds.add(change.doc.id);
-                    const data = change.doc.data();
-                    const billData = {
-                        id: change.doc.id,
-                        ...data,
-                        completedAt: data.completedAt?.toDate?.() || new Date()
-                    };
-                    console.log(`[FirestoreSync] 🔔 New live checkout received! Bill #${billData.id} - Rs. ${(billData as any).total}`);
-                    onNewBill?.(billData);
+        try {
+            const db = getDb();
+            const billsRef = collection(db, 'venues', cleanId, 'bills');
+            const q = query(billsRef, orderBy('completedAt', 'desc'), limit(limitCount));
+            let isInitial = true;
+            const seenBillIds = new Set<string>();
+
+            unsub = onSnapshot(q, (snap) => {
+                const list = snap.docs.map(d => ({
+                    id: d.id,
+                    ...d.data(),
+                    completedAt: d.data().completedAt?.toDate?.() || new Date()
+                }));
+                onUpdate(list);
+
+                if (isInitial) {
+                    isInitial = false;
+                    snap.docs.forEach(d => seenBillIds.add(d.id));
+                    return;
+                }
+
+                // Only fire onNewBill for newly completed bills after the initial snapshot
+                snap.docChanges().forEach((change) => {
+                    if (change.type === 'added' && !seenBillIds.has(change.doc.id)) {
+                        seenBillIds.add(change.doc.id);
+                        const data = change.doc.data();
+                        const billData = {
+                            id: change.doc.id,
+                            ...data,
+                            completedAt: data.completedAt?.toDate?.() || new Date()
+                        };
+                        console.log(`[FirestoreSync] 🔔 New live checkout received! Bill #${billData.id} - Rs. ${(billData as any).total}`);
+                        onNewBill?.(billData);
+                    }
+                });
+            }, async (err) => {
+                console.error("Recent bills listener error:", err);
+                if (err?.code === 'permission-denied') {
+                    await ensureStoreTerminalAuth();
                 }
             });
-        }, (err) => {
-            console.error("Recent bills listener error:", err);
-        });
-    } catch (e) {
-        console.error("Failed to attach recent bills listener:", e);
-        return () => {};
-    }
+        } catch (e) {
+            console.error("Failed to attach recent bills listener:", e);
+        }
+    };
+
+    setupListener();
+
+    return () => {
+        isCancelled = true;
+        unsub();
+    };
 };
 
 /**
  * Save new or updated employee to Firestore
  */
 export const saveEmployeeToCloud = async (venueId: string, emp: Employee) => {
-    const cleanId = cleanVenueId(venueId);
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        cleanId = await ensureStoreTerminalAuth();
+    }
     if (!cleanId || !emp.id) return;
     try {
         const db = getDb();
@@ -225,7 +374,10 @@ export const saveEmployeeToCloud = async (venueId: string, emp: Employee) => {
  * Delete employee from Firestore
  */
 export const deleteEmployeeFromCloud = async (venueId: string, employeeId: string) => {
-    const cleanId = cleanVenueId(venueId);
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        cleanId = await ensureStoreTerminalAuth();
+    }
     if (!cleanId || !employeeId) return;
     try {
         const db = getDb();
@@ -240,7 +392,10 @@ export const deleteEmployeeFromCloud = async (venueId: string, employeeId: strin
  * Batch sync employees to Firestore
  */
 export const syncEmployeesToCloud = async (venueId: string, employees: Employee[]) => {
-    const cleanId = cleanVenueId(venueId);
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        cleanId = await ensureStoreTerminalAuth();
+    }
     if (!cleanId || !employees.length) return;
     try {
         const db = getDb();
@@ -263,7 +418,10 @@ export const updateStaffPinInCloud = async (
     employeeId: string, 
     newPin: string
 ) => {
-    const cleanId = cleanVenueId(venueId);
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        cleanId = await ensureStoreTerminalAuth();
+    }
     if (!cleanId || !employeeId) return;
     try {
         const db = getDb();
@@ -285,7 +443,10 @@ export const updateStaffPermissionsInCloud = async (
     employeeId: string, 
     allowedTabs: string[]
 ) => {
-    const cleanId = cleanVenueId(venueId);
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        cleanId = await ensureStoreTerminalAuth();
+    }
     if (!cleanId || !employeeId) return;
     try {
         const db = getDb();
@@ -306,29 +467,51 @@ export const listenToLiveEmployees = (
     venueId: string, 
     onUpdate: (employees: Employee[]) => void
 ) => {
-    const cleanId = cleanVenueId(venueId);
-    if (!cleanId) return () => {};
-    try {
-        const db = getDb();
-        const employeesRef = collection(db, 'venues', cleanId, 'employees');
+    let cleanId = cleanVenueId(venueId);
+    let unsub: (() => void) = () => {};
+    let isCancelled = false;
 
-        return onSnapshot(employeesRef, (snap) => {
-            const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Employee));
-            onUpdate(list);
-        }, (err) => {
-            console.error("Live employees listener error:", err);
-        });
-    } catch (e) {
-        console.error("Failed to attach employees listener:", e);
-        return () => {};
-    }
+    const setup = async () => {
+        if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+            const authedUid = await ensureStoreTerminalAuth();
+            if (authedUid) cleanId = authedUid;
+        } else {
+            await ensureStoreTerminalAuth();
+        }
+
+        if (isCancelled || !cleanId) return;
+
+        try {
+            const db = getDb();
+            const employeesRef = collection(db, 'venues', cleanId, 'employees');
+
+            unsub = onSnapshot(employeesRef, (snap) => {
+                const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Employee));
+                onUpdate(list);
+            }, (err) => {
+                console.error("Live employees listener error:", err);
+            });
+        } catch (e) {
+            console.error("Failed to attach employees listener:", e);
+        }
+    };
+
+    setup();
+
+    return () => {
+        isCancelled = true;
+        unsub();
+    };
 };
 
 /**
  * Sync Purchase Order to Firestore
  */
 export const syncPurchaseOrderToCloud = async (venueId: string, po: PurchaseOrder) => {
-    const cleanId = cleanVenueId(venueId);
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        cleanId = await ensureStoreTerminalAuth();
+    }
     if (!cleanId || !po.id) return;
     try {
         const db = getDb();
@@ -350,36 +533,58 @@ export const listenToLivePurchaseOrders = (
     venueId: string, 
     onUpdate: (pos: PurchaseOrder[]) => void
 ) => {
-    const cleanId = cleanVenueId(venueId);
-    if (!cleanId) return () => {};
-    try {
-        const db = getDb();
-        const posRef = collection(db, 'venues', cleanId, 'purchaseOrders');
+    let cleanId = cleanVenueId(venueId);
+    let unsub: (() => void) = () => {};
+    let isCancelled = false;
 
-        return onSnapshot(posRef, (snap) => {
-            const list = snap.docs.map(d => {
-                const data = d.data();
-                return {
-                    id: d.id,
-                    ...data,
-                    date: data.date?.toDate?.() || new Date()
-                } as PurchaseOrder;
+    const setup = async () => {
+        if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+            const authedUid = await ensureStoreTerminalAuth();
+            if (authedUid) cleanId = authedUid;
+        } else {
+            await ensureStoreTerminalAuth();
+        }
+
+        if (isCancelled || !cleanId) return;
+
+        try {
+            const db = getDb();
+            const posRef = collection(db, 'venues', cleanId, 'purchaseOrders');
+
+            unsub = onSnapshot(posRef, (snap) => {
+                const list = snap.docs.map(d => {
+                    const data = d.data();
+                    return {
+                        id: d.id,
+                        ...data,
+                        date: data.date?.toDate?.() || new Date()
+                    } as PurchaseOrder;
+                });
+                onUpdate(list);
+            }, (err) => {
+                console.error("Purchase orders listener error:", err);
             });
-            onUpdate(list);
-        }, (err) => {
-            console.error("Purchase orders listener error:", err);
-        });
-    } catch (e) {
-        console.error("Failed to attach PO listener:", e);
-        return () => {};
-    }
+        } catch (e) {
+            console.error("Failed to attach PO listener:", e);
+        }
+    };
+
+    setup();
+
+    return () => {
+        isCancelled = true;
+        unsub();
+    };
 };
 
 /**
  * Sync Inventory to Cloud
  */
 export const syncInventoryToCloud = async (venueId: string, items: InventoryItem[]) => {
-    const cleanId = cleanVenueId(venueId);
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        cleanId = await ensureStoreTerminalAuth();
+    }
     if (!cleanId || !items.length) return;
     try {
         const db = getDb();
@@ -401,30 +606,52 @@ export const listenToLiveInventory = (
     venueId: string, 
     onUpdate: (items: InventoryItem[]) => void
 ) => {
-    const cleanId = cleanVenueId(venueId);
-    if (!cleanId) return () => {};
-    try {
-        const db = getDb();
-        const invRef = doc(db, 'venues', cleanId, 'catalogs', 'main');
+    let cleanId = cleanVenueId(venueId);
+    let unsub: (() => void) = () => {};
+    let isCancelled = false;
 
-        return onSnapshot(invRef, (snap) => {
-            if (snap.exists() && snap.data()?.items) {
-                onUpdate(snap.data().items as InventoryItem[]);
-            }
-        }, (err) => {
-            console.error("Inventory listener error:", err);
-        });
-    } catch (e) {
-        console.error("Failed to attach inventory listener:", e);
-        return () => {};
-    }
+    const setup = async () => {
+        if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+            const authedUid = await ensureStoreTerminalAuth();
+            if (authedUid) cleanId = authedUid;
+        } else {
+            await ensureStoreTerminalAuth();
+        }
+
+        if (isCancelled || !cleanId) return;
+
+        try {
+            const db = getDb();
+            const invRef = doc(db, 'venues', cleanId, 'catalogs', 'main');
+
+            unsub = onSnapshot(invRef, (snap) => {
+                if (snap.exists() && snap.data()?.items) {
+                    onUpdate(snap.data().items as InventoryItem[]);
+                }
+            }, (err) => {
+                console.error("Inventory listener error:", err);
+            });
+        } catch (e) {
+            console.error("Failed to attach inventory listener:", e);
+        }
+    };
+
+    setup();
+
+    return () => {
+        isCancelled = true;
+        unsub();
+    };
 };
 
 /**
  * Sync Vendors to Cloud
  */
 export const syncVendorsToCloud = async (venueId: string, vendors: Vendor[]) => {
-    const cleanId = cleanVenueId(venueId);
+    let cleanId = cleanVenueId(venueId);
+    if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+        cleanId = await ensureStoreTerminalAuth();
+    }
     if (!cleanId || !vendors.length) return;
     try {
         const db = getDb();
@@ -446,21 +673,40 @@ export const listenToLiveVendors = (
     venueId: string, 
     onUpdate: (vendors: Vendor[]) => void
 ) => {
-    const cleanId = cleanVenueId(venueId);
-    if (!cleanId) return () => {};
-    try {
-        const db = getDb();
-        const vendorsRef = doc(db, 'venues', cleanId, 'catalogs', 'vendors');
+    let cleanId = cleanVenueId(venueId);
+    let unsub: (() => void) = () => {};
+    let isCancelled = false;
 
-        return onSnapshot(vendorsRef, (snap) => {
-            if (snap.exists() && snap.data()?.vendors) {
-                onUpdate(snap.data().vendors as Vendor[]);
-            }
-        }, (err) => {
-            console.error("Vendors listener error:", err);
-        });
-    } catch (e) {
-        console.error("Failed to attach vendors listener:", e);
-        return () => {};
-    }
+    const setup = async () => {
+        if (!cleanId || cleanId.length < 20 || cleanId.includes(' ')) {
+            const authedUid = await ensureStoreTerminalAuth();
+            if (authedUid) cleanId = authedUid;
+        } else {
+            await ensureStoreTerminalAuth();
+        }
+
+        if (isCancelled || !cleanId) return;
+
+        try {
+            const db = getDb();
+            const vendorsRef = doc(db, 'venues', cleanId, 'catalogs', 'vendors');
+
+            unsub = onSnapshot(vendorsRef, (snap) => {
+                if (snap.exists() && snap.data()?.vendors) {
+                    onUpdate(snap.data().vendors as Vendor[]);
+                }
+            }, (err) => {
+                console.error("Vendors listener error:", err);
+            });
+        } catch (e) {
+            console.error("Failed to attach vendors listener:", e);
+        }
+    };
+
+    setup();
+
+    return () => {
+        isCancelled = true;
+        unsub();
+    };
 };
