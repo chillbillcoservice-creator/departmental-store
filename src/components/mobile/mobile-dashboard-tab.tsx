@@ -211,15 +211,23 @@ export function MobileDashboardTab({
                     </div>
                 </div>
 
-                {/* Payment split bar */}
-                <div className="mt-4 pt-3 border-t border-white/10 relative z-10 space-y-1.5">
-                    <div className="flex justify-between text-[11px] font-semibold text-white/80">
-                        <span className="flex items-center gap-1"><CreditCard size={11} /> UPI {onlinePercentage}%</span>
-                        <span className="flex items-center gap-1"><Banknote size={11} /> Cash {cashPercentage}%</span>
+                {/* Payment split bar & live amounts */}
+                <div className="mt-4 pt-3 border-t border-white/10 relative z-10 space-y-2">
+                    <div className="flex justify-between items-baseline text-xs font-bold text-white">
+                        <span className="flex items-center gap-1.5">
+                            <CreditCard size={13} className="text-emerald-300 shrink-0" />
+                            <span>UPI: <span className="font-extrabold text-emerald-200">{currency}{metrics.online.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span></span>
+                            <span className="text-[10px] font-medium text-white/70">({onlinePercentage}%)</span>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                            <Banknote size={13} className="text-amber-200 shrink-0" />
+                            <span>Cash: <span className="font-extrabold text-amber-100">{currency}{metrics.cash.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span></span>
+                            <span className="text-[10px] font-medium text-white/70">({cashPercentage}%)</span>
+                        </span>
                     </div>
-                    <div className="h-2 rounded-full bg-black/25 overflow-hidden flex">
-                        <div style={{ width: `${onlinePercentage}%` }} className="bg-emerald-300 transition-all" />
-                        <div style={{ width: `${cashPercentage}%` }} className="bg-amber-200 transition-all" />
+                    <div className="h-2 rounded-full bg-black/25 overflow-hidden flex shadow-inner">
+                        <div style={{ width: `${onlinePercentage}%` }} className="bg-emerald-300 transition-all duration-300" />
+                        <div style={{ width: `${cashPercentage}%` }} className="bg-amber-200 transition-all duration-300" />
                     </div>
                 </div>
             </div>
