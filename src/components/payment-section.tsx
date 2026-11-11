@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,7 +24,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sendWhatsAppBill } from '@/lib/whatsapp-bill';
 import { DEPARTMENTAL_STORE_CATALOG } from '@/lib/departmental-catalog';
 import { subscribeToAmountMatch, generateMockUtr } from '@/lib/payment-listener';
-import { triggerSoundboxAlert } from '@/lib/soundbox';
+import { triggerSoundboxAlert, playScanBeep } from '@/lib/soundbox';
 import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
 import { syncCompletedBillToCloud, cleanVenueId } from '@/lib/firestore-sync';
 
@@ -125,6 +125,12 @@ export default function PaymentSection({ inventory, setInventory, bills, setBill
     const cartBottomRef = useRef<HTMLDivElement>(null);
     const highlightTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Global Hardware Barcode Scanner Gun Interceptor (Zero-click direct scanning)
+    const barcodeBufferRef = useRef<string>('');
+    const lastKeyStrokeTimeRef = useRef<number>(0);
+    const scannerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const [lastScannedItem, setLastScannedItem] = useState<{ name: string; price: number } | null>(null);
+
     // Quick Add Customer modal state
     const [isQuickAddCustomerOpen, setIsQuickAddCustomerOpen] = useState(false);
     const [quickAddName, setQuickAddName] = useState('');
@@ -195,6 +201,7 @@ export default function PaymentSection({ inventory, setInventory, bills, setBill
         setSavedCarts([...savedCarts, newSavedCart]);
         setCartSession({ items: [], customer: null, discount: 0, redeemPoints: 0, paymentMethod: 'Online' });
         toast({ title: t("Bill Held"), description: t("The current bill has been saved.") });
+        setTimeout(() => searchInputRef.current?.focus(), 50);
     };
 
     const handleRetrieveBill = (savedCart: SavedCart) => {
@@ -221,6 +228,7 @@ export default function PaymentSection({ inventory, setInventory, bills, setBill
             paymentMethod: savedCart.paymentMethod
         });
         toast({ title: t("Bill Retrieved"), description: t("The bill has been loaded.") });
+        setTimeout(() => searchInputRef.current?.focus(), 50);
     };
 
     const filteredCustomers = useMemo(() => {
@@ -400,7 +408,55 @@ export default function PaymentSection({ inventory, setInventory, bills, setBill
 
         // Auto-scroll cart down to show the newly added item at the bottom of the list
         scrollToRecentItem(item.id);
+        setTimeout(() => searchInputRef.current?.focus(), 50);
     };
+
+    // Helper: Lookup item by scanned barcode, EAN-13, internal ID, or short code
+    const findItemByBarcode = useCallback((rawBarcode: string): InventoryItem | null => {
+        const cleanTerm = rawBarcode.toLowerCase().trim();
+        const cleanNum = cleanTerm.replace(/^#/, '');
+        
+        return inventory.find(i => {
+            const shortCode = i.id.length > 8 ? String(parseInt(i.id.slice(-4), 10) || '') : i.id;
+            const matchesId = i.id.toLowerCase() === cleanTerm;
+            const matchesBarcode = i.barcode && i.barcode.toLowerCase() === cleanTerm;
+            const matchesShortCode = shortCode === cleanNum || (shortCode && (cleanTerm === shortCode || cleanTerm === `#${shortCode}`));
+            return matchesId || matchesBarcode || matchesShortCode;
+        }) || null;
+    }, [inventory]);
+
+    // Handle scanned barcode execution from either hardware gun or search bar
+    const processScannedBarcode = useCallback((barcode: string) => {
+        const cleanCode = barcode.trim();
+        if (!cleanCode) return;
+
+        const matchedItem = findItemByBarcode(cleanCode);
+        if (matchedItem) {
+            addToCart(matchedItem);
+            setSearchTerm('');
+            // Play crisp supermarket scanner beep
+            playScanBeep();
+            setLastScannedItem({ name: matchedItem.name, price: matchedItem.price });
+            setTimeout(() => setLastScannedItem(null), 2500);
+            toast({
+                title: t("Item Scanned"),
+                description: `${matchedItem.name} ${t("added to cart.")} (${activeCurrency} ${matchedItem.price})`,
+            });
+        } else {
+            // Not found in catalog: display in search bar so cashier can see and search manually
+            setSearchTerm(cleanCode);
+            toast({
+                title: t("Barcode Not Found"),
+                description: `${t("No item found matching barcode:")} ${cleanCode}`,
+                variant: "destructive"
+            });
+        }
+
+        // Always re-focus the search input for seamless next scan
+        setTimeout(() => {
+            searchInputRef.current?.focus();
+        }, 60);
+    }, [findItemByBarcode, addToCart, t, activeCurrency, toast]);
 
     const removeFromCart = (itemId: string) => {
         // We use functional update on setCart to ensure we filter the latest cart
@@ -434,6 +490,7 @@ export default function PaymentSection({ inventory, setInventory, bills, setBill
         setSplitCash(0);
         setSplitOnline(0);
         toast({ title: t("Cart Cleared"), description: t("All items have been restored to inventory.") });
+        setTimeout(() => searchInputRef.current?.focus(), 50);
     };
 
     const updateQuantity = (itemId: string, delta: number) => {
@@ -889,6 +946,93 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [cart, savedCarts, paymentMethod, total, splitCash, splitOnline]);
 
+    // Global Hardware Barcode Scanner Gun Interceptor (Zero-click direct scanning from anywhere)
+    useEffect(() => {
+        const handleGlobalBarcodeScan = (e: KeyboardEvent) => {
+            // Ignore control keys, F-keys, and special navigation keys
+            if (e.ctrlKey || e.altKey || e.metaKey) return;
+            if (e.key.startsWith('F') && e.key.length > 1) return;
+            if (['Tab', 'Escape', 'Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+
+            const now = Date.now();
+            const timeDiff = now - lastKeyStrokeTimeRef.current;
+            lastKeyStrokeTimeRef.current = now;
+
+            const activeEl = document.activeElement as HTMLElement | null;
+            const isInputFocused = activeEl && (
+                activeEl.tagName === 'INPUT' || 
+                activeEl.tagName === 'TEXTAREA' || 
+                activeEl.isContentEditable
+            );
+            const isSearchInputFocused = activeEl === searchInputRef.current;
+
+            // Handle ENTER (End of barcode transmission from scanner gun)
+            if (e.key === 'Enter') {
+                const buffer = barcodeBufferRef.current.trim();
+                if (buffer.length >= 3) {
+                    barcodeBufferRef.current = '';
+                    if (scannerTimeoutRef.current) clearTimeout(scannerTimeoutRef.current);
+                    
+                    e.preventDefault();
+                    e.stopPropagation();
+                    processScannedBarcode(buffer);
+                    return;
+                } else if (isSearchInputFocused && searchTerm.trim()) {
+                    const term = searchTerm.trim();
+                    barcodeBufferRef.current = '';
+                    e.preventDefault();
+                    processScannedBarcode(term);
+                    return;
+                }
+                barcodeBufferRef.current = '';
+                return;
+            }
+
+            // Single printable character
+            if (e.key.length === 1) {
+                // If interval > 65ms, it's a new burst or slow manual typing -> reset buffer
+                if (timeDiff > 65) {
+                    barcodeBufferRef.current = e.key;
+                } else {
+                    barcodeBufferRef.current += e.key;
+                }
+
+                // If user is NOT in any text input:
+                // Auto-route to search input and prevent losing keystrokes!
+                if (!isInputFocused) {
+                    // Auto-focus search input so subsequent characters are visibly echoed
+                    searchInputRef.current?.focus();
+                } else if (!isSearchInputFocused && timeDiff < 45 && barcodeBufferRef.current.length >= 3) {
+                    // Fast barcode burst (< 45ms per char) while an unrelated input (e.g. qty, notes) was focused!
+                    // Intercept and prevent corrupting the active input field:
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+
+                // Clear buffer if no Enter arrives within 250ms
+                if (scannerTimeoutRef.current) clearTimeout(scannerTimeoutRef.current);
+                scannerTimeoutRef.current = setTimeout(() => {
+                    barcodeBufferRef.current = '';
+                }, 250);
+            }
+        };
+
+        // Attach with useCapture = true to intercept before buttons or container elements
+        window.addEventListener('keydown', handleGlobalBarcodeScan, true);
+        return () => {
+            window.removeEventListener('keydown', handleGlobalBarcodeScan, true);
+            if (scannerTimeoutRef.current) clearTimeout(scannerTimeoutRef.current);
+        };
+    }, [processScannedBarcode, searchTerm]);
+
+    // Auto-focus search bar on mount so counter terminal is immediately ready
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            searchInputRef.current?.focus();
+        }, 120);
+        return () => clearTimeout(timer);
+    }, []);
+
     const handlePrint = (bill: Bill, amountPaid?: number) => {
         const printWindow = window.open('', '_blank');
         if (!printWindow) return;
@@ -1120,38 +1264,23 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                         <Input
                             ref={searchInputRef}
-                            placeholder={t("Scan Barcode or Search items (F1)...")}
-                            className="pl-12 h-14 bg-card/50 border-none shadow-sm focus-visible:ring-primary/40 text-lg rounded-2xl font-bold"
+                            placeholder={t("Scan Barcode Anytime (No Click Needed) or Search items (F1)...")}
+                            className="pl-12 pr-36 h-14 bg-card/50 border-none shadow-sm focus-visible:ring-primary/40 text-lg rounded-2xl font-bold"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' && searchTerm) {
-                                    const cleanTerm = searchTerm.toLowerCase().trim();
-                                    const cleanNum = cleanTerm.replace(/^#/, '');
-                                    // First try exact match by full barcode or short code (e.g. "18" or "#18" or "8901030000018")
-                                    const exactMatch = inventory.find(i => {
-                                        const shortCode = i.id.length > 8 ? String(parseInt(i.id.slice(-4), 10) || '') : i.id;
-                                        return i.id.toLowerCase() === cleanTerm ||
-                                            shortCode === cleanNum ||
-                                            (shortCode && (cleanTerm === shortCode || cleanTerm === `#${shortCode}`));
-                                    });
-                                    if (exactMatch) {
-                                        addToCart(exactMatch);
-                                        setSearchTerm('');
-                                        toast({ title: t("Item Scanned"), description: `${exactMatch.name} ${t("added to cart.")}` });
-                                        return;
-                                    }
-
-                                    // Fallback to first filtered item
-                                    if (filteredItems.length > 0) {
-                                        addToCart(filteredItems[0]);
-                                        setSearchTerm('');
-                                        toast({ title: t("Item Added"), description: `${filteredItems[0].name} ${t("added to cart.")}` });
-                                    }
+                                    e.preventDefault();
+                                    processScannedBarcode(searchTerm);
                                 }
                             }}
                             autoFocus
                         />
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold pointer-events-none select-none shadow-xs">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <ScanBarcode className="h-4 w-4 text-emerald-500" />
+                            <span>Gun Ready</span>
+                        </div>
                     </div>
                 </div>
 
@@ -2386,6 +2515,7 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                     handlePrint(lastCompletedBill);
                                 }
                                 setIsBillSuccessOpen(false);
+                                setTimeout(() => searchInputRef.current?.focus(), 80);
                             }}
                             className="h-12 rounded-xl font-bold text-sm border-border/60 gap-1.5"
                         >
@@ -2393,7 +2523,10 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                             Print Receipt
                         </Button>
                         <Button
-                            onClick={() => setIsBillSuccessOpen(false)}
+                            onClick={() => {
+                                setIsBillSuccessOpen(false);
+                                setTimeout(() => searchInputRef.current?.focus(), 80);
+                            }}
                             className="h-12 rounded-xl font-black text-sm bg-primary hover:bg-primary/90 text-white shadow-lg shadow-primary/20"
                         >
                             Next Customer

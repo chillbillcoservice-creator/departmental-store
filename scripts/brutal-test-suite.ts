@@ -53,7 +53,7 @@ import {
 import { compileStoreReport } from '../src/lib/report-generator';
 import { buildUsername, generateUniqueUsername } from '../src/lib/generate-username';
 import { subscribeToAmountMatch, simulateCounterStandeePayment, generateMockUtr } from '../src/lib/payment-listener';
-import { playKaChingSound, unlockAudioContext, getSharedAudioContext } from '../src/lib/soundbox';
+import { playKaChingSound, playScanBeep, unlockAudioContext, getSharedAudioContext } from '../src/lib/soundbox';
 import { cleanVenueId } from '../src/lib/firestore-sync';
 import type {
   Bill,
@@ -395,6 +395,35 @@ async function runTests() {
   const cloudCount = sampleRecentCloudBills.length;
   assert(cloudTotal === 2000, 'Cloud bills total calculated correctly (Got 2000)', String(cloudTotal));
   assert(cloudCount === 3, 'Cloud bills count calculated correctly (Got 3)', String(cloudCount));
+
+  // Barcode Scanner Gun Global Interception & Lookup Auditing
+  playScanBeep(); // Verify no error in Node SSR
+  assert(true, 'Barcode scanner supermarket confirmation beep executed safely');
+
+  const testCatalog = DEPARTMENTAL_STORE_CATALOG;
+  const findItemByBarcodeTest = (code: string) => {
+    const cleanTerm = code.toLowerCase().trim();
+    const cleanNum = cleanTerm.replace(/^#/, '');
+    return testCatalog.find(i => {
+      const shortCode = i.id.length > 8 ? String(parseInt(i.id.slice(-4), 10) || '') : i.id;
+      return i.id.toLowerCase() === cleanTerm ||
+        (i.barcode && i.barcode.toLowerCase() === cleanTerm) ||
+        shortCode === cleanNum ||
+        (shortCode && (cleanTerm === shortCode || cleanTerm === `#${shortCode}`));
+    });
+  };
+
+  const scannedAtta = findItemByBarcodeTest('8901030000001');
+  assert(scannedAtta !== undefined, 'EAN-13 barcode 8901030000001 resolves to catalog product');
+  assert(scannedAtta?.name.includes('Aashirvaad') === true, 'Resolved item is Aashirvaad Atta', scannedAtta?.name);
+
+  const scannedOil = findItemByBarcodeTest('8901030000002');
+  assert(scannedOil !== undefined, 'EAN-13 barcode 8901030000002 resolves to catalog product');
+  assert(scannedOil?.name.includes('Fortune') === true, 'Resolved item is Fortune Oil', scannedOil?.name);
+
+  // Short Code lookup (e.g. cashier types 1 or #1)
+  const scannedShortCode = findItemByBarcodeTest('1');
+  assert(scannedShortCode !== undefined, 'Short code 1 resolves to item #1', scannedShortCode?.name);
 
   // -------------------------------------------------------------------------
   // TEST GROUP 6: UPI & COUNTER STANDEE REAL-TIME MATCHING

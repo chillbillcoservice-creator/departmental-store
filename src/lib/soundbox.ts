@@ -32,6 +32,37 @@ export function unlockAudioContext(): void {
 }
 
 /**
+ * Instant POS Barcode Scanner Confirmation Beep (Short crisp 2200Hz tone, 60ms)
+ * Provides authentic supermarket audio feedback when barcode gun scans an item.
+ */
+export function playScanBeep(): void {
+  try {
+    if (typeof window === 'undefined') return;
+    const ctx = getSharedAudioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(2200, now);
+
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.06);
+  } catch {}
+}
+
+/**
  * Authentic Mechanical Cash Register "Ka-Ching!" Sound
  * Synthesized with Web Audio API (Zero latency, works 100% offline).
  * 1. Mechanical drawer release & latch snap (Ka-)
