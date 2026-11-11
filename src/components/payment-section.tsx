@@ -930,6 +930,8 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                     } else {
                         setIsPaymentDialogOpen(true);
                     }
+                } else {
+                    searchInputRef.current?.focus();
                 }
             } else if (e.key === 'Escape') {
                 setIsPaymentDialogOpen(false);
@@ -1351,7 +1353,7 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                         <Input
                             ref={searchInputRef}
-                            placeholder={t("Scan Barcode Anytime (No Click Needed) or Search items (F1)...")}
+                            placeholder={t("Scan Barcode or Search items (F1)...")}
                             className="pl-12 pr-36 h-14 bg-card/50 border-none shadow-sm focus-visible:ring-primary/40 text-lg rounded-2xl font-bold"
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
