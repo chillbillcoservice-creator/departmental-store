@@ -34,7 +34,7 @@ const eventEmitter = new EventEmitter();
 };
 
 import { DEPARTMENTAL_STORE_CATALOG } from '../src/lib/departmental-catalog';
-import { formatLicenseKeyInput } from '../src/lib/licensing';
+import { formatLicenseKeyInput, verifyStoreLicense, saveOfflineLicenseToken, getOfflineLicenseToken } from '../src/lib/licensing';
 import {
   sanitizeWhatsAppPhone,
   formatWhatsAppBillText,
@@ -651,6 +651,32 @@ async function runTests() {
   // 7. Maximum 13 alphanumeric chars (CBILL + 4 year + 4 random) capped
   const t8 = formatLicenseKeyInput('cbill2026e5sk9999', '');
   assert(t8 === 'CBILL-2026-E5SK', 'Input past 13 chars is safely capped to 15-char license format', t8);
+
+  // 8. Offline license token creation & auto-resolution
+  saveOfflineLicenseToken({
+    licenseKey: 'CBILL-2026-E5SK',
+    ownerEmail: 'chillbill.co.service@gmail.com',
+    storeName: 'krishna supermart',
+    ownerName: 'Krishna Madnani',
+    status: 'active',
+    plan: 'annual',
+    validUntil: new Date(Date.now() + 300 * 24 * 60 * 60 * 1000).toISOString(),
+    maxCounters: 1,
+    createdAt: new Date().toISOString(),
+  });
+
+  const storedToken = getOfflineLicenseToken();
+  assert(storedToken !== null && storedToken.licenseKey === 'CBILL-2026-E5SK', 'Offline token saved and signature verified');
+
+  // 9. Verify license with empty string auto-resolves from token when online
+  (global as any).navigator = { onLine: true };
+  const licResOnline = await verifyStoreLicense('');
+  assert(licResOnline.isValid === true, 'verifyStoreLicense auto-resolves empty string from token when online');
+  assert(licResOnline.licenseKey === 'CBILL-2026-E5SK', 'Resolved license key matches active store license');
+
+  // 10. Verify license by license key argument
+  const licResByKey = await verifyStoreLicense('CBILL-2026-E5SK');
+  assert(licResByKey.isValid === true, 'verifyStoreLicense succeeds when passed license key directly');
 
   // Final summary
   console.log('\n======================================================');

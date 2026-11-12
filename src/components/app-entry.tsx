@@ -309,16 +309,17 @@ export default function AppEntry({
   // Verify license & 14-day offline grace on mount if store is already setup
   useEffect(() => {
     const checkActiveLicense = async () => {
-      const email = ownerDetails?.email || '';
-      if (email || typeof window !== 'undefined') {
-        const result = await verifyStoreLicense(email, db);
-        if (!result.isValid && result.status !== 'not_whitelisted') {
-          setLicenseError(result);
-        }
+      const email = ownerDetails?.email || ownerUser?.email || getActiveStoreEmail() || (typeof window !== 'undefined' ? (localStorage.getItem('storeEmail') || localStorage.getItem('ownerEmail')) : '') || '';
+      const licKey = (typeof window !== 'undefined' ? localStorage.getItem('terminalLicense') : '') || '';
+      const result = await verifyStoreLicense(licKey || email, db);
+      if (!result.isValid && result.status !== 'not_whitelisted') {
+        setLicenseError(result);
+      } else if (result.isValid) {
+        setLicenseError(null);
       }
     };
     checkActiveLicense();
-  }, [ownerDetails, db]);
+  }, [ownerDetails, db, ownerUser]);
 
   // Sync Currency from Firestore on mount
   useEffect(() => {
@@ -534,8 +535,9 @@ export default function AppEntry({
         validUntil={licenseError.validUntil}
         email={ownerUser?.email || ownerDetails?.email || undefined}
         onRefresh={async () => {
-          const email = ownerUser?.email || ownerDetails?.email || '';
-          const res = await verifyStoreLicense(email, db);
+          const email = ownerUser?.email || ownerDetails?.email || getActiveStoreEmail() || (typeof window !== 'undefined' ? localStorage.getItem('storeEmail') : '') || '';
+          const licKey = licenseError.licenseKey || (typeof window !== 'undefined' ? localStorage.getItem('terminalLicense') : '') || '';
+          const res = await verifyStoreLicense(licKey || email, db);
           if (res.isValid) {
             setLicenseError(null);
           }
@@ -544,6 +546,11 @@ export default function AppEntry({
           setLicenseError(null);
           setOwnerUser(null);
           setCurrentEmployee(null);
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('chillbill_offline_license_token');
+            localStorage.removeItem('terminalLicense');
+            localStorage.removeItem('storeEmail');
+          }
         }}
       />
     );

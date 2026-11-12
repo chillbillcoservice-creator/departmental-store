@@ -159,12 +159,37 @@ export function getOfflineLicenseToken(): OfflineLicenseToken | null {
 /**
  * Comprehensive verification: Checks Cloud Firestore when online, falls back
  * to 14-day Offline Grace Period when offline.
+ * Supports email address OR direct license key (e.g. CBILL-2026-E5SK), and auto-resolves
+ * credentials from offline cache / localStorage if omitted.
  */
 export async function verifyStoreLicense(
-  email: string,
+  emailOrKey?: string,
   firestoreInstance?: any
 ): Promise<LicenseCheckResult> {
-  const cleanEmail = (email || '').toLowerCase().trim();
+  const existingToken = getOfflineLicenseToken();
+  const rawInput = (emailOrKey || '').trim();
+  const isInputKey = rawInput.toUpperCase().startsWith('CBILL') || rawInput.includes('-');
+  const inputEmail = (!isInputKey && rawInput.includes('@')) ? rawInput.toLowerCase() : '';
+  const inputLicenseKey = isInputKey ? rawInput.toUpperCase() : '';
+
+  const cleanEmail = (
+    inputEmail ||
+    existingToken?.ownerEmail ||
+    (typeof window !== 'undefined'
+      ? (localStorage.getItem('storeEmail') || localStorage.getItem('ownerEmail') || localStorage.getItem('activeStoreEmail'))
+      : '') ||
+    ''
+  ).toLowerCase().trim();
+
+  const cleanLicenseKey = (
+    inputLicenseKey ||
+    existingToken?.licenseKey ||
+    (typeof window !== 'undefined'
+      ? (localStorage.getItem('terminalLicense') || localStorage.getItem('storeLicenseKey') || localStorage.getItem('licenseKey'))
+      : '') ||
+    ''
+  ).toUpperCase().trim();
+
   const now = Date.now();
 
   // Try Online Cloud Verification first if Firestore SDK is available and network is online
@@ -172,27 +197,61 @@ export async function verifyStoreLicense(
     try {
       const { doc, getDoc, collection, query, where, getDocs } = await import('firebase/firestore');
 
-      // 1. Check Whitelist
-      const whiteSnap = await getDoc(doc(firestoreInstance, 'whitelist', cleanEmail));
-      if (!whiteSnap.exists()) {
-        return {
-          isValid: false,
-          status: 'not_whitelisted',
-          daysRemaining: 0,
-          offlineDaysRemaining: 0,
-        };
+      let licenseData: StoreLicense | null = null;
+
+      // 1. Direct License Key Document Lookup (Fastest, O(1) direct primary key)
+      if (cleanLicenseKey) {
+        try {
+          const licDocSnap = await getDoc(doc(firestoreInstance, 'licenses', cleanLicenseKey));
+          if (licDocSnap.exists()) {
+            licenseData = licDocSnap.data() as StoreLicense;
+          }
+        } catch (e) {
+          console.warn('[Licensing] Direct license doc lookup error:', e);
+        }
       }
 
-      // 2. Query Licenses collection for this email
-      const licQuery = query(
-        collection(firestoreInstance, 'licenses'),
-        where('ownerEmail', '==', cleanEmail)
-      );
-      const licSnap = await getDocs(licQuery);
+      // 2. Query Licenses collection by ownerEmail
+      if (!licenseData && cleanEmail) {
+        try {
+          const licQuery = query(
+            collection(firestoreInstance, 'licenses'),
+            where('ownerEmail', '==', cleanEmail)
+          );
+          const licSnap = await getDocs(licQuery);
+          if (!licSnap.empty) {
+            licenseData = licSnap.docs[0].data() as StoreLicense;
+          }
+        } catch (e) {
+          console.warn('[Licensing] License query by email error:', e);
+        }
+      }
 
-      if (!licSnap.empty) {
-        const licenseData = licSnap.docs[0].data() as StoreLicense;
+      // 3. Fallback: Whitelist lookup
+      if (!licenseData && cleanEmail) {
+        try {
+          const whiteSnap = await getDoc(doc(firestoreInstance, 'whitelist', cleanEmail));
+          if (whiteSnap.exists()) {
+            const whiteData = whiteSnap.data();
+            const legacyExpiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+            licenseData = {
+              licenseKey: whiteData.licenseKey || `CBILL-LEGACY-${cleanEmail.slice(0, 4).toUpperCase()}`,
+              ownerEmail: cleanEmail,
+              storeName: whiteData.storeName || 'My Retail Store',
+              ownerName: whiteData.ownerName || cleanEmail.split('@')[0],
+              status: (whiteData.status === 'suspended' ? 'suspended' : 'active') as any,
+              plan: 'annual',
+              validUntil: legacyExpiry,
+              maxCounters: 1,
+              createdAt: new Date().toISOString(),
+            };
+          }
+        } catch (e) {
+          console.warn('[Licensing] Whitelist lookup error:', e);
+        }
+      }
 
+      if (licenseData) {
         if (licenseData.status === 'suspended') {
           return {
             isValid: false,
@@ -220,8 +279,12 @@ export async function verifyStoreLicense(
           };
         }
 
-        // License is Active & Valid! Save fresh 14-day offline token
+        // Active & Valid! Save fresh 14-day offline token (resets lastVerifiedOnline to Date.now())
         saveOfflineLicenseToken(licenseData);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('terminalLicense', licenseData.licenseKey);
+          localStorage.setItem('storeEmail', licenseData.ownerEmail);
+        }
 
         return {
           isValid: true,
@@ -231,30 +294,6 @@ export async function verifyStoreLicense(
           storeName: licenseData.storeName,
           licenseKey: licenseData.licenseKey,
           validUntil: licenseData.validUntil,
-        };
-      } else {
-        // Fallback for legacy stores already in whitelist without a formal license doc
-        const legacyExpiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-        const legacyLicense: StoreLicense = {
-          licenseKey: `CBILL-LEGACY-${cleanEmail.slice(0, 4).toUpperCase()}`,
-          ownerEmail: cleanEmail,
-          storeName: 'My Retail Store',
-          ownerName: cleanEmail.split('@')[0],
-          status: 'active',
-          plan: 'annual',
-          validUntil: legacyExpiry,
-          maxCounters: 1,
-          createdAt: new Date().toISOString(),
-        };
-        saveOfflineLicenseToken(legacyLicense);
-        return {
-          isValid: true,
-          status: 'valid',
-          daysRemaining: 365,
-          offlineDaysRemaining: OFFLINE_GRACE_DAYS,
-          storeName: legacyLicense.storeName,
-          licenseKey: legacyLicense.licenseKey,
-          validUntil: legacyExpiry,
         };
       }
     } catch (networkErr) {
@@ -275,7 +314,7 @@ export async function verifyStoreLicense(
   }
 
   // If local token belongs to a different email
-  if (cleanEmail && offlineToken.ownerEmail !== cleanEmail) {
+  if (cleanEmail && offlineToken.ownerEmail && offlineToken.ownerEmail !== cleanEmail) {
     return {
       isValid: false,
       status: 'not_whitelisted',
@@ -306,6 +345,23 @@ export async function verifyStoreLicense(
       status: 'expired',
       daysRemaining: 0,
       offlineDaysRemaining: 0,
+      storeName: offlineToken.storeName,
+      licenseKey: offlineToken.licenseKey,
+      validUntil: offlineToken.validUntil,
+    };
+  }
+
+  // If the terminal IS online right now and subscription is active, auto-refresh heartbeat timestamp
+  if (typeof navigator !== 'undefined' && navigator.onLine && daysRemaining > 0) {
+    offlineToken.lastVerifiedOnline = now;
+    try {
+      localStorage.setItem(STORAGE_KEY_LICENSE, JSON.stringify(offlineToken));
+    } catch {}
+    return {
+      isValid: true,
+      status: 'valid',
+      daysRemaining,
+      offlineDaysRemaining: OFFLINE_GRACE_DAYS,
       storeName: offlineToken.storeName,
       licenseKey: offlineToken.licenseKey,
       validUntil: offlineToken.validUntil,
