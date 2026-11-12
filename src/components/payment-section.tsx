@@ -13,7 +13,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
-import { Printer, Check, MessageSquare, Receipt, History } from 'lucide-react';
+import { Printer, Check, MessageSquare, Receipt, History, Eye } from 'lucide-react';
+import { WhatsAppIcon } from '@/components/icons/whatsapp-icon';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PaymentDialog } from './payment-dialog';
 import { UpiPaymentModal } from './upi-payment-modal';
@@ -111,6 +112,7 @@ export default function PaymentSection({ inventory, setInventory, bills, setBill
     const [isSalesReturnOpen, setIsSalesReturnOpen] = useState(false);
     const [isCashDrawerOpen, setIsCashDrawerOpen] = useState(false);
     const [isHistoryDialogOpen, setIsHistoryDialogOpen] = useState(false);
+    const [viewingHistoryBill, setViewingHistoryBill] = useState<Bill | null>(null);
     const [historySearchTerm, setHistorySearchTerm] = useState('');
     const [historyFilter, setHistoryFilter] = useState<'today' | 'weekly' | 'monthly'>('today');
     const [lastCompletedBill, setLastCompletedBill] = useState<Bill | null>(null);
@@ -2483,18 +2485,27 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                                         {bill.paymentMethod}
                                                     </span>
                                                 </td>
-                                                <td className="p-2 text-center space-x-1">
-                                                    <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-muted" onClick={() => handlePrint(bill)} title="Print Receipt">
+                                                <td className="p-2 text-center space-x-1 whitespace-nowrap">
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-8 w-8 text-blue-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors"
+                                                        onClick={() => setViewingHistoryBill(bill)}
+                                                        title={t("View Bill Details")}
+                                                    >
+                                                        <Eye className="h-4 w-4" />
+                                                    </Button>
+                                                    <Button size="icon" variant="ghost" className="h-8 w-8 hover:bg-muted text-foreground/80 hover:text-foreground transition-colors" onClick={() => handlePrint(bill)} title={t("Print Receipt")}>
                                                         <Printer className="h-4 w-4" />
                                                     </Button>
                                                     <Button
                                                         size="icon"
                                                         variant="ghost"
-                                                        className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                                        className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
                                                         onClick={() => sendWhatsAppBill(bill, venueDetails, undefined, activeCurrency)}
-                                                        title="Send via WhatsApp"
+                                                        title={t("Send via WhatsApp")}
                                                     >
-                                                        <MessageSquare className="h-4 w-4" />
+                                                        <WhatsAppIcon className="h-4 w-4 fill-emerald-600" />
                                                     </Button>
                                                 </td>
                                             </tr>
@@ -2504,6 +2515,164 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                             )}
                         </div>
                     </ScrollArea>
+                </DialogContent>
+            </Dialog>
+
+            {/* View Bill Details & Digital Receipt Dialog */}
+            <Dialog open={!!viewingHistoryBill} onOpenChange={(open) => !open && setViewingHistoryBill(null)}>
+                <DialogContent className="max-w-xl max-h-[90vh] flex flex-col p-6 rounded-3xl bg-background border-border shadow-2xl">
+                    <DialogHeader className="border-b pb-3">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                                <div className="p-2.5 bg-blue-500/10 text-blue-600 rounded-2xl">
+                                    <Receipt className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <DialogTitle className="text-xl font-black text-foreground">
+                                        {t("Bill Details")} #{viewingHistoryBill?.id}
+                                    </DialogTitle>
+                                    <DialogDescription className="text-xs text-muted-foreground pt-0.5">
+                                        {viewingHistoryBill?.timestamp && format(new Date(viewingHistoryBill.timestamp), 'PPpp')}
+                                        {viewingHistoryBill?.cashierName ? ` • ${t("Cashier")}: ${viewingHistoryBill.cashierName}` : ''}
+                                    </DialogDescription>
+                                </div>
+                            </div>
+                            <span className={cn(
+                                "px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider shrink-0",
+                                viewingHistoryBill?.paymentMethod === 'Cash'
+                                    ? "bg-amber-500/10 text-amber-600 border border-amber-500/20"
+                                    : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                            )}>
+                                {viewingHistoryBill?.paymentMethod}
+                            </span>
+                        </div>
+                    </DialogHeader>
+
+                    <ScrollArea className="flex-1 pr-2 my-2">
+                        <div className="space-y-3.5">
+                            {/* Customer & Store Card */}
+                            <div className="p-3 bg-muted/40 rounded-2xl border border-border/50 text-xs grid grid-cols-2 gap-2">
+                                <div>
+                                    <span className="text-muted-foreground block text-[10px] uppercase font-bold">{t("Customer")}</span>
+                                    <span className="font-bold text-sm text-foreground block truncate">
+                                        {viewingHistoryBill?.customerDetails?.name || t("Walk-in Customer")}
+                                    </span>
+                                    {viewingHistoryBill?.customerDetails?.phone && (
+                                        <span className="text-muted-foreground font-mono text-[11px] block">
+                                            {viewingHistoryBill.customerDetails.phone}
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="text-right">
+                                    <span className="text-muted-foreground block text-[10px] uppercase font-bold">{t("Store")}</span>
+                                    <span className="font-bold text-sm text-foreground block truncate">
+                                        {venueDetails?.name || t("Departmental Store")}
+                                    </span>
+                                    {venueDetails?.gstin && (
+                                        <span className="text-muted-foreground font-mono text-[10px] block">
+                                            GSTIN: {venueDetails.gstin}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Order Items Table */}
+                            <div className="border border-border/60 rounded-2xl overflow-hidden shadow-xs">
+                                <table className="w-full text-xs">
+                                    <thead className="bg-muted/80 text-muted-foreground font-bold border-b border-border/50">
+                                        <tr>
+                                            <th className="p-2.5 text-left">{t("Item")}</th>
+                                            <th className="p-2.5 text-center">{t("Qty")}</th>
+                                            <th className="p-2.5 text-right">{t("Price")}</th>
+                                            <th className="p-2.5 text-right">{t("Total")}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-border/40">
+                                        {viewingHistoryBill?.orderItems.map((item, idx) => (
+                                            <tr key={idx} className="hover:bg-muted/20">
+                                                <td className="p-2.5 font-medium text-foreground">
+                                                    <div className="font-bold">{item.name}</div>
+                                                    {item.hsnCode && (
+                                                        <span className="text-[10px] text-muted-foreground">
+                                                            HSN: {item.hsnCode} {item.taxRate ? `(${item.taxRate}% GST)` : ''}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td className="p-2.5 text-center font-bold font-mono">
+                                                    {item.quantity}
+                                                </td>
+                                                <td className="p-2.5 text-right font-mono text-muted-foreground">
+                                                    {activeCurrency} {item.price.toFixed(2)}
+                                                </td>
+                                                <td className="p-2.5 text-right font-bold font-mono text-foreground">
+                                                    {activeCurrency} {(item.price * item.quantity).toFixed(2)}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Financial Totals */}
+                            <div className="p-3.5 bg-muted/30 rounded-2xl border border-border/50 space-y-1.5 text-xs">
+                                <div className="flex justify-between text-muted-foreground">
+                                    <span>{t("Subtotal")}</span>
+                                    <span className="font-mono font-semibold">{activeCurrency} {(viewingHistoryBill?.subtotal || 0).toFixed(2)}</span>
+                                </div>
+                                {viewingHistoryBill?.discount && viewingHistoryBill.discount > 0 ? (
+                                    <div className="flex justify-between text-emerald-600 font-semibold">
+                                        <span>{t("Discount")}</span>
+                                        <span className="font-mono">-{activeCurrency} {viewingHistoryBill.discount.toFixed(2)}</span>
+                                    </div>
+                                ) : null}
+                                {viewingHistoryBill?.vatAmount && viewingHistoryBill.vatAmount > 0 ? (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>{t("GST / Tax Amount")}</span>
+                                        <span className="font-mono font-semibold">{activeCurrency} {viewingHistoryBill.vatAmount.toFixed(2)}</span>
+                                    </div>
+                                ) : null}
+                                <Separator className="my-1.5" />
+                                <div className="flex justify-between items-center text-sm font-black text-foreground">
+                                    <span className="text-base">{t("Total Amount Paid")}</span>
+                                    <span className="font-mono text-lg text-primary">{activeCurrency} {(viewingHistoryBill?.total || 0).toFixed(2)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </ScrollArea>
+
+                    <DialogFooter className="border-t pt-3 flex flex-row items-center justify-between gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-xl h-10 px-4 font-bold border-border/60 hover:bg-muted"
+                            onClick={() => setViewingHistoryBill(null)}
+                        >
+                            {t("Close")}
+                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="rounded-xl h-10 px-3.5 font-bold border-border/60 gap-1.5 hover:bg-muted"
+                                onClick={() => {
+                                    if (viewingHistoryBill) handlePrint(viewingHistoryBill);
+                                }}
+                            >
+                                <Printer className="h-4 w-4" />
+                                {t("Print")}
+                            </Button>
+                            <Button
+                                size="sm"
+                                className="rounded-xl h-10 px-4 font-black bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-md shadow-emerald-600/20"
+                                onClick={() => {
+                                    if (viewingHistoryBill) sendWhatsAppBill(viewingHistoryBill, venueDetails, undefined, activeCurrency);
+                                }}
+                            >
+                                <WhatsAppIcon className="h-4 w-4 fill-white" />
+                                {t("WhatsApp")}
+                            </Button>
+                        </div>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -2576,7 +2745,7 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                     }}
                                     className="h-11 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl shadow-md gap-1.5 shrink-0"
                                 >
-                                    <MessageSquare className="h-4 w-4" />
+                                    <WhatsAppIcon className="h-4 w-4 fill-white" />
                                     Send WhatsApp
                                 </Button>
                             </div>
