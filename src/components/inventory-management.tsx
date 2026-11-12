@@ -34,6 +34,7 @@ import { BarcodeLabelDialog } from './barcode-label-dialog';
 import { ExpiryTrackerDialog } from './expiry-tracker-dialog';
 import { ShrinkageAuditDialog } from './shrinkage-audit-dialog';
 import { UniversalCatalogImportDialog } from './universal-catalog-import-dialog';
+import { MasterFmcgCatalogDialog } from './master-fmcg-catalog-dialog';
 import { syncInventoryToCloud } from '@/lib/firestore-sync';
 
 interface InventoryManagementProps {
@@ -697,6 +698,7 @@ export default function InventoryManagement({
 
   // CSV / PDF Import & Wipe States
   const [isCsvImportOpen, setIsCsvImportOpen] = useState(false);
+  const [isMasterFmcgOpen, setIsMasterFmcgOpen] = useState(false);
   const [isClearAllDialogOpen, setIsClearAllDialogOpen] = useState(false);
 
   const handleClearAllInventory = () => {
@@ -1134,6 +1136,15 @@ export default function InventoryManagement({
               />
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                onClick={() => setIsMasterFmcgOpen(true)}
+                className="bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/10 border-amber-500/40 hover:border-amber-500 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 font-black shadow-sm transition-all"
+                title={t("Browse and bulk import from 800+ top Indian FMCG products with barcodes")}
+              >
+                <Sparkles className="mr-2 h-4 w-4 text-amber-500 animate-pulse" />
+                {t('⚡ FMCG Master Library (800+ SKUs)')}
+              </Button>
               <Button
                 variant="outline"
                 onClick={() => {
@@ -2193,6 +2204,18 @@ export default function InventoryManagement({
         setInventory={setInventory}
         menu={menu}
         setMenu={setMenu}
+        currency={currency || '₹'}
+      />
+
+      {/* FMCG Master Catalog Modal (800+ Indian Retail SKUs) */}
+      <MasterFmcgCatalogDialog
+        isOpen={isMasterFmcgOpen}
+        onOpenChange={setIsMasterFmcgOpen}
+        inventory={inventory}
+        setInventory={setInventory}
+        menu={menu}
+        setMenu={setMenu}
+        venueId={venueId}
         currency={currency || '₹'}
       />
 

@@ -34,6 +34,12 @@ const eventEmitter = new EventEmitter();
 };
 
 import { DEPARTMENTAL_STORE_CATALOG } from '../src/lib/departmental-catalog';
+import {
+  MASTER_FMCG_CATALOG,
+  getFmcgCompanies,
+  getFmcgCategories,
+  MasterFmcgProduct,
+} from '../src/lib/master-fmcg-catalog';
 import { formatLicenseKeyInput, verifyStoreLicense, saveOfflineLicenseToken, getOfflineLicenseToken } from '../src/lib/licensing';
 import {
   sanitizeWhatsAppPhone,
@@ -76,10 +82,11 @@ interface TestResult {
 
 const results: TestResult[] = [];
 
-function assert(condition: boolean, name: string, details?: string) {
+function assert(condition: boolean, name: string, details?: any) {
+  const detailStr = details !== undefined ? String(details) : undefined;
   if (condition) {
-    results.push({ name, passed: true, details });
-    console.log(`  ✓ PASS: ${name}${details ? ` (${details})` : ''}`);
+    results.push({ name, passed: true, details: detailStr });
+    console.log(`  ✓ PASS: ${name}${detailStr ? ` (${detailStr})` : ''}`);
   } else {
     results.push({ name, passed: false, error: 'Assertion failed' });
     console.error(`  ✗ FAIL: ${name}`);
@@ -677,6 +684,155 @@ async function runTests() {
   // 10. Verify license by license key argument
   const licResByKey = await verifyStoreLicense('CBILL-2026-E5SK');
   assert(licResByKey.isValid === true, 'verifyStoreLicense succeeds when passed license key directly');
+
+  // ======================================================
+  // 13. MASTER FMCG CATALOG & ONBOARDING SYSTEM TESTS
+  // ======================================================
+  console.log('\n--- Test Group 13: Indian FMCG Master Catalog (800+ SKUs) & Onboarding ---');
+
+  // 1. Minimum SKU count check
+  assert(MASTER_FMCG_CATALOG.length >= 800, `Master FMCG catalog contains 800+ SKUs (actual: ${MASTER_FMCG_CATALOG.length})`, MASTER_FMCG_CATALOG.length);
+
+  // 2. Barcode uniqueness and format check
+  const fmcgBarcodeSet = new Set<string>();
+  let hasDuplicateBarcodes = false;
+  let invalidBarcodeCount = 0;
+  for (const item of MASTER_FMCG_CATALOG) {
+    if (fmcgBarcodeSet.has(item.barcode)) {
+      hasDuplicateBarcodes = true;
+    }
+    fmcgBarcodeSet.add(item.barcode);
+    if (!/^\d{13}$/.test(item.barcode)) {
+      invalidBarcodeCount++;
+    }
+  }
+  assert(!hasDuplicateBarcodes, 'All 800+ FMCG master product barcodes are 100% unique');
+  assert(invalidBarcodeCount === 0, 'All FMCG master barcodes strictly adhere to valid 13-digit EAN-13 format', invalidBarcodeCount);
+
+  // 3. Data integrity: prices, margins, HSN, default opening stock = 20
+  let invalidPricingCount = 0;
+  let nonTwentyStockCount = 0;
+  let missingFieldsCount = 0;
+  for (const item of MASTER_FMCG_CATALOG) {
+    if (item.price <= 0 || item.costPrice <= 0 || item.price < item.costPrice) {
+      invalidPricingCount++;
+    }
+    if (item.defaultStock !== 20) {
+      nonTwentyStockCount++;
+    }
+    if (!item.name || !item.brand || !item.company || !item.category || !item.hsnCode || item.taxRate === undefined) {
+      missingFieldsCount++;
+    }
+  }
+  assert(invalidPricingCount === 0, 'All products have realistic prices and positive retail margins (MRP >= costPrice)', invalidPricingCount);
+  assert(nonTwentyStockCount === 0, 'Every product has default opening stock locked to 20 units as requested', nonTwentyStockCount);
+  assert(missingFieldsCount === 0, 'All products have complete metadata (name, brand, company, category, HSN, taxRate)', missingFieldsCount);
+
+  // 4. Critical user-requested category presence checks
+  const categories = getFmcgCategories();
+  const companies = getFmcgCompanies();
+
+  assert(categories.includes('Cleaning Tools, Brooms & Mops'), 'Category "Cleaning Tools, Brooms & Mops" present');
+  assert(categories.includes('Toiletries & Flushmatic Cleaners'), 'Category "Toiletries & Flushmatic Cleaners" present');
+  assert(categories.includes('Pest Control & Rat Killers'), 'Category "Pest Control & Rat Killers" present');
+  assert(categories.includes('Room & Air Fresheners'), 'Category "Room & Air Fresheners" present');
+  assert(categories.includes('Stationery & Office Supplies'), 'Category "Stationery & Office Supplies" present');
+  assert(categories.includes('Condoms & Intimate Wellness'), 'Category "Condoms & Intimate Wellness" present');
+  assert(categories.includes('Sanitary Pads & Female Hygiene'), 'Category "Sanitary Pads & Female Hygiene" present');
+  assert(categories.includes('Chocolates & Confectionery'), 'Category "Chocolates & Confectionery" present');
+  assert(categories.includes('Mouth Fresheners & Mints'), 'Category "Mouth Fresheners & Mints" present');
+  assert(categories.includes('Sunscreens & Skincare'), 'Category "Sunscreens & Skincare" present');
+  assert(categories.includes('Hair Removal & Shaving'), 'Category "Hair Removal & Shaving" present');
+  assert(categories.includes('Smoking Essentials & Lighters'), 'Category "Smoking Essentials & Lighters" present');
+  assert(categories.includes('Frozen Foods & Ready-to-Cook Snacks'), 'Category "Frozen Foods & Ready-to-Cook Snacks" present');
+  assert(categories.includes('Breakfast, Jams & Peanut Butter'), 'Category "Breakfast, Jams & Peanut Butter" present');
+
+  // 5. Verification of specific hero SKUs
+  const findProduct = (searchTerm: string) => MASTER_FMCG_CATALOG.find(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  assert(!!findProduct('Gala No Dust'), 'Gala No Dust Grass Broom is in catalog');
+  assert(!!findProduct('Flushmatic'), 'Harpic Flushmatic in-cistern block is in catalog');
+  assert(!!findProduct('Mortein PowerGard Rat Killer'), 'Mortein Rat Killer cake is in catalog');
+  assert(!!findProduct('HIT Rat Glue Trap'), 'HIT Rat Glue Trap is in catalog');
+  assert(!!findProduct('Lakshman Rekha'), 'Lakshman Rekha chalk is in catalog');
+  assert(!!findProduct('Dairy Milk Silk'), 'Cadbury Dairy Milk Silk range is in catalog');
+  assert(!!findProduct('KitKat'), 'Nestlé KitKat is in catalog');
+  assert(!!findProduct('Amul Dark Chocolate 55%'), 'Amul Dark Chocolate 55% is in catalog');
+  assert(!!findProduct('Hauser XO'), 'Hauser XO Ball Pen is in catalog');
+  assert(!!findProduct('Classmate Long Notebook'), 'ITC Classmate Notebook is in catalog');
+  assert(!!findProduct('Durex Air'), 'Durex Air Ultra Thin is in catalog');
+  assert(!!findProduct('Manforce Extra Dotted'), 'Manforce Extra Dotted Staylong is in catalog');
+  assert(!!findProduct('Whisper Ultra Clean XL'), 'Whisper Ultra Clean XL Wings is in catalog');
+  assert(!!findProduct('Stayfree Secure XL'), 'Stayfree Secure XL is in catalog');
+  assert(!!findProduct('RAW Classic King Size Slim'), 'RAW Classic King Size Slim is in catalog');
+  assert(!!findProduct('Cricket Disposable Flint'), 'Cricket Flint Pocket Lighter is in catalog');
+  assert(!!findProduct('Gold Flake Kings'), 'Gold Flake Kings Cigarettes is in catalog');
+  assert(!!findProduct('Veet Silk & Fresh'), 'Veet Hair Removal Cream is in catalog');
+  assert(!!findProduct('Gillette Venus Breeze'), 'Gillette Venus Breeze Razor is in catalog');
+  assert(!!findProduct('Gillette Mach3'), 'Gillette Mach3 Razor is in catalog');
+  assert(!!findProduct('Pintola All Natural Peanut Butter'), 'Pintola Peanut Butter is in catalog');
+  assert(!!findProduct('Nutella'), 'Nutella Hazelnut Spread is in catalog');
+  assert(!!findProduct('Tang Instant Drink'), 'Tang Instant Drink Powder is in catalog');
+  assert(!!findProduct('Sting Energy Drink'), 'Sting Energy Drink is in catalog');
+  assert(!!findProduct('Lakme Sun Expert'), 'Lakmé Sun Expert Sunscreen is in catalog');
+  assert(!!findProduct('Neutrogena Ultra Sheer'), 'Neutrogena Ultra Sheer Sunblock is in catalog');
+  assert(!!findProduct('Pass Pass Sweet Mint'), 'Pass Pass Sweet Mint Mouth Freshener is in catalog');
+  assert(!!findProduct('Rajnigandha Silver Pearls'), 'Rajnigandha Silver Pearls Elaichi is in catalog');
+  assert(!!findProduct('McCain French Fries'), 'McCain French Fries is in catalog');
+  assert(!!findProduct('Safal Frozen Green Peas'), 'Safal Frozen Green Peas is in catalog');
+  assert(!!findProduct('Shalimar Premium Garbage Bags'), 'Shalimar Garbage Bags is in catalog');
+
+  // 6. Bulk Onboard Merge Simulation
+  const mockExistingStoreInventory: InventoryItem[] = [
+    {
+      id: 'custom-item-1',
+      name: 'Locally Sourced Organic Honey 500g',
+      category: 'Organic Speciality',
+      stock: 12,
+      capacity: 30,
+      unit: 'bottle',
+      price: 350,
+      costPrice: 280,
+    },
+    {
+      id: MASTER_FMCG_CATALOG[0].id, // Pre-existing item from master catalog
+      name: MASTER_FMCG_CATALOG[0].name,
+      category: MASTER_FMCG_CATALOG[0].category,
+      stock: 5,
+      capacity: 50,
+      unit: MASTER_FMCG_CATALOG[0].unit,
+      price: MASTER_FMCG_CATALOG[0].price,
+      barcode: MASTER_FMCG_CATALOG[0].barcode,
+    }
+  ];
+
+  // Store owner selects 10 items (including the one that already exists)
+  const selectedToImport = MASTER_FMCG_CATALOG.slice(0, 10);
+  const existingIdSet = new Set(mockExistingStoreInventory.map(i => i.id));
+  const existingBarcodeSet = new Set(mockExistingStoreInventory.map(i => i.barcode).filter(Boolean));
+
+  const itemsToAdd = selectedToImport
+    .filter(p => !existingIdSet.has(p.id) && !existingBarcodeSet.has(p.barcode))
+    .map(p => ({
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      stock: 20, // Default opening stock
+      capacity: 50,
+      unit: p.unit,
+      price: p.price,
+      costPrice: p.costPrice,
+      taxRate: p.taxRate,
+      hsnCode: p.hsnCode,
+      barcode: p.barcode,
+    }));
+
+  const mergedStoreInventory = [...mockExistingStoreInventory, ...itemsToAdd];
+
+  assert(itemsToAdd.length === 9, 'Duplicate SKU guard prevented re-importing already present item (9 added instead of 10)', itemsToAdd.length);
+  assert(mergedStoreInventory.length === 11, 'Merged inventory cleanly has 11 total items (2 previous + 9 new)', mergedStoreInventory.length);
+  assert(mergedStoreInventory[0].name === 'Locally Sourced Organic Honey 500g', 'Existing custom store item is completely preserved');
+  assert(mergedStoreInventory[1].stock === 5, 'Pre-existing item stock remains intact at 5');
+  assert(itemsToAdd.every(i => i.stock === 20), 'Every imported item receives default opening stock of 20 units');
 
   // Final summary
   console.log('\n======================================================');
