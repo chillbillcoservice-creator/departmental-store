@@ -13,7 +13,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { format } from 'date-fns';
-import { Printer, Check, MessageSquare, Sparkles, Receipt, History } from 'lucide-react';
+import { Printer, Check, MessageSquare, Receipt, History } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PaymentDialog } from './payment-dialog';
 import { UpiPaymentModal } from './upi-payment-modal';
@@ -22,7 +22,6 @@ import { CashDrawerDialog } from './cash-drawer-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { sendWhatsAppBill } from '@/lib/whatsapp-bill';
-import { DEPARTMENTAL_STORE_CATALOG } from '@/lib/departmental-catalog';
 import { subscribeToAmountMatch, generateMockUtr } from '@/lib/payment-listener';
 import { triggerSoundboxAlert, playScanBeep } from '@/lib/soundbox';
 import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
@@ -1330,24 +1329,6 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                     >
                         <Wallet className="h-4 w-4" />
                         <span className="text-xs uppercase font-black">{t("Cash Drawer")}</span>
-                    </Button>
-                    <Button
-                        variant="outline"
-                        className="h-14 rounded-2xl gap-2 font-bold border-2 border-blue-500/20 hover:border-blue-500 text-blue-600 min-w-[130px]"
-                        onClick={() => {
-                            setInventory(DEPARTMENTAL_STORE_CATALOG);
-                            try {
-                                localStorage.setItem('inventory', JSON.stringify(DEPARTMENTAL_STORE_CATALOG));
-                            } catch (e) {}
-                            toast({
-                                title: t("Catalog Loaded!"),
-                                description: t("Loaded 28 official Indian Departmental Store items with live stock, barcodes & GST.")
-                            });
-                        }}
-                        title={t("Load full Indian Departmental Store inventory catalog")}
-                    >
-                        <Sparkles className="h-4 w-4 text-blue-500" />
-                        <span className="text-xs uppercase font-black">{t("Load Catalog")}</span>
                     </Button>
                     <div className="relative w-full">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
