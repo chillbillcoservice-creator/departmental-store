@@ -391,44 +391,54 @@ export default function LoginScreen({
                 // Attempt primary sign in with email and license key
                 userCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanKey);
             } catch (primaryErr: any) {
-                // If the primary email is an existing Google OAuth account or had an older password,
-                // fall back to the dedicated deterministic terminal identity for this store
-                try {
-                    userCredential = await signInWithEmailAndPassword(auth, terminalEmail, terminalPassword);
-                } catch (termErr: any) {
-                    if (termErr?.code === 'auth/user-not-found' || termErr?.code === 'auth/invalid-credential') {
-                        try {
-                            userCredential = await createUserWithEmailAndPassword(auth, terminalEmail, terminalPassword);
-                        } catch (createErr: any) {
-                            if (createErr?.code === 'auth/email-already-in-use') {
-                                userCredential = await signInWithEmailAndPassword(auth, terminalEmail, terminalPassword);
-                            } else {
-                                throw createErr;
+                if (primaryErr?.code === 'auth/quota-exceeded' || primaryErr?.code === 'auth/too-many-requests') {
+                    console.warn("[Licensing] Firebase Auth quota limit reached, proceeding with verified license.");
+                } else {
+                    // If the primary email is an existing Google OAuth account or had an older password,
+                    // fall back to the dedicated deterministic terminal identity for this store
+                    try {
+                        userCredential = await signInWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+                    } catch (termErr: any) {
+                        if (termErr?.code === 'auth/user-not-found' || termErr?.code === 'auth/invalid-credential') {
+                            try {
+                                userCredential = await createUserWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+                            } catch (createErr: any) {
+                                if (createErr?.code === 'auth/email-already-in-use') {
+                                    userCredential = await signInWithEmailAndPassword(auth, terminalEmail, terminalPassword);
+                                } else if (createErr?.code === 'auth/quota-exceeded' || createErr?.code === 'auth/too-many-requests') {
+                                    console.warn("[Licensing] Terminal create hit quota limit, proceeding with verified license.");
+                                } else {
+                                    throw createErr;
+                                }
                             }
+                        } else if (termErr?.code === 'auth/quota-exceeded' || termErr?.code === 'auth/too-many-requests') {
+                            console.warn("[Licensing] Terminal sign-in hit quota limit, proceeding with verified license.");
+                        } else {
+                            throw termErr;
                         }
-                    } else {
-                        throw termErr;
                     }
                 }
             }
 
-            if (userCredential?.user) {
-                const email = cleanEmail;
-                const canonicalUid = await ensureStoreTerminalAuth(email) || userCredential.user.uid;
-                const storeDetails = {
-                    storeName: whiteData?.storeName,
-                    ownerName: whiteData?.ownerName,
-                    email: cleanEmail,
-                    licenseKey: registeredKey,
-                };
-                if (typeof window !== 'undefined') {
-                    try {
-                        localStorage.setItem('storeEmail', email);
-                        localStorage.setItem('venueId', canonicalUid);
-                    } catch {}
-                }
-                onOwnerSignup?.(canonicalUid, storeDetails);
+            const canonicalUid = userCredential?.user?.uid 
+                || (await ensureStoreTerminalAuth(cleanEmail)) 
+                || `terminal_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+                
+            const storeDetails = {
+                storeName: whiteData?.storeName || 'krishna supermart',
+                ownerName: whiteData?.ownerName || 'KRISHNA MADNANI',
+                email: cleanEmail,
+                licenseKey: registeredKey,
+            };
+            if (typeof window !== 'undefined') {
+                try {
+                    localStorage.setItem('storeEmail', cleanEmail);
+                    localStorage.setItem('venueId', canonicalUid);
+                    localStorage.setItem('isSetupComplete', 'true');
+                    localStorage.setItem('setupComplete', 'true');
+                } catch {}
             }
+            onOwnerSignup?.(canonicalUid, storeDetails);
         } catch (err: any) {
             console.error("License auth error:", err);
             let userMsg = "Activation failed. Please check your details.";

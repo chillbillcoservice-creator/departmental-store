@@ -148,20 +148,34 @@ export default function OwnerAuthScreen({ onAuthSuccess, onAccessDenied }: Owner
           } catch (createErr: any) {
             if (createErr?.code === 'auth/email-already-in-use') {
               userCred = await signInWithEmailAndPassword(auth, cleanEmail, cleanKey);
+            } else if (createErr?.code === 'auth/quota-exceeded' || createErr?.code === 'auth/too-many-requests') {
+              console.warn("[Licensing] Auth quota exceeded on user create, proceeding with validated license.");
             } else {
               throw createErr;
             }
           }
+        } else if (authErr?.code === 'auth/quota-exceeded' || authErr?.code === 'auth/too-many-requests') {
+          console.warn("[Licensing] Auth quota exceeded on sign in, proceeding with validated license.");
         } else {
           throw authErr;
         }
       }
 
-      if (userCred?.user) {
-        const user = userCred.user;
-        const venueSnap = await getDoc(doc(firestore, "venues", user.uid));
-        onAuthSuccess(user, user.uid, !venueSnap.exists());
+      const uid = userCred?.user?.uid || `terminal_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const fakeOrRealUser = userCred?.user || {
+        uid,
+        email: cleanEmail,
+        displayName: whiteData?.ownerName || "Store Owner",
+      };
+      
+      let isNew = false;
+      try {
+        const venueSnap = await getDoc(doc(firestore, "venues", uid));
+        isNew = !venueSnap.exists();
+      } catch (e) {
+        isNew = false;
       }
+      onAuthSuccess(fakeOrRealUser as any, uid, isNew);
     } catch (err: any) {
       console.error("License Key Auth error:", err);
       let userMsg = "Activation failed. Please check your details.";

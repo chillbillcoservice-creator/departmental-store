@@ -719,7 +719,9 @@ export default function MainLayout({
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="p-2">
-              {renderNav(true)}
+              <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+                {renderNav(true)}
+              </Tabs>
             </SheetContent>
           </Sheet>
           <Logo className="h-6 w-6" />

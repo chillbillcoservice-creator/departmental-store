@@ -10,13 +10,6 @@ import { useState, useEffect } from 'react';
 export function isStrictMobileDevice(): boolean {
     if (typeof window === 'undefined') return false;
 
-    // Check sticky session storage first to prevent layout flipping during keyboard open/close or rotation
-    try {
-        const cached = sessionStorage.getItem('chillbill_is_mobile');
-        if (cached === 'true') return true;
-        if (cached === 'false') return false;
-    } catch (e) {}
-
     const ua = navigator.userAgent || '';
     
     // Layer 1: Modern W3C Client Hints (Navigator.userAgentData)
@@ -45,6 +38,29 @@ export function isStrictMobileDevice(): boolean {
     // Layer 5: Viewport Width & Touch Phablet/Foldable Fallback (up to 1024px in landscape)
     const isSmallViewport = window.innerWidth < 768;
     const isTouchPhoneViewport = Boolean(isTouch && window.innerWidth <= 1024 && (hasCoarsePointer || hasNoHover || minPhysicalDimension < 768));
+
+    // Dynamic Viewport Override:
+    // If viewport is strictly below 768px (mobile viewport), always return true
+    if (isSmallViewport) {
+        try {
+            sessionStorage.setItem('chillbill_is_mobile', 'true');
+        } catch (e) {}
+        return true;
+    }
+    // If viewport is desktop width (>= 1024px) without touch or mobile UA, always return false
+    if (window.innerWidth >= 1024 && !isTouch && !isMobileUA) {
+        try {
+            sessionStorage.setItem('chillbill_is_mobile', 'false');
+        } catch (e) {}
+        return false;
+    }
+
+    // Check sticky session storage for rotation/keyboard transitions (tablets/foldables)
+    try {
+        const cached = sessionStorage.getItem('chillbill_is_mobile');
+        if (cached === 'true') return true;
+        if (cached === 'false') return false;
+    } catch (e) {}
 
     // Final Determination:
     // If any mobile hardware/UA indicator is present, strictly treat as mobile device

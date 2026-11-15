@@ -127,20 +127,23 @@ export function logShiftActivity(
  * Live calculation reconciling bills, POs, expenses, and returns against the active shift
  */
 export function calculateShiftSummary(
-  shift: StaffShiftSession,
-  bills: Bill[],
-  expenses: Expense[],
-  purchaseOrders: PurchaseOrder[],
+  shift?: StaffShiftSession | null,
+  bills: Bill[] = [],
+  expenses: Expense[] = [],
+  purchaseOrders: PurchaseOrder[] = [],
   salesReturns: SalesReturn[] = []
-): StaffShiftSession {
-  const shiftStart = new Date(shift.openedAt).getTime();
-  const shiftEnd = shift.closedAt ? new Date(shift.closedAt).getTime() : Date.now();
+): StaffShiftSession | null {
+  const targetShift = shift || getActiveShift();
+  if (!targetShift) return null;
+
+  const shiftStart = new Date(targetShift.openedAt).getTime();
+  const shiftEnd = targetShift.closedAt ? new Date(targetShift.closedAt).getTime() : Date.now();
 
   // 1. Reconcile Bills attributed to this shift
   const shiftBills = bills.filter((b) => {
     const billTime = new Date(b.timestamp || b.createdAt).getTime();
-    if (b.shiftId) return b.shiftId === shift.id;
-    if (b.cashierId) return b.cashierId === shift.employeeId && billTime >= shiftStart && billTime <= shiftEnd + 1000;
+    if (b.shiftId) return b.shiftId === targetShift.id;
+    if (b.cashierId) return b.cashierId === targetShift.employeeId && billTime >= shiftStart && billTime <= shiftEnd + 1000;
     return billTime >= shiftStart && billTime <= shiftEnd + 1000;
   });
 
@@ -186,7 +189,7 @@ export function calculateShiftSummary(
   // 3. Reconcile Khata dues collected from activity log
   let khataCashRecovered = 0;
   let khataOnlineRecovered = 0;
-  (shift.activities || []).forEach((act) => {
+  (targetShift.activities || []).forEach((act) => {
     if (act.type === 'khata_collection') {
       if (act.paymentMethod === 'Cash') khataCashRecovered += act.amount || 0;
       else khataOnlineRecovered += act.amount || 0;
@@ -196,7 +199,7 @@ export function calculateShiftSummary(
   // 4. Reconcile Store Expenses & Vendor Payments
   const shiftExpenses = expenses.filter((e) => {
     const expTime = new Date(e.date).getTime();
-    if (e.shiftId) return e.shiftId === shift.id;
+    if (e.shiftId) return e.shiftId === targetShift.id;
     return expTime >= shiftStart && expTime <= shiftEnd + 1000;
   });
 
@@ -220,7 +223,7 @@ export function calculateShiftSummary(
   const vendorPOsCreated: StaffShiftSession['vendorPOsCreated'] = [];
   purchaseOrders.forEach((po) => {
     const poTime = new Date(po.date).getTime();
-    const isThisShift = (po.shiftId && po.shiftId === shift.id) || (poTime >= shiftStart && poTime <= shiftEnd + 1000);
+    const isThisShift = (po.shiftId && po.shiftId === targetShift.id) || (poTime >= shiftStart && poTime <= shiftEnd + 1000);
     if (isThisShift) {
       vendorPOsCreated.push({
         poId: po.id,
@@ -253,7 +256,7 @@ export function calculateShiftSummary(
   });
 
   // 7. Dynamic Expected Cash Formula
-  const openingFloat = shift.openingFloat || 0;
+  const openingFloat = targetShift.openingFloat || 0;
   const cashInflow = cashSales + khataCashRecovered;
   const cashOutflow = cashRefunds + storeExpenses + vendorPaymentsCash;
   const expectedCashInDrawer = openingFloat + cashInflow - cashOutflow;
@@ -264,7 +267,7 @@ export function calculateShiftSummary(
   );
 
   const reconciledShift: StaffShiftSession = {
-    ...shift,
+    ...targetShift,
     durationMinutes,
     cashSales,
     onlineSales,

@@ -273,7 +273,7 @@ async function runTests() {
   logShiftActivity({ type: 'khata_collection', title: 'Khata Cash Collection', description: 'Customer Khata Recovery', amount: 800, paymentMethod: 'Cash' });
 
   // Calculate live reconciled shift summary
-  const updatedShift = calculateShiftSummary(getActiveShift()!, shiftBills, shiftExpenses, [poWithShift], []);
+  const updatedShift = calculateShiftSummary(getActiveShift()!, shiftBills, shiftExpenses, [poWithShift], [])!;
 
   // Expected cash in drawer:
   // openingFloat (2000) + Cash Sales (1500) + Khata Cash Collection (800) - Expense (120) = 4180
