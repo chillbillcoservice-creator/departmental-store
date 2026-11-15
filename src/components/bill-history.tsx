@@ -20,6 +20,7 @@ import type { Bill, InventoryItem } from '@/lib/types';
 import { format, isSameDay, isSameMonth, isSameYear, isValid } from 'date-fns';
 import { sendWhatsAppBill } from '@/lib/whatsapp-bill';
 import { WhatsAppIcon } from '@/components/icons/whatsapp-icon';
+import { printThermalBill } from '@/lib/thermal-printer';
 
 const safeFormat = (date: any, formatStr: string) => {
   if (!date) return 'N/A';
@@ -102,30 +103,26 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
   }, [bills, filter, date]);
 
   const handlePrintBill = (bill: Bill) => {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Receipt for Bill #${bill.id}</title>
-            <style>
-              body { font-family: monospace; margin: 20px; }
-              pre { white-space: pre-wrap; word-wrap: break-word; }
-            </style>
-          </head>
-          <body>
-            <pre>${getReceiptPreview(bill)}</pre>
-            <script>
-              window.onload = function() {
-                window.print();
-                window.close();
-              }
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    }
+    printThermalBill(bill, venueDetails, currency, bill.total, () => `
+      <html>
+        <head>
+          <title>Receipt for Bill #${bill.id}</title>
+          <style>
+            body { font-family: monospace; margin: 20px; }
+            pre { white-space: pre-wrap; word-wrap: break-word; }
+          </style>
+        </head>
+        <body>
+          <pre>${getReceiptPreview(bill)}</pre>
+          <script>
+            window.onload = function() {
+              window.print();
+              window.close();
+            }
+          </script>
+        </body>
+      </html>
+    `);
   };
 
   const handleDeleteBill = async (billId: string) => {

@@ -4,7 +4,7 @@ import * as React from 'react';
 import { useLanguage } from '@/contexts/language-context';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Shield, Receipt, Package, Users2, Menu as MenuIcon, HelpCircle, Truck, CreditCard, PanelLeft, PanelTop, AlertTriangle, List, X, Palette, Settings, Headphones, LogOut, Clock, Smartphone } from 'lucide-react';
+import { Users, Shield, Receipt, Package, Users2, Menu as MenuIcon, HelpCircle, Truck, CreditCard, PanelLeft, PanelTop, AlertTriangle, List, X, Palette, Settings, Printer, Headphones, LogOut, Clock, Smartphone } from 'lucide-react';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { isSameDay } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -154,7 +154,7 @@ export default function MainLayout({
   const [tutorialModeEnabled, setTutorialModeEnabled] = useState(false);
   const [tutorialLanguage, setTutorialLanguage] = useState<TutorialLanguage>('hi');
   const [tutorialVoicePersona, setTutorialVoicePersona] = useState<TutorialVoicePersona>('puck');
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'upi' | 'appearance' | 'tutorial'>('upi');
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'upi' | 'appearance' | 'tutorial' | 'printer'>('upi');
 
   useEffect(() => {
     try {
@@ -758,6 +758,28 @@ export default function MainLayout({
               </TooltipTrigger>
               <TooltipContent>
                 <p>{t('Store & POS Settings')}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setSettingsInitialTab('printer');
+                    setIsSettingsOpen(true);
+                  }}
+                  title={t('Bluetooth & Thermal Printer')}
+                  className="rounded-xl hover:bg-muted text-foreground/80 hover:text-foreground"
+                >
+                  <Printer className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t('Bluetooth Thermal Printer & Hardware')}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

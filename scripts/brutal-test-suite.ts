@@ -71,7 +71,18 @@ import type {
   PurchaseOrder,
   Vendor,
   VenueDetails,
+  StaffShiftSession,
 } from '../src/lib/types';
+import {
+  EscPosEncoder,
+  encodeBillToEscPos,
+  encodeTestSlipToEscPos,
+  encodeShiftSlipToEscPos,
+} from '../src/lib/escpos';
+import {
+  getPrinterConfig,
+  savePrinterConfig,
+} from '../src/lib/thermal-printer';
 
 interface TestResult {
   name: string;
@@ -833,6 +844,202 @@ async function runTests() {
   assert(mergedStoreInventory[0].name === 'Locally Sourced Organic Honey 500g', 'Existing custom store item is completely preserved');
   assert(mergedStoreInventory[1].stock === 5, 'Pre-existing item stock remains intact at 5');
   assert(itemsToAdd.every(i => i.stock === 20), 'Every imported item receives default opening stock of 20 units');
+
+  // --- Test Group 14: ESC/POS Thermal Printing & Seznik Hardware Compatibility ---
+  console.log('\n🖨️ [14/14] Auditing ESC/POS Thermal Printing & Seznik Hardware Compatibility...');
+
+  // 1. ESC/POS Encoder Low-level command bytes
+  const encoder = new EscPosEncoder();
+  const initBytes = encoder.initialize().getBuffer();
+  assert(initBytes[0] === 0x1b && initBytes[1] === 0x40, 'ESC @ initialize printer sequence is valid [0x1B, 0x40]');
+
+  const alignCenterBytes = new EscPosEncoder().align('center').getBuffer();
+  assert(alignCenterBytes.some((b, i, arr) => b === 0x1b && arr[i+1] === 0x61 && arr[i+2] === 0x01), 'ESC a 1 (center align) sequence is valid');
+
+  const alignRightBytes = new EscPosEncoder().align('right').getBuffer();
+  assert(alignRightBytes.some((b, i, arr) => b === 0x1b && arr[i+1] === 0x61 && arr[i+2] === 0x02), 'ESC a 2 (right align) sequence is valid');
+
+  const boldBytes = new EscPosEncoder().bold(true).getBuffer();
+  assert(boldBytes.some((b, i, arr) => b === 0x1b && arr[i+1] === 0x45 && arr[i+2] === 0x01), 'ESC E 1 (bold on) sequence is valid');
+
+  const drawerKickBytes = new EscPosEncoder().pulseCashDrawer().getBuffer();
+  assert(drawerKickBytes.some((b, i, arr) => b === 0x1b && arr[i+1] === 0x70 && arr[i+2] === 0x00), 'ESC p 0 25 250 (cash drawer RJ11 pulse) sequence is valid');
+
+  const paperCutBytes = new EscPosEncoder().cut().getBuffer();
+  assert(paperCutBytes.some((b, i, arr) => b === 0x1d && arr[i + 1] === 0x56), 'GS V 66 0 (paper cut) sequence is valid');
+
+  const beepBytes = new EscPosEncoder().beep().getBuffer();
+  assert(beepBytes.some((b, i, arr) => b === 0x1b && arr[i+1] === 0x42), 'ESC B n t (buzzer beep) sequence is valid');
+
+  // 2. Column alignment & text widths (58mm = 32 cols, 80mm = 48 cols)
+  const enc58 = new EscPosEncoder().twoColumn('Item', '100.00', 32);
+  const twoCol58 = new TextDecoder('ascii').decode(enc58.getBuffer());
+  assert(twoCol58.includes('Item') && twoCol58.includes('100.00'), '58mm two-column correctly includes left and right strings');
+
+  const enc80 = new EscPosEncoder().twoColumn('Amul Taaza Milk 1L Pouch', '66.00', 48);
+  const twoCol80 = new TextDecoder('ascii').decode(enc80.getBuffer());
+  assert(twoCol80.includes('Amul Taaza Milk') && twoCol80.includes('66.00'), '80mm two-column correctly includes item and price');
+
+  const encThree80 = new EscPosEncoder().threeColumn('Tata Tea Premium 500g', '2 x Rs.140.00', 'Rs.280.00', 48);
+  const threeCol80 = new TextDecoder('ascii').decode(encThree80.getBuffer());
+  assert(threeCol80.includes('Tata Tea') && threeCol80.includes('Rs.280.00'), '80mm three-column correctly includes columns');
+
+  const divEnc58 = new EscPosEncoder().divider(32, '-');
+  const divider58 = new TextDecoder('ascii').decode(divEnc58.getBuffer());
+  assert(divider58.includes('--------------------------------'), '58mm divider generates exactly 32 dashes');
+
+  const divEnc80 = new EscPosEncoder().divider(48, '=');
+  const divider80 = new TextDecoder('ascii').decode(divEnc80.getBuffer());
+  assert(divider80.includes('================================================'), '80mm divider generates exactly 48 equals');
+
+  // 3. Indian Retail Bill ESC/POS Encoding (58mm Seznik / Everycom)
+  const mockThermalBill: Bill = {
+    id: 'BILL-SZ-001',
+    timestamp: new Date('2026-11-15T14:30:00Z'),
+    orderItems: [
+      {
+        id: '1',
+        name: 'Aashirvaad Shudh Chakki Atta 5kg',
+        price: 245,
+        quantity: 2,
+        taxRate: 5,
+        hsnCode: '11010000',
+        category: 'Flour & Staples',
+        unit: 'pack',
+      },
+      {
+        id: '2',
+        name: 'Fortune Sunlite Sunflower Oil 1L',
+        price: 135,
+        quantity: 1,
+        taxRate: 5,
+        hsnCode: '15121910',
+        category: 'Edible Oils & Ghee',
+        unit: 'bottle',
+      },
+    ],
+    subtotal: 625,
+    tax: 31.25,
+    discount: 25,
+    roundOff: -0.25,
+    total: 631,
+    paymentMethod: 'UPI',
+    cashierName: 'Bunty',
+    customerDetails: {
+      name: 'Ramesh Sharma',
+      phone: '9876543210',
+      companyName: 'Sharma Traders',
+      gstin: '07AAAAA0000A1Z5',
+      address: 'Shop 12, Main Market',
+    },
+  };
+
+  const mockStoreVenue: VenueDetails = {
+    name: 'Krishna Supermart',
+    address: 'Near Metro Station, New Delhi',
+    phone: '9811223344',
+    email: 'info@krishnasupermart.com',
+    gstin: '07AAACK1234M1Z2',
+    receiptFooter: 'Thank you for shopping! Visit Again!',
+  };
+
+  const rawBytes58 = encodeBillToEscPos(
+    mockThermalBill,
+    mockStoreVenue,
+    '58mm',
+    'Rs.',
+    mockThermalBill.total,
+    { autoCut: true, autoKickDrawer: true, beep: true }
+  );
+
+  assert(rawBytes58 instanceof Uint8Array, '58mm ESC/POS encoder outputs binary Uint8Array');
+  assert(rawBytes58.length > 200, `58mm ESC/POS bill output has realistic byte length (>200, got ${rawBytes58.length})`);
+
+  // Decode binary to string for text validation
+  const decodedText58 = new TextDecoder('ascii', { fatal: false }).decode(rawBytes58);
+  assert(decodedText58.includes('KRISHNA SUPERMART'), '58mm thermal output contains store header name in uppercase');
+  assert(decodedText58.includes('TAX INVOICE'), '58mm bill with customer GSTIN activates TAX INVOICE badge');
+  assert(decodedText58.includes('07AAAAA0000A1Z5'), '58mm bill prints customer GSTIN');
+  assert(decodedText58.includes('HSN: 11010000'), '58mm bill contains product HSN code');
+  assert(decodedText58.includes('CGST') && decodedText58.includes('SGST'), '58mm bill prints intra-state GST tax breakdown');
+  assert(decodedText58.includes('UPI'), '58mm bill prints payment method');
+
+  // 80mm Seznik SZ-80 / TVS Layout
+  const rawBytes80 = encodeBillToEscPos(
+    mockThermalBill,
+    mockStoreVenue,
+    '80mm',
+    'Rs.',
+    mockThermalBill.total,
+    { autoCut: true, autoKickDrawer: true, beep: true }
+  );
+  assert(rawBytes80 instanceof Uint8Array, '80mm ESC/POS encoder outputs binary Uint8Array');
+  assert(rawBytes80.length > 250, `80mm ESC/POS bill output has realistic byte length (>250, got ${rawBytes80.length})`);
+
+  // Test Slip Encoding for Hardware Verification
+  const testSlipBytes = encodeTestSlipToEscPos('Krishna Supermart', '58mm');
+  assert(testSlipBytes instanceof Uint8Array && testSlipBytes.length > 100, 'Test slip binary generated successfully');
+  const testSlipText = new TextDecoder('ascii', { fatal: false }).decode(testSlipBytes);
+  assert(testSlipText.includes('BLUETOOTH PRINTER TEST SLIP'), 'Test slip header contains BLUETOOTH PRINTER TEST SLIP');
+  assert(testSlipText.includes('Direct Wireless Printing is Ready!'), 'Test slip mentions direct wireless printing readiness');
+
+  // Shift Handover Slip Encoding
+  const mockShiftSession: StaffShiftSession = {
+    id: 'SHIFT-2026-001',
+    employeeId: 'staff-1',
+    employeeName: 'Bunty Kumar',
+    employeeRole: 'cashier',
+    openedAt: new Date('2026-11-15T09:00:00Z'),
+    closedAt: new Date('2026-11-15T17:00:00Z'),
+    openingFloat: 2000,
+    cashSales: 4500,
+    onlineSales: 8200,
+    khataCreditGiven: 0,
+    khataCashRecovered: 0,
+    khataOnlineRecovered: 0,
+    totalSales: 12700,
+    billsCount: 24,
+    itemsSoldCount: 45,
+    totalDiscountsGiven: 50,
+    cashRefunds: 0,
+    refundsCount: 0,
+    storeExpenses: 500,
+    vendorPaymentsCash: 0,
+    vendorPaymentsOnline: 0,
+    totalOutflow: 500,
+    vendorPOsCreated: [],
+    expectedCashInDrawer: 6000,
+    actualCashCounted: 6000,
+    cashDifference: 0,
+    status: 'completed',
+    handoverNotes: 'Shift reconciled cleanly with zero discrepancy.',
+  };
+
+  const shiftSlipBytes = encodeShiftSlipToEscPos(mockShiftSession, mockStoreVenue, '80mm', 'Rs.');
+  assert(shiftSlipBytes instanceof Uint8Array && shiftSlipBytes.length > 200, 'Shift handover slip binary generated successfully');
+  const shiftSlipText = new TextDecoder('ascii', { fatal: false }).decode(shiftSlipBytes);
+  assert(shiftSlipText.includes('SHIFT HANDOVER REPORT'), 'Shift slip contains SHIFT HANDOVER REPORT title');
+  assert(shiftSlipText.includes('Bunty Kumar'), 'Shift slip contains cashier name');
+  assert(shiftSlipText.includes('6000.00'), 'Shift slip contains expected and counted drawer cash');
+
+  // 4. Printer Configuration Persistence
+  const initialConfig = getPrinterConfig();
+  assert(initialConfig.mode === 'system', 'Default unconfigured printer mode is system');
+  assert(initialConfig.paperWidth === '80mm', 'Default paper width is 80mm');
+
+  // Save new configuration with Seznik 58mm Bluetooth
+  savePrinterConfig({
+    mode: 'bluetooth',
+    paperWidth: '58mm',
+    autoPrint: true,
+    lastDeviceName: 'Seznik SZ-58BT',
+  });
+
+  const updatedConfig = getPrinterConfig();
+  assert(updatedConfig.mode === 'bluetooth', 'Printer mode persisted to bluetooth');
+  assert(updatedConfig.paperWidth === '58mm', 'Paper width persisted to 58mm');
+  assert(updatedConfig.autoPrint === true, 'Auto-print on checkout persisted to true');
+  assert(updatedConfig.lastDeviceName === 'Seznik SZ-58BT', 'Paired Bluetooth device name preserved (Seznik SZ-58BT)');
 
   // Final summary
   console.log('\n======================================================');

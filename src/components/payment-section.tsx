@@ -27,6 +27,7 @@ import { subscribeToAmountMatch, generateMockUtr } from '@/lib/payment-listener'
 import { triggerSoundboxAlert, playScanBeep } from '@/lib/soundbox';
 import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
 import { syncCompletedBillToCloud, cleanVenueId } from '@/lib/firestore-sync';
+import { printThermalBill, getPrinterConfig } from '@/lib/thermal-printer';
 
 interface PaymentSectionProps {
     inventory: InventoryItem[];
@@ -757,7 +758,8 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
             referenceId: billId,
         });
 
-        if (shouldPrint) {
+        const printerSettings = getPrinterConfig();
+        if (shouldPrint || printerSettings.autoPrint) {
             handlePrint(newBill, paid);
         }
 
@@ -1037,9 +1039,6 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
     }, []);
 
     const handlePrint = (bill: Bill, amountPaid?: number) => {
-        const printWindow = window.open('', '_blank');
-        if (!printWindow) return;
-
         const paid = amountPaid !== undefined ? amountPaid : bill.total;
         const balance = bill.total - paid;
 
@@ -1212,8 +1211,8 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
             </html>
         `;
 
-        printWindow.document.write(receiptHtml);
-        printWindow.document.close();
+        // Stream directly to Bluetooth/Serial thermal printer or fallback to system print
+        printThermalBill(bill, venueDetails, activeCurrency, paid, () => receiptHtml);
     };
 
     // Today's live sales calculation for the counter bar button

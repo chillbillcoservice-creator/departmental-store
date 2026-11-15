@@ -56,6 +56,7 @@ import {
   formatShiftWhatsAppText,
   generateShiftReceiptText,
 } from '@/lib/shift-manager';
+import { printThermalShiftSlip } from '@/lib/thermal-printer';
 import { cn } from '@/lib/utils';
 
 interface ShiftHandoverDialogProps {
@@ -127,40 +128,16 @@ export function ShiftHandoverDialog({
 
   // 1. Handle Print Handover Thermal Slip
   const handlePrintSlip = () => {
-    const receiptText = generateShiftReceiptText(
-      {
-        ...shiftSummary,
-        actualCashCounted: numCountedCash,
-        cashDifference: discrepancy,
-        handoverNotes,
-        closedAt: new Date().toISOString(),
-      },
-      venueDetails,
-      currency
-    );
+    const updatedShiftData = {
+      ...shiftSummary,
+      actualCashCounted: numCountedCash,
+      cashDifference: discrepancy,
+      handoverNotes,
+      closedAt: new Date().toISOString(),
+    };
 
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Shift Handover Slip - ${shiftSummary.employeeName}</title>
-            <style>
-              @page { size: auto; margin: 4mm; }
-              body { font-family: 'Courier New', Courier, monospace; font-size: 12px; margin: 0; padding: 10px; color: #000; }
-              pre { white-space: pre-wrap; word-wrap: break-word; margin: 0; line-height: 1.35; }
-            </style>
-          </head>
-          <body>
-            <pre>${receiptText}</pre>
-            <script>
-              window.onload = function() { window.print(); };
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    }
+    // Direct Thermal Print (Bluetooth / Serial / System Fallback)
+    printThermalShiftSlip(updatedShiftData, venueDetails, currency);
   };
 
   // 2. Handle WhatsApp Share to Store Owner

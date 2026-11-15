@@ -49,7 +49,26 @@ import {
   Globe,
   Clock,
   Mic,
+  Printer,
+  Bluetooth,
+  Usb,
+  Scissors,
+  FileText,
+  RefreshCw,
 } from 'lucide-react';
+import {
+  getPrinterConfig,
+  savePrinterConfig,
+  connectBluetoothPrinter,
+  disconnectBluetoothPrinter,
+  connectSerialPrinter,
+  disconnectSerialPrinter,
+  printTestReceipt,
+  kickCashDrawer,
+  getPrinterConnectionStatus,
+  isWebBluetoothSupported,
+  type PrinterConfig,
+} from '@/lib/thermal-printer';
 import { useTheme } from 'next-themes';
 import { useThemeColor } from '@/contexts/theme-color-context';
 import { useLanguage } from '@/contexts/language-context';
@@ -103,7 +122,7 @@ interface PosSettingsDialogProps {
   tutorialVoicePersona?: TutorialVoicePersona;
   setTutorialVoicePersona?: (persona: TutorialVoicePersona) => void;
   onNavigateToTab?: (tab: string) => void;
-  initialTab?: 'upi' | 'appearance' | 'tutorial';
+  initialTab?: 'upi' | 'appearance' | 'tutorial' | 'printer';
 }
 
 export function PosSettingsDialog({
@@ -126,10 +145,113 @@ export function PosSettingsDialog({
   const { toast } = useToast();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'upi' | 'appearance' | 'tutorial'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'upi' | 'appearance' | 'tutorial' | 'printer'>(initialTab);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [playingFeatureId, setPlayingFeatureId] = useState<string | null>(null);
   const [isVoiceActive, setIsVoiceActive] = useState<boolean>(false);
+
+  // Printer Hardware Management State
+  const [printerConfig, setPrinterConfig] = useState<PrinterConfig>(() => getPrinterConfig());
+  const [isScanningBluetooth, setIsScanningBluetooth] = useState<boolean>(false);
+  const [printerStatus, setPrinterStatus] = useState(() => getPrinterConnectionStatus());
+
+  useEffect(() => {
+    setMounted(true);
+    setPrinterConfig(getPrinterConfig());
+    setPrinterStatus(getPrinterConnectionStatus());
+  }, [isOpen]);
+
+  const handleUpdatePrinterConfig = (updates: Partial<PrinterConfig>) => {
+    const updated = savePrinterConfig(updates);
+    setPrinterConfig(updated);
+    setPrinterStatus(getPrinterConnectionStatus());
+  };
+
+  const handleConnectBluetooth = async () => {
+    setIsScanningBluetooth(true);
+    try {
+      const res = await connectBluetoothPrinter();
+      if (res.success) {
+        toast({
+          title: t("Bluetooth Printer Connected!"),
+          description: `${res.deviceName || 'Thermal Printer'} is ready for 1-tap wireless printing (Like Lazy Calc POS).`,
+        });
+        setPrinterConfig(getPrinterConfig());
+        setPrinterStatus(getPrinterConnectionStatus());
+      } else {
+        toast({
+          variant: "destructive",
+          title: t("Bluetooth Connection Failed"),
+          description: res.error || t("Could not pair Bluetooth printer."),
+        });
+      }
+    } finally {
+      setIsScanningBluetooth(false);
+    }
+  };
+
+  const handleDisconnectBluetooth = async () => {
+    await disconnectBluetoothPrinter();
+    handleUpdatePrinterConfig({ mode: 'system' });
+    toast({
+      title: t("Printer Disconnected"),
+      description: t("Reverted to System Print mode."),
+    });
+  };
+
+  const handleConnectSerial = async () => {
+    const res = await connectSerialPrinter();
+    if (res.success) {
+      toast({
+        title: t("USB / Serial Printer Connected!"),
+        description: t("Direct thermal printing active via USB / COM port."),
+      });
+      setPrinterConfig(getPrinterConfig());
+      setPrinterStatus(getPrinterConnectionStatus());
+    } else {
+      toast({
+        variant: "destructive",
+        title: t("Serial Connection Failed"),
+        description: res.error || t("Could not connect serial printer."),
+      });
+    }
+  };
+
+  const handleTestPrint = async () => {
+    toast({
+      title: t("Sending Test Receipt..."),
+      description: t("Streaming ESC/POS thermal command stream to printer."),
+    });
+    const res = await printTestReceipt(venueDetails?.name || 'Krishna Supermart');
+    if (res.success) {
+      toast({
+        title: t("Test Slip Printed!"),
+        description: t("Receipt printed successfully. Your printer is perfectly configured!"),
+      });
+    } else {
+      toast({
+        variant: "destructive",
+        title: t("Print Failed"),
+        description: res.error || t("Could not print test slip. Verify printer power and connection."),
+      });
+    }
+  };
+
+  const handleKickCashDrawer = async () => {
+    const kicked = await kickCashDrawer();
+    if (kicked) {
+      toast({
+        title: t("Cash Drawer Popped!"),
+        description: t("Pulse signal sent to RJ11 kick port."),
+      });
+    } else {
+      toast({
+        variant: "destructive",
+        title: t("Drawer Kick Signal Failed"),
+        description: t("Connect a Bluetooth or Serial printer with an RJ11 cash drawer cable."),
+      });
+    }
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -194,10 +316,14 @@ export function PosSettingsDialog({
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="w-full flex-1 flex flex-col overflow-hidden pt-2">
-          <TabsList className="grid w-full grid-cols-3 h-11 bg-muted/60 p-1 rounded-xl flex-shrink-0">
+          <TabsList className="grid w-full grid-cols-4 h-11 bg-muted/60 p-1 rounded-xl flex-shrink-0">
             <TabsTrigger value="upi" className="rounded-lg font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-xs">
               <QrCode className="h-3.5 w-3.5" />
               {t('UPI & Payments')}
+            </TabsTrigger>
+            <TabsTrigger value="printer" className="rounded-lg font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-xs">
+              <Printer className="h-3.5 w-3.5" />
+              {t('Printer & Hardware')}
             </TabsTrigger>
             <TabsTrigger value="appearance" className="rounded-lg font-bold text-xs gap-1.5 data-[state=active]:bg-background data-[state=active]:text-primary data-[state=active]:shadow-xs">
               <Palette className="h-3.5 w-3.5" />
@@ -345,6 +471,340 @@ export function PosSettingsDialog({
                   </Select>
                 </div>
               )}
+            </div>
+          </TabsContent>
+
+          {/* ========================================================= */}
+          {/* TAB: PRINTER & HARDWARE (BLUETOOTH / SEZNIK / ESC/POS) */}
+          {/* ========================================================= */}
+          <TabsContent value="printer" className="space-y-4 pt-3 flex-1 overflow-y-auto pr-1">
+            {/* 1. Connection Output Mode */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                  {t('Thermal Printing Engine')}
+                </Label>
+                <span className="text-[10px] bg-primary/10 text-primary font-bold px-2 py-0.5 rounded-full border border-primary/20">
+                  {printerConfig.mode === 'bluetooth' ? t('Wireless Bluetooth') : printerConfig.mode === 'serial' ? t('USB / Serial') : t('System Print')}
+                </span>
+              </div>
+
+              <RadioGroup
+                value={printerConfig.mode}
+                onValueChange={(val: 'bluetooth' | 'serial' | 'system') => {
+                  handleUpdatePrinterConfig({ mode: val });
+                  toast({
+                    title: val === 'bluetooth'
+                      ? t('Bluetooth Thermal Engine Selected')
+                      : val === 'serial'
+                      ? t('USB / Serial Thermal Engine Selected')
+                      : t('System Print Mode Selected'),
+                    description: val === 'bluetooth'
+                      ? t('Direct 1-tap wireless ESC/POS printing without popups (Seznik, Everycom, TVS).')
+                      : val === 'serial'
+                      ? t('Direct printing via USB cable or COM port.')
+                      : t('Prints using browser print preview dialog.'),
+                  });
+                }}
+                className="grid grid-cols-1 sm:grid-cols-3 gap-2"
+              >
+                {/* Option 1: Bluetooth */}
+                <label
+                  htmlFor="mode-bt"
+                  className={cn(
+                    "flex flex-col p-3 rounded-2xl border-2 cursor-pointer transition-all space-y-1.5",
+                    printerConfig.mode === 'bluetooth'
+                      ? "border-primary bg-primary/5 shadow-xs"
+                      : "border-border/60 hover:border-border bg-card"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Bluetooth className={cn("h-4 w-4", printerConfig.mode === 'bluetooth' ? "text-primary" : "text-muted-foreground")} />
+                      <span className="font-bold text-xs">{t('Bluetooth Direct')}</span>
+                    </div>
+                    <RadioGroupItem value="bluetooth" id="mode-bt" />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {t('Seznik, Everycom, TVS, MPT-II, POS-58/80. Instant 1-tap wireless prints.')}
+                  </p>
+                </label>
+
+                {/* Option 2: USB / Serial */}
+                <label
+                  htmlFor="mode-serial"
+                  className={cn(
+                    "flex flex-col p-3 rounded-2xl border-2 cursor-pointer transition-all space-y-1.5",
+                    printerConfig.mode === 'serial'
+                      ? "border-primary bg-primary/5 shadow-xs"
+                      : "border-border/60 hover:border-border bg-card"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Usb className={cn("h-4 w-4", printerConfig.mode === 'serial' ? "text-primary" : "text-muted-foreground")} />
+                      <span className="font-bold text-xs">{t('USB / Serial')}</span>
+                    </div>
+                    <RadioGroupItem value="serial" id="mode-serial" />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {t('Direct cable or Bluetooth virtual COM port.')}
+                  </p>
+                </label>
+
+                {/* Option 3: System Print */}
+                <label
+                  htmlFor="mode-sys"
+                  className={cn(
+                    "flex flex-col p-3 rounded-2xl border-2 cursor-pointer transition-all space-y-1.5",
+                    printerConfig.mode === 'system'
+                      ? "border-primary bg-primary/5 shadow-xs"
+                      : "border-border/60 hover:border-border bg-card"
+                  )}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Printer className={cn("h-4 w-4", printerConfig.mode === 'system' ? "text-primary" : "text-muted-foreground")} />
+                      <span className="font-bold text-xs">{t('System Print')}</span>
+                    </div>
+                    <RadioGroupItem value="system" id="mode-sys" />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">
+                    {t('Standard OS dialog for A4, network printers, or PDF export.')}
+                  </p>
+                </label>
+              </RadioGroup>
+            </div>
+
+            {/* 2. Bluetooth Device Pairing Card */}
+            {printerConfig.mode === 'bluetooth' && (
+              <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "h-3 w-3 rounded-full",
+                      printerStatus.connected ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"
+                    )} />
+                    <div>
+                      <span className="text-xs font-black">
+                        {printerStatus.connected
+                          ? `${t('Connected')}: ${printerStatus.deviceName || 'Bluetooth Printer'}`
+                          : t('No Bluetooth Printer Connected')}
+                      </span>
+                      <p className="text-[11px] text-muted-foreground">
+                        {printerStatus.connected
+                          ? t('Ready to stream ESC/POS thermal bills instantly')
+                          : t('Click below to search for your Seznik, Everycom, or TVS printer')}
+                      </p>
+                    </div>
+                  </div>
+                  {printerStatus.connected && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDisconnectBluetooth}
+                      className="h-7 text-xs rounded-lg px-2 text-destructive hover:bg-destructive/10 border-destructive/30"
+                    >
+                      {t('Disconnect')}
+                    </Button>
+                  )}
+                </div>
+
+                {!isWebBluetoothSupported() ? (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs">
+                    {t('Note: Web Bluetooth is supported in Google Chrome, Microsoft Edge, and Android Chrome. If using Firefox or Safari, switch to System Print.')}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      onClick={handleConnectBluetooth}
+                      disabled={isScanningBluetooth}
+                      className="h-9 px-3.5 text-xs font-bold rounded-xl gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                    >
+                      {isScanningBluetooth ? (
+                        <>
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                          {t('Scanning Bluetooth Devices...')}
+                        </>
+                      ) : (
+                        <>
+                          <Bluetooth className="h-3.5 w-3.5" />
+                          {printerStatus.connected ? t('Switch / Pair Different Printer') : t('Scan & Connect Bluetooth Printer')}
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={handleTestPrint}
+                      className="h-9 px-3 text-xs font-bold rounded-xl gap-1.5 border-border/80"
+                    >
+                      <FileText className="h-3.5 w-3.5 text-primary" />
+                      {t('Print Test Slip')}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={handleKickCashDrawer}
+                      className="h-9 px-3 text-xs font-bold rounded-xl gap-1.5 border-border/80"
+                      title={t('Test RJ11 cash drawer kick')}
+                    >
+                      <Banknote className="h-3.5 w-3.5 text-amber-600" />
+                      {t('Test Cash Drawer')}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* USB / Serial Connection Card */}
+            {printerConfig.mode === 'serial' && (
+              <div className="p-3.5 rounded-2xl bg-muted/40 border border-border/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-black">
+                      {printerStatus.connected
+                        ? `${t('Connected')}: ${printerStatus.deviceName || 'USB / Serial Printer'}`
+                        : t('No USB / Serial Printer Connected')}
+                    </span>
+                    <p className="text-[11px] text-muted-foreground">
+                      {t('Connect your thermal printer via USB cable or Windows Bluetooth COM port')}
+                    </p>
+                  </div>
+                  {printerStatus.connected && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDisconnectBluetooth}
+                      className="h-7 text-xs rounded-lg px-2 text-destructive hover:bg-destructive/10 border-destructive/30"
+                    >
+                      {t('Disconnect')}
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={handleConnectSerial}
+                    className="h-9 px-3.5 text-xs font-bold rounded-xl gap-2 bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                  >
+                    <Usb className="h-3.5 w-3.5" />
+                    {t('Select USB / COM Port')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={handleTestPrint}
+                    className="h-9 px-3 text-xs font-bold rounded-xl gap-1.5 border-border/80"
+                  >
+                    <FileText className="h-3.5 w-3.5 text-primary" />
+                    {t('Print Test Slip')}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* 3. Paper Width Selector */}
+            <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/60 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-black">{t('Thermal Paper Roll Width')}</span>
+                  <p className="text-[11px] text-muted-foreground">{t('Select the roll size used by your printer')}</p>
+                </div>
+                <Badge variant="outline" className="font-mono text-xs font-bold">
+                  {printerConfig.paperWidth}
+                </Badge>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={printerConfig.paperWidth === '58mm' ? 'default' : 'outline'}
+                  onClick={() => handleUpdatePrinterConfig({ paperWidth: '58mm' })}
+                  className={cn(
+                    "h-12 flex flex-col items-start justify-center p-2 rounded-xl text-left font-bold text-xs",
+                    printerConfig.paperWidth === '58mm' ? "bg-primary text-primary-foreground" : "border-border/60"
+                  )}
+                >
+                  <span>58mm (2 Inch / 32 Chars)</span>
+                  <span className="text-[10px] font-normal opacity-80">Seznik SZ-58, Everycom EC-58, MPT-II, PT-210</span>
+                </Button>
+
+                <Button
+                  type="button"
+                  variant={printerConfig.paperWidth === '80mm' ? 'default' : 'outline'}
+                  onClick={() => handleUpdatePrinterConfig({ paperWidth: '80mm' })}
+                  className={cn(
+                    "h-12 flex flex-col items-start justify-center p-2 rounded-xl text-left font-bold text-xs",
+                    printerConfig.paperWidth === '80mm' ? "bg-primary text-primary-foreground" : "border-border/60"
+                  )}
+                >
+                  <span>80mm (3 Inch / 48 Chars)</span>
+                  <span className="text-[10px] font-normal opacity-80">Seznik SZ-80, TVS RP 3150, Epson TM-T88</span>
+                </Button>
+              </div>
+            </div>
+
+            {/* 4. Hardware Automation Options */}
+            <div className="p-3.5 rounded-2xl bg-muted/30 border border-border/60 space-y-3">
+              <span className="text-xs font-black uppercase tracking-wider text-muted-foreground">
+                {t('Hardware Automation')}
+              </span>
+
+              {/* Auto-Print on Checkout */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold">{t('Auto-Print on Checkout')}</span>
+                  <p className="text-[11px] text-muted-foreground">
+                    {t('Automatically print thermal receipt when cash or UPI payment is completed')}
+                  </p>
+                </div>
+                <Switch
+                  checked={printerConfig.autoPrint}
+                  onCheckedChange={(val) => handleUpdatePrinterConfig({ autoPrint: val })}
+                />
+              </div>
+
+              {/* Auto Cash Drawer Kick */}
+              <div className="flex items-center justify-between pt-2 border-t border-border/40">
+                <div>
+                  <span className="text-xs font-bold">{t('Automatic Cash Drawer Kick')}</span>
+                  <p className="text-[11px] text-muted-foreground">
+                    {t('Send RJ11 pulse to pop open cash drawer on cash transactions')}
+                  </p>
+                </div>
+                <Switch
+                  checked={printerConfig.autoKickDrawer}
+                  onCheckedChange={(val) => handleUpdatePrinterConfig({ autoKickDrawer: val })}
+                />
+              </div>
+
+              {/* Auto Paper Cut */}
+              <div className="flex items-center justify-between pt-2 border-t border-border/40">
+                <div>
+                  <span className="text-xs font-bold">{t('Automatic Paper Cut')}</span>
+                  <p className="text-[11px] text-muted-foreground">
+                    {t('Send guillotine cut command after receipt printing (80mm printers)')}
+                  </p>
+                </div>
+                <Switch
+                  checked={printerConfig.autoCut}
+                  onCheckedChange={(val) => handleUpdatePrinterConfig({ autoCut: val })}
+                />
+              </div>
+
+              {/* Beep Alert */}
+              <div className="flex items-center justify-between pt-2 border-t border-border/40">
+                <div>
+                  <span className="text-xs font-bold">{t('Buzzer Beep Alert')}</span>
+                  <p className="text-[11px] text-muted-foreground">
+                    {t('Emit sound tone on printer head to notify cashier')}
+                  </p>
+                </div>
+                <Switch
+                  checked={printerConfig.beepOnPrint}
+                  onCheckedChange={(val) => handleUpdatePrinterConfig({ beepOnPrint: val })}
+                />
+              </div>
             </div>
           </TabsContent>
 

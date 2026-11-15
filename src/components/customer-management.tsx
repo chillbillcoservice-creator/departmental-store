@@ -14,6 +14,7 @@ import { PlusCircle, Edit, Search, Trash2, Eye, Printer, Mail, CalendarDays, Sho
 import type { Bill, Customer, PendingBill, PendingBillTransaction, VenueDetails } from '@/lib/types';
 import { logShiftActivity } from '@/lib/shift-manager';
 import { sendWhatsAppKhataReminder } from '@/lib/whatsapp-service';
+import { printThermalBill } from '@/lib/thermal-printer';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { format, isValid } from 'date-fns';
 import { Textarea } from './ui/textarea';
@@ -152,6 +153,7 @@ function CustomerHistoryDialog({
   currency,
   viewSimpleTransaction,
   setViewSimpleTransaction,
+  venueDetails = null,
 }: {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -162,36 +164,42 @@ function CustomerHistoryDialog({
   currency: string;
   viewSimpleTransaction: { name: string, date: Date, amount: number, description?: string } | null;
   setViewSimpleTransaction: (val: { name: string, date: Date, amount: number, description?: string } | null) => void;
+  venueDetails?: any;
 }) {
   const { t } = useLanguage();
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
   const [activeTab, setActiveTab] = useState<'bills' | 'pending'>('bills');
 
+  const resolvedVenue = useMemo(() => {
+    if (venueDetails) return venueDetails;
+    try {
+      const stored = localStorage.getItem('venueDetails');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return null;
+  }, [venueDetails]);
+
   const handlePrintBill = (bill: Bill) => {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Receipt for Bill #${bill.id}</title>
-            <style>
-              body { font-family: monospace; margin: 20px; }
-              pre { white-space: pre-wrap; word-wrap: break-word; }
-            </style>
-          </head>
-          <body>
-            <pre>${bill.receiptPreview}</pre>
-            <script>
-              window.onload = function() {
-                window.print();
-                window.close();
-              }
-            </script>
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-    }
+    printThermalBill(bill, resolvedVenue, currency, bill.total, () => `
+      <html>
+        <head>
+          <title>Receipt for Bill #${bill.id}</title>
+          <style>
+            body { font-family: monospace; margin: 20px; }
+            pre { white-space: pre-wrap; word-wrap: break-word; }
+          </style>
+        </head>
+        <body>
+          <pre>${bill.receiptPreview}</pre>
+          <script>
+            window.onload = function() {
+              window.print();
+              window.close();
+            }
+          </script>
+        </body>
+      </html>
+    `);
   };
 
   return (
@@ -1204,6 +1212,7 @@ export default function CustomerManagement({
           currency={currency}
           viewSimpleTransaction={viewSimpleTransaction}
           setViewSimpleTransaction={setViewSimpleTransaction}
+          venueDetails={venueDetails}
         />
       )}
 
