@@ -47,6 +47,7 @@ import {
   formatWhatsAppPurchaseOrderText,
   formatWhatsAppKhataReminderText,
   formatWhatsAppVendorStatementText,
+  getDigitalBillUrl,
 } from '../src/lib/whatsapp-service';
 import {
   getOrStartActiveShift,
@@ -898,32 +899,35 @@ async function runTests() {
     timestamp: new Date('2026-11-15T14:30:00Z'),
     orderItems: [
       {
-        id: '1',
+        code: '1',
         name: 'Aashirvaad Shudh Chakki Atta 5kg',
         price: 245,
         quantity: 2,
         taxRate: 5,
         hsnCode: '11010000',
         category: 'Flour & Staples',
-        unit: 'pack',
       },
       {
-        id: '2',
+        code: '2',
         name: 'Fortune Sunlite Sunflower Oil 1L',
         price: 135,
         quantity: 1,
         taxRate: 5,
         hsnCode: '15121910',
         category: 'Edible Oils & Ghee',
-        unit: 'bottle',
       },
     ],
     subtotal: 625,
-    tax: 31.25,
+    vatPercentage: 5,
+    vatAmount: 31.25,
     discount: 25,
     roundOff: -0.25,
     total: 631,
-    paymentMethod: 'UPI',
+    paymentMethod: 'Online',
+    orderType: 'Store-Pickup',
+    receiptPreview: '',
+    createdAt: new Date('2026-11-15T14:25:00Z'),
+    completedAt: new Date('2026-11-15T14:30:00Z'),
     cashierName: 'Bunty',
     customerDetails: {
       name: 'Ramesh Sharma',
@@ -938,6 +942,7 @@ async function runTests() {
     name: 'Krishna Supermart',
     address: 'Near Metro Station, New Delhi',
     phone: '9811223344',
+    contactNumber: '9811223344',
     email: 'info@krishnasupermart.com',
     gstin: '07AAACK1234M1Z2',
     receiptFooter: 'Thank you for shopping! Visit Again!',
@@ -962,7 +967,7 @@ async function runTests() {
   assert(decodedText58.includes('07AAAAA0000A1Z5'), '58mm bill prints customer GSTIN');
   assert(decodedText58.includes('HSN: 11010000'), '58mm bill contains product HSN code');
   assert(decodedText58.includes('CGST') && decodedText58.includes('SGST'), '58mm bill prints intra-state GST tax breakdown');
-  assert(decodedText58.includes('UPI'), '58mm bill prints payment method');
+  assert(decodedText58.includes('ONLINE') || decodedText58.includes('Online'), '58mm bill prints payment method');
 
   // 80mm Seznik SZ-80 / TVS Layout
   const rawBytes80 = encodeBillToEscPos(
@@ -1008,10 +1013,12 @@ async function runTests() {
     vendorPaymentsOnline: 0,
     totalOutflow: 500,
     vendorPOsCreated: [],
+    vendorDeliveriesReceived: [],
+    activities: [],
     expectedCashInDrawer: 6000,
     actualCashCounted: 6000,
     cashDifference: 0,
-    status: 'completed',
+    status: 'Completed',
     handoverNotes: 'Shift reconciled cleanly with zero discrepancy.',
   };
 
@@ -1040,6 +1047,29 @@ async function runTests() {
   assert(updatedConfig.paperWidth === '58mm', 'Paper width persisted to 58mm');
   assert(updatedConfig.autoPrint === true, 'Auto-print on checkout persisted to true');
   assert(updatedConfig.lastDeviceName === 'Seznik SZ-58BT', 'Paired Bluetooth device name preserved (Seznik SZ-58BT)');
+
+  // 5. WhatsApp Digital Bill Visual Card & OpenGraph Integration
+  console.log('\n📱 [15/15] Auditing WhatsApp Digital Bill Visual Card & OpenGraph Integration...');
+
+  const digitalUrl = getDigitalBillUrl(mockThermalBill, mockStoreVenue, 'Rs.');
+  assert(digitalUrl.includes('https://chillbill-store.vercel.app/b/BILL-SZ-001'), 'Digital Bill URL points to canonical /b/ endpoint with Bill ID');
+  assert(digitalUrl.includes('store=Krishna+Supermart') || digitalUrl.includes('Krishna'), 'Digital Bill URL encodes store name parameter');
+  assert(digitalUrl.includes('total=631.00'), 'Digital Bill URL encodes total amount');
+  assert(digitalUrl.includes('b2b=true'), 'Digital Bill URL preserves B2B tax invoice flag');
+
+  const formattedMsgWithImageLink = formatWhatsAppBillText(mockThermalBill, mockStoreVenue, 'Rs.');
+  assert(formattedMsgWithImageLink.includes('DIGITAL BILL & RECEIPT (IMAGE)'), 'WhatsApp bill message includes Digital Bill image section header');
+  assert(formattedMsgWithImageLink.includes(digitalUrl), 'WhatsApp bill message includes OpenGraph digital card URL for automatic chat unfurling');
+  assert(formattedMsgWithImageLink.includes('KRISHNA SUPERMART'), 'WhatsApp bill message contains store name');
+  assert(formattedMsgWithImageLink.includes('07AAAAA0000A1Z5'), 'WhatsApp bill message contains buyer GSTIN');
+  assert(formattedMsgWithImageLink.includes('Aashirvaad Shudh Chakki Atta 5kg'), 'WhatsApp bill message lists ordered items');
+  assert(formattedMsgWithImageLink.includes('Rs.631.00') || formattedMsgWithImageLink.includes('631.00'), 'WhatsApp bill message shows correct grand total');
+
+  const standardPhone = sanitizeWhatsAppPhone('9876543210');
+  assert(standardPhone === '919876543210', '10-digit Indian phone auto-prepends country code 91');
+
+  const prefixedPhone = sanitizeWhatsAppPhone('+91 98765 43210');
+  assert(prefixedPhone === '919876543210', 'Phone with +91 and spaces sanitizes cleanly to 919876543210');
 
   // Final summary
   console.log('\n======================================================');

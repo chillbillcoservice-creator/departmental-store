@@ -206,6 +206,7 @@ export interface Bill {
   vatPercentage: number;
   vatAmount: number;
   total: number;
+  roundOff?: number;
   paymentMethod: 'Cash' | 'Online' | 'Split';
   splitPayments?: PaymentSplit[];
   receiptPreview: string;
@@ -499,6 +500,7 @@ export interface VenueDetails {
   zip?: string;
   country?: string;
   contactNumber?: string;
+  phone?: string;
   email?: string;
   tagline?: string;
   defaultDiscount?: number;

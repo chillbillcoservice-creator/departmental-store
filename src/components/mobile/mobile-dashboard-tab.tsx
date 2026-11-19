@@ -20,7 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Bill, InventoryItem, Vendor, PurchaseOrder } from '@/lib/types';
-import { sendWhatsAppBill } from '@/lib/whatsapp-service';
+import { sendWhatsAppBill, shareWhatsAppBillWithImage } from '@/lib/whatsapp-service';
 import { LiveDailySales } from '@/lib/firestore-sync';
 import { MobilePoDialog } from './mobile-po-dialog';
 
@@ -423,7 +423,7 @@ export function MobileDashboardTab({
                                             onClick={() => {
                                                 const phone = bill.customerDetails?.phone || prompt('Enter Customer WhatsApp Number:');
                                                 if (phone) {
-                                                    sendWhatsAppBill(bill, null, phone, currency);
+                                                    shareWhatsAppBillWithImage(bill, null, phone, currency);
                                                 }
                                             }}
                                             className="w-8 h-8 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95"

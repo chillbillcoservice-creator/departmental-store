@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Eye, Printer, Trash2, Calendar as CalendarIcon, X, RotateCcw, MessageSquare } from 'lucide-react';
 import type { Bill, InventoryItem } from '@/lib/types';
 import { format, isSameDay, isSameMonth, isSameYear, isValid } from 'date-fns';
-import { sendWhatsAppBill } from '@/lib/whatsapp-bill';
+import { sendWhatsAppBill, shareWhatsAppBillWithImage } from '@/lib/whatsapp-bill';
 import { WhatsAppIcon } from '@/components/icons/whatsapp-icon';
 import { printThermalBill } from '@/lib/thermal-printer';
 
@@ -263,7 +263,26 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                   <TableCell className="text-center space-x-1">
                     <Button variant="ghost" size="icon" onClick={() => setSelectedBill(bill)} title="View Bill"><Eye className="h-4 w-4" /></Button>
                     <Button variant="ghost" size="icon" onClick={() => handlePrintBill(bill)} title="Print Bill"><Printer className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30" onClick={() => sendWhatsAppBill(bill, venueDetails, undefined, currency)} title="Send via WhatsApp">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                      onClick={() => {
+                        shareWhatsAppBillWithImage(
+                          bill,
+                          venueDetails,
+                          undefined,
+                          currency,
+                          (status) => {
+                            toast({
+                              title: "WhatsApp Bill",
+                              description: status.message,
+                            });
+                          }
+                        );
+                      }}
+                      title="Send via WhatsApp"
+                    >
                       <WhatsAppIcon className="h-4 w-4 fill-emerald-600" />
                     </Button>
                     <Popover>

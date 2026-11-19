@@ -75,6 +75,7 @@ import { useLanguage } from '@/contexts/language-context';
 import { useToast } from '@/hooks/use-toast';
 import { VenueDetails } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { WhatsAppIcon } from '@/components/icons/whatsapp-icon';
 import {
   TUTORIAL_FEATURES,
   TutorialLanguage,
@@ -471,6 +472,35 @@ export function PosSettingsDialog({
                   </Select>
                 </div>
               )}
+            </div>
+
+            {/* WhatsApp Digital Invoicing & Visual Bill Mode */}
+            <div className="p-3.5 bg-emerald-500/5 rounded-2xl border border-emerald-500/20 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-600 rounded-xl">
+                    <WhatsAppIcon className="h-4 w-4 fill-emerald-600" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-foreground">{t('WhatsApp Digital Bill Sharing')}</span>
+                    <p className="text-[11px] text-muted-foreground">{t('Automatic high-resolution receipt image attachment & visual card preview')}</p>
+                  </div>
+                </div>
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-600 font-bold px-2 py-0.5 rounded-full border border-emerald-500/20">
+                  {t('100% Automatic')}
+                </span>
+              </div>
+
+              <div className="text-[11px] text-muted-foreground bg-background/80 p-2.5 rounded-xl border border-border/50 space-y-1">
+                <div className="flex items-center gap-1.5 font-medium text-foreground">
+                  <span className="text-emerald-600 font-bold">📱 Mobile / Tablet:</span>
+                  <span>{t('Web Share auto-attaches receipt image directly into WhatsApp chat without copy-paste.')}</span>
+                </div>
+                <div className="flex items-center gap-1.5 font-medium text-foreground">
+                  <span className="text-blue-600 font-bold">💻 Desktop PC:</span>
+                  <span>{t('Sends rich digital bill link that automatically unfurls a large visual receipt card image.')}</span>
+                </div>
+              </div>
             </div>
           </TabsContent>
 

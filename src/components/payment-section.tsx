@@ -22,7 +22,8 @@ import { SalesReturnDialog } from './sales-return-dialog';
 import { CashDrawerDialog } from './cash-drawer-dialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { sendWhatsAppBill } from '@/lib/whatsapp-bill';
+import { sendWhatsAppBill, shareWhatsAppBillWithImage } from '@/lib/whatsapp-bill';
+import { downloadReceiptImage } from '@/lib/receipt-image';
 import { subscribeToAmountMatch, generateMockUtr } from '@/lib/payment-listener';
 import { triggerSoundboxAlert, playScanBeep } from '@/lib/soundbox';
 import { getActiveShift, logShiftActivity } from '@/lib/shift-manager';
@@ -2501,7 +2502,20 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                                         size="icon"
                                                         variant="ghost"
                                                         className="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
-                                                        onClick={() => sendWhatsAppBill(bill, venueDetails, undefined, activeCurrency)}
+                                                        onClick={() => {
+                                                            shareWhatsAppBillWithImage(
+                                                                bill,
+                                                                venueDetails,
+                                                                undefined,
+                                                                activeCurrency,
+                                                                (status) => {
+                                                                    toast({
+                                                                        title: t("WhatsApp Bill"),
+                                                                        description: status.message,
+                                                                    });
+                                                                }
+                                                            );
+                                                        }}
                                                         title={t("Send via WhatsApp")}
                                                     >
                                                         <WhatsAppIcon className="h-4 w-4 fill-emerald-600" />
@@ -2664,7 +2678,20 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                 size="sm"
                                 className="rounded-xl h-10 px-4 font-black bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5 shadow-md shadow-emerald-600/20"
                                 onClick={() => {
-                                    if (viewingHistoryBill) sendWhatsAppBill(viewingHistoryBill, venueDetails, undefined, activeCurrency);
+                                    if (viewingHistoryBill) {
+                                        shareWhatsAppBillWithImage(
+                                            viewingHistoryBill,
+                                            venueDetails,
+                                            undefined,
+                                            activeCurrency,
+                                            (status) => {
+                                                toast({
+                                                    title: t("WhatsApp Bill"),
+                                                    description: status.message,
+                                                });
+                                            }
+                                        );
+                                    }
                                 }}
                             >
                                 <WhatsAppIcon className="h-4 w-4 fill-white" />
@@ -2720,9 +2747,20 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                     maxLength={13}
                                 />
                                 <Button
-                                    onClick={() => {
+                                    onClick={async () => {
                                         if (lastCompletedBill) {
-                                            sendWhatsAppBill(lastCompletedBill, venueDetails, whatsAppMobile, activeCurrency);
+                                            await shareWhatsAppBillWithImage(
+                                                lastCompletedBill,
+                                                venueDetails,
+                                                whatsAppMobile,
+                                                activeCurrency,
+                                                (status) => {
+                                                    toast({
+                                                        title: t("WhatsApp Bill"),
+                                                        description: status.message,
+                                                    });
+                                                }
+                                            );
                                             const cleanMobile = whatsAppMobile.trim();
                                             if (cleanMobile && cleanMobile.length >= 10 && !customers.some(c => c.phone.endsWith(cleanMobile.slice(-10)))) {
                                                 const customerName = lastCompletedBill.customerDetails?.name || 'Customer';
@@ -2747,6 +2785,23 @@ ${venueDetails?.receiptFooter || 'Thank you for shopping!'}
                                     <WhatsAppIcon className="h-4 w-4 fill-white" />
                                     Send WhatsApp
                                 </Button>
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-muted-foreground pt-1 px-1">
+                                <span className="flex items-center gap-1 text-[11px]">
+                                    📸 Auto-attaches image on phone, card preview on PC
+                                </span>
+                                <button
+                                    type="button"
+                                    className="text-[11px] font-bold text-primary hover:underline"
+                                    onClick={() => {
+                                        if (lastCompletedBill) {
+                                            downloadReceiptImage(lastCompletedBill, venueDetails, activeCurrency);
+                                            toast({ title: t("Downloaded"), description: t("Receipt PNG saved.") });
+                                        }
+                                    }}
+                                >
+                                    Download PNG
+                                </button>
                             </div>
                         </div>
                     </div>

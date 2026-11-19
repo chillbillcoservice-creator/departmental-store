@@ -1,5 +1,6 @@
 import { Bill, VenueDetails, PurchaseOrder, Vendor, Customer } from './types';
 import { format } from 'date-fns';
+import { generateReceiptImageBlob } from './receipt-image';
 
 /**
  * Standardizes an Indian or international phone number for WhatsApp deep-linking.
@@ -14,13 +15,39 @@ export function sanitizeWhatsAppPhone(phone?: string | null): string {
   return digits;
 }
 
+/**
+ * Builds the canonical public digital bill URL that includes OpenGraph preview tags.
+ * When shared on WhatsApp, WhatsApp's crawler fetches this URL and automatically
+ * renders a large visual image card preview of the bill in the chat!
+ */
+export function getDigitalBillUrl(
+  bill: Bill,
+  venueDetails?: VenueDetails | null,
+  currency = 'Rs.'
+): string {
+  const query = new URLSearchParams();
+  if (venueDetails?.name) query.set('store', venueDetails.name);
+  query.set('total', (bill.total || 0).toFixed(2));
+  query.set('items', (bill.orderItems?.length || 1).toString());
+  query.set('method', bill.paymentMethod || 'UPI');
+  query.set('currency', currency);
+  try {
+    query.set('date', format(new Date(bill.timestamp), 'dd MMM yyyy, hh:mm a'));
+  } catch {}
+  if (bill.customerDetails?.name) query.set('customer', bill.customerDetails.name);
+  if (bill.customerDetails?.gstin) query.set('b2b', 'true');
+
+  return `https://chillbill-store.vercel.app/b/${encodeURIComponent(bill.id)}?${query.toString()}`;
+}
+
 /* ═══════════════════════════════════════════════════════
    1. CUSTOMER WHATSAPP BILL DISPATCH
    ═══════════════════════════════════════════════════════ */
 
 /**
  * Formats a clean, professional plain-text bill receipt for WhatsApp dispatch.
- * Conforms to Indian retail standard receipts with emojis and bold formatting.
+ * Conforms to Indian retail standard receipts with emojis, bold formatting,
+ * and a digital bill card link that automatically unfurls an image preview in WhatsApp.
  */
 export function formatWhatsAppBillText(
   bill: Bill,
@@ -32,6 +59,7 @@ export function formatWhatsAppBillText(
   const phone = venueDetails?.contactNumber ? `\n📞 Helpline: ${venueDetails.contactNumber}` : '';
   const gstin = venueDetails?.gstin ? `\n🏢 GSTIN: ${venueDetails.gstin}` : '';
   const fssai = venueDetails?.fssaiNumber ? `\n🥗 FSSAI: ${venueDetails.fssaiNumber}` : '';
+  const digitalBillUrl = getDigitalBillUrl(bill, venueDetails, currency);
 
   let dateStr = '';
   try {
@@ -78,6 +106,9 @@ ${itemsList}
 Subtotal: ${currency}${bill.subtotal.toFixed(2)}
 ${bill.discount > 0 ? `Discount: -${currency}${bill.discount.toFixed(2)}\n` : ''}${bill.vatAmount > 0 ? `GST Total: ${currency}${bill.vatAmount.toFixed(2)}\n` : ''}💰 *GRAND TOTAL: ${currency}${bill.total.toFixed(2)}*
 ${paymentSummary}
+━━━━━━━━━━━━━━━━━━━━
+📄 *DIGITAL BILL & RECEIPT (IMAGE):*
+${digitalBillUrl}
 ━━━━━━━━━━━━━━━━━━━━
 ${venueDetails?.receiptFooter || 'THANK YOU FOR SHOPPING WITH US! VISIT AGAIN.'}
 `.trim();
@@ -141,6 +172,83 @@ export function sendWhatsAppBill(
     : `https://api.whatsapp.com/send?text=${encoded}`;
 
   openWhatsAppUrl(url, message);
+}
+
+/**
+ * 100% Automatic WhatsApp Bill Image Dispatcher:
+ * - Mobile / Tablet / PWA: Uses Web Share API to attach the actual high-resolution receipt PNG directly into WhatsApp chat!
+ * - Desktop PC / WhatsApp Web: Copies raw receipt PNG to system clipboard (for optional Ctrl+V paste) and opens WhatsApp
+ *   with the digital bill card link, which WhatsApp's preview engine automatically displays as a large receipt image card!
+ */
+export async function shareWhatsAppBillWithImage(
+  bill: Bill,
+  venueDetails?: VenueDetails | null,
+  targetPhone?: string,
+  currency = 'Rs.',
+  onStatusChange?: (status: { type: 'shared' | 'copied' | 'fallback'; message: string }) => void
+): Promise<{ success: boolean; method: 'web-share' | 'clipboard' | 'fallback' }> {
+  const cleanPhone = sanitizeWhatsAppPhone(targetPhone || bill.customerDetails?.phone);
+  const digitalUrl = getDigitalBillUrl(bill, venueDetails, currency);
+  const message = formatWhatsAppBillText(bill, venueDetails, currency);
+
+  try {
+    // 1. Generate PNG Blob via high-DPI canvas
+    const blob = await generateReceiptImageBlob(bill, venueDetails, currency);
+    const fileName = `Bill-${bill.id}.png`;
+    const imageFile = new File([blob], fileName, { type: 'image/png' });
+
+    // 2. Check if mobile/tablet or device supports file sharing via Web Share API
+    const canShareFiles =
+      typeof navigator !== 'undefined' &&
+      typeof navigator.canShare === 'function' &&
+      navigator.canShare({ files: [imageFile] });
+
+    if (canShareFiles) {
+      // 100% AUTOMATIC ON MOBILE / TABLET: Opens WhatsApp directly with the image attached!
+      await navigator.share({
+        title: `Bill #${bill.id} - ${venueDetails?.name || 'Store'}`,
+        text: `🛍️ ${venueDetails?.name || 'Store'} Bill #${bill.id}\n💰 Total: ${currency}${bill.total.toFixed(2)}\n📄 View Online: ${digitalUrl}`,
+        files: [imageFile],
+      });
+      onStatusChange?.({
+        type: 'shared',
+        message: 'Receipt image attached and shared via WhatsApp!',
+      });
+      return { success: true, method: 'web-share' };
+    }
+
+    // 3. Desktop PC / WhatsApp Web: Copy image to system clipboard as high-res graphic
+    if (
+      typeof navigator !== 'undefined' &&
+      navigator.clipboard &&
+      typeof (window as any).ClipboardItem !== 'undefined'
+    ) {
+      try {
+        await navigator.clipboard.write([
+          new (window as any).ClipboardItem({ 'image/png': blob }),
+        ]);
+        onStatusChange?.({
+          type: 'copied',
+          message: '📋 Bill image copied to clipboard! Paste (Ctrl+V) in WhatsApp to send image.',
+        });
+      } catch (clipErr) {
+        console.warn('Clipboard write failed:', clipErr);
+      }
+    }
+
+    // Dispatch WhatsApp Web with message & link (WhatsApp displays visual image card preview!)
+    const encoded = encodeURIComponent(message);
+    const url = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`
+      : `https://api.whatsapp.com/send?text=${encoded}`;
+
+    openWhatsAppUrl(url, message);
+    return { success: true, method: 'clipboard' };
+  } catch (err) {
+    console.warn('Image share failed, falling back to text:', err);
+    sendWhatsAppBill(bill, venueDetails, targetPhone, currency);
+    return { success: true, method: 'fallback' };
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
