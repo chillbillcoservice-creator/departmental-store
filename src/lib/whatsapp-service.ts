@@ -16,28 +16,14 @@ export function sanitizeWhatsAppPhone(phone?: string | null): string {
 }
 
 /**
- * Builds the canonical public digital bill URL that includes OpenGraph preview tags.
- * When shared on WhatsApp, WhatsApp's crawler fetches this URL and automatically
- * renders a large visual image card preview of the bill in the chat!
+ * Builds the canonical public digital bill URL.
  */
 export function getDigitalBillUrl(
   bill: Bill,
   venueDetails?: VenueDetails | null,
   currency = 'Rs.'
 ): string {
-  const query = new URLSearchParams();
-  if (venueDetails?.name) query.set('store', venueDetails.name);
-  query.set('total', (bill.total || 0).toFixed(2));
-  query.set('items', (bill.orderItems?.length || 1).toString());
-  query.set('method', bill.paymentMethod || 'UPI');
-  query.set('currency', currency);
-  try {
-    query.set('date', format(new Date(bill.timestamp), 'dd MMM yyyy, hh:mm a'));
-  } catch {}
-  if (bill.customerDetails?.name) query.set('customer', bill.customerDetails.name);
-  if (bill.customerDetails?.gstin) query.set('b2b', 'true');
-
-  return `https://chillbill-store.vercel.app/b/${encodeURIComponent(bill.id)}?${query.toString()}`;
+  return `https://chillbill-store.vercel.app/b/${encodeURIComponent(bill.id)}`;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -188,8 +174,8 @@ export async function shareWhatsAppBillWithImage(
   onStatusChange?: (status: { type: 'shared' | 'copied' | 'fallback'; message: string }) => void
 ): Promise<{ success: boolean; method: 'web-share' | 'clipboard' | 'fallback' }> {
   const cleanPhone = sanitizeWhatsAppPhone(targetPhone || bill.customerDetails?.phone);
-  const digitalUrl = getDigitalBillUrl(bill, venueDetails, currency);
-  const message = formatWhatsAppBillText(bill, venueDetails, currency);
+  const storeName = venueDetails?.name || 'Krishna Supermart';
+  const cleanCaption = `🧾 *${storeName.toUpperCase()}* • Bill #${bill.id}\n💰 Total Paid: ${currency}${(bill.total || 0).toFixed(2)}\n🙏 Thank you for shopping with us! Visit again.`;
 
   try {
     // 1. Generate PNG Blob via high-DPI canvas
@@ -205,9 +191,10 @@ export async function shareWhatsAppBillWithImage(
 
     if (canShareFiles) {
       // 100% AUTOMATIC ON MOBILE / TABLET: Opens WhatsApp directly with the image attached!
+      // Passes only the clean store caption without any URL, preventing WhatsApp from sending messy link bubbles!
       await navigator.share({
-        title: `Bill #${bill.id} - ${venueDetails?.name || 'Store'}`,
-        text: `🛍️ ${venueDetails?.name || 'Store'} Bill #${bill.id}\n💰 Total: ${currency}${bill.total.toFixed(2)}\n📄 View Online: ${digitalUrl}`,
+        title: `Bill #${bill.id} - ${storeName}`,
+        text: cleanCaption,
         files: [imageFile],
       });
       onStatusChange?.({
@@ -236,13 +223,13 @@ export async function shareWhatsAppBillWithImage(
       }
     }
 
-    // Dispatch WhatsApp Web with message & link (WhatsApp displays visual image card preview!)
-    const encoded = encodeURIComponent(message);
+    // Dispatch WhatsApp Web with clean caption (and image already copied to clipboard for Ctrl+V)
+    const encoded = encodeURIComponent(cleanCaption);
     const url = cleanPhone
       ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encoded}`
       : `https://api.whatsapp.com/send?text=${encoded}`;
 
-    openWhatsAppUrl(url, message);
+    openWhatsAppUrl(url, cleanCaption);
     return { success: true, method: 'clipboard' };
   } catch (err) {
     console.warn('Image share failed, falling back to text:', err);

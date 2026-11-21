@@ -1052,14 +1052,11 @@ async function runTests() {
   console.log('\n📱 [15/15] Auditing WhatsApp Digital Bill Visual Card & OpenGraph Integration...');
 
   const digitalUrl = getDigitalBillUrl(mockThermalBill, mockStoreVenue, 'Rs.');
-  assert(digitalUrl.includes('https://chillbill-store.vercel.app/b/BILL-SZ-001'), 'Digital Bill URL points to canonical /b/ endpoint with Bill ID');
-  assert(digitalUrl.includes('store=Krishna+Supermart') || digitalUrl.includes('Krishna'), 'Digital Bill URL encodes store name parameter');
-  assert(digitalUrl.includes('total=631.00'), 'Digital Bill URL encodes total amount');
-  assert(digitalUrl.includes('b2b=true'), 'Digital Bill URL preserves B2B tax invoice flag');
+  assert(digitalUrl === 'https://chillbill-store.vercel.app/b/BILL-SZ-001', 'Digital Bill URL is clean canonical /b/ endpoint without messy query parameters');
 
   const formattedMsgWithImageLink = formatWhatsAppBillText(mockThermalBill, mockStoreVenue, 'Rs.');
-  assert(formattedMsgWithImageLink.includes('DIGITAL BILL & RECEIPT (IMAGE)'), 'WhatsApp bill message includes Digital Bill image section header');
-  assert(formattedMsgWithImageLink.includes(digitalUrl), 'WhatsApp bill message includes OpenGraph digital card URL for automatic chat unfurling');
+  assert(formattedMsgWithImageLink.includes('DIGITAL BILL & RECEIPT'), 'WhatsApp bill message includes Digital Bill section header');
+  assert(formattedMsgWithImageLink.includes(digitalUrl), 'WhatsApp bill message includes clean digital receipt link');
   assert(formattedMsgWithImageLink.includes('KRISHNA SUPERMART'), 'WhatsApp bill message contains store name');
   assert(formattedMsgWithImageLink.includes('07AAAAA0000A1Z5'), 'WhatsApp bill message contains buyer GSTIN');
   assert(formattedMsgWithImageLink.includes('Aashirvaad Shudh Chakki Atta 5kg'), 'WhatsApp bill message lists ordered items');
